@@ -1,4 +1,6 @@
 CCC/*/*/build
+CCC/*/*/dist
+**/.DS_Store
 
 equidistant-towns/eq_towns
 
