@@ -1,20 +1,28 @@
-.PHONY: all $OBJECTS
+.PHONY: all
+.SUFFIXES:
+MAKEFLAGS+=" -r "
 
 EXE_DIR=EXE
+OBJ_DIR=OBJ
 
-SOURCES=$(shell find . -name "*.c++")
+DIRS=$(EXE_DIR) $(OBJ_DIR)
 
-OBJECTS=$(SOURCES:%.c++=%.o)
+SOURCES=$(shell find * -type f -name "*.c++")
 
-EXES=$(SOURCES: %.c++ = %)
+OBJECTS=$(SOURCES:%.c++=$(OBJ_DIR)/%.o)
 
-all: $(OBJECTS)
+EXES=$(SOURCES:%.c++=$(EXE_DIR)/%)
 
-%.o: %.c++ | $(EXE_DIR)
-	g++ -Wall -Weffc++ -Wextra -Werror -pedantic -std=c++11 $< -o $(EXE_DIR)/$(@:%.o=%) -ggdb -D_GLIBCXX_DEBUG
+all: $(EXES)
+
+$(OBJ_DIR)/%.o: %.c++ | $(OBJ_DIR)
 	g++ -c -Wall -Weffc++ -Wextra -Werror -pedantic -std=c++11 $< -o $@ -ggdb -D_GLIBCXX_DEBUG
 
-$(EXE_DIR):
-	mkdir -p $(EXE_DIR)
+$(EXE_DIR)/%: $(OBJ_DIR)/%.o | $(EXE_DIR)
+	g++ -Wall -Weffc++ -Wextra -Werror -pedantic -std=c++11 $< -o $@ -ggdb -D_GLIBCXX_DEBUG
 
-.SUFFIXES:
+$(DIRS):
+	mkdir -p $@
+
+clean:
+	rm -r $(EXES)
