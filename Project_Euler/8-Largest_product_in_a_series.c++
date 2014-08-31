@@ -34,14 +34,17 @@ const size_t PRODUCT_SIZE = 13;
 int main() {
 	deque<size_t> product_queue{};
 	size_t largest_product = 0;
+	size_t product_start_index = 0;
 
-	for (size_t num : the_number) {
+	for (size_t i = 0; i < the_number.size(); ++i) {
+		size_t num = the_number[i];
 		if (product_queue.size() == PRODUCT_SIZE) {
 			size_t front = product_queue.front();
 			product_queue.pop_front();
 
-			if (front > largest_product) {
+			if (front >= largest_product) {
 				largest_product = front;
+				product_start_index = i - PRODUCT_SIZE;
 			}
 		}
 		product_queue.push_back(1);
@@ -50,7 +53,14 @@ int main() {
 		}
 	}
 
-	cout << "largest product = " << largest_product << "\n";
+	cout << "largest product, at index " << product_start_index << " = ";
+	for (size_t i = 0; i < PRODUCT_SIZE; ++i) {
+		if (i != 0) {
+			cout << '*';
+		}
+		cout << the_number[product_start_index + i];
+	}
+	cout << " == " << largest_product << "\n";
 
 	end();
 	return 0;
