@@ -2,6 +2,8 @@ CCC/*/*/build
 CCC/*/*/dist
 **/.DS_Store
 
+CCC/2013/s5
+
 equidistant-towns/eq_towns
 
 Project_Euler/1-Multiples_of_3_and_5
