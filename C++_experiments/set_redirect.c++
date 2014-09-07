@@ -1,18 +1,28 @@
 #include <iostream>
 #include <stdlib.h>
 
+/**
+ * the default setTo. It just assigns the two params.
+ */
 template<typename T, typename V>
 void setTo(T& dest, const V& src) {
 	std::cout << "calling default setTo\n";
 	dest = src;
 }
 
+/**
+ * A specalized setTo, to demonstrate that you can define one for build-in types
+ */
 template<>
 void setTo(int& dest, const int& src) {
 	std::cout << "calling specialized int,int setTo\n";
 	dest = src;
 }
 
+/**
+ * A class that holds an reference to some type, and will call a setter on the
+ * held reference for you, if you try to assign to this class.
+ */
 template<typename T>
 class SetRedirect {
 public:
@@ -36,6 +46,9 @@ private:
 	void operator=(const SetRedirect<T>&) = delete;
 };
 
+/**
+ * A small class to demonstrate custom types and the various ways of accessing and setting
+ */
 class SmallObj {
 public:
 	void set(int i) { this->i = i; std::cout << "so.set(" << i << ")\n"; }
@@ -46,12 +59,20 @@ private:
 	void operator=(const SmallObj&) = delete;
 };
 
+/**
+ * A specialization of setTo for SmallObj, to demonstrate custom setters for custom types.
+ */
 template<>
 void setTo(SmallObj& so, const int& i) {
 	std::cout << "calling specialized SmallObj,int setTo\n";
 	so.set(i);
 }
 
+/**
+ * A class with an operator=(some other type) to demonstrate the assignment operator is
+ * called, through SetRedirect's assignment operator, and that SetRedirect may be
+ * implicty converted to it's contained type.
+ */
 class Assignable {
 public:
 	Assignable() : i(6) { }
@@ -78,6 +99,9 @@ std::ostream& operator<<(std::ostream& os, const Assignable& a) {
 	return os;
 }
 
+/**
+ * A test class to return the SetRedirect objects.
+ */
 class TestClass {
 public:
 	TestClass() : test_float(0.5), test_integer(1), small_obj(), a() { }
