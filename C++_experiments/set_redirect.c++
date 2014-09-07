@@ -1,6 +1,18 @@
 #include <iostream>
 #include <stdlib.h>
 
+template<typename T, typename V>
+void setTo(T& dest, const V& src) {
+	std::cout << "calling default setTo\n";
+	dest = src;
+}
+
+template<>
+void setTo(int& dest, const int& src) {
+	std::cout << "calling specialized int,int setTo\n";
+	dest = src;
+}
+
 template<typename T>
 class SetRedirect {
 public:
@@ -8,7 +20,7 @@ public:
 
 	template<typename V>
 	SetRedirect<T>& operator=(const V& new_val) {
-		var = new_val;
+		setTo(var,new_val);
 		std::cout << "set to " << new_val << "\n";
 		return *this;
 	}
@@ -16,6 +28,9 @@ public:
 	T* operator->() { return &var; }
 	T& operator*() { return var; }
 	operator T&() { return var; }
+	T* operator->() const { return &var; }
+	T& operator*() const { return var; }
+	operator T&() const { return var; }
 private:
 	T& var;
 	void operator=(const SetRedirect<T>&) = delete;
@@ -23,13 +38,19 @@ private:
 
 class SmallObj {
 public:
-	void set(int i) { this->i = i; std::cout << "so set to " << i << '\n'; }
+	void set(int i) { this->i = i; std::cout << "so.set(" << i << ")\n"; }
 	SmallObj() : i(5) { }
 	int getI() { return i; }
 private:
 	int i;
 	void operator=(const SmallObj&) = delete;
 };
+
+template<>
+void setTo(SmallObj& so, const int& i) {
+	std::cout << "calling specialized SmallObj,int setTo\n";
+	so.set(i);
+}
 
 class Assignable {
 public:
@@ -42,23 +63,26 @@ public:
 		return *this;
 	}
 	operator int() { return i; }
+	operator int() const { return i; }
 private:
 	int i;
 	friend std::ostream& operator<<(std::ostream& os, const Assignable& a);
 };
 
 std::ostream& operator<<(std::ostream& os, const Assignable& a) {
-	os << "{\n\ti = " << a.i << ",\n}\n";
+	os << "i = " << a.i << "\n";
 	return os;
 }
 
 class TestClass {
 public:
-	TestClass() : test_integer(1), small_obj(), a() { }
+	TestClass() : test_float(0.5), test_integer(1), small_obj(), a() { }
+	SetRedirect<float> test_flt() { return SetRedirect<float>(test_float); }
 	SetRedirect<int> test_int() { return SetRedirect<int>(test_integer); }
 	SetRedirect<SmallObj> so() { return SetRedirect<SmallObj>(small_obj); }
 	SetRedirect<Assignable> assignable() { return SetRedirect<Assignable>(a); }
 private:
+	float test_float;
 	int test_integer;
 	SmallObj small_obj;
 	Assignable a;
@@ -69,23 +93,27 @@ int main() {
 	TestClass tc;
 
 	// There an implicit conversion to the assigned type available.
-	// Also, Calls to operator=(T) will work for any type T where ContainedType.operator=(T) exists.
-	std::cout << tc.test_int() << '\n';
-	tc.test_int() = 4;
-	std::cout << tc.test_int() << '\n';
+	// Also, Calls to operator=(T) will work for any type T where ContainedType.operator=(T) exists,
+	// or wher there is a custom setter
+	std::cout << tc.test_flt() << '\n';
+	tc.test_flt() = 2.3;
+	std::cout << tc.test_flt() << '\n';
 
 	std::cout << "---\n";
 
 	// Methods of the contained type can be called using operator->
 	std::cout << tc.so()->getI() << '\n';
-	tc.so()->set(7);
+	tc.so()->set(21);
+	std::cout << tc.so()->getI() << '\n';
+
+	// custom setters can be declared by providing a specialization of
+	// setTo for you types. Notic that SmallObj has no assignment operators defined.
+	tc.so() = 7;
 	std::cout << tc.so()->getI() << '\n';
 
 	// "Dereferenceing" ( operator*() ) will give the contained object
 	(*tc.so()).set(24);
 	std::cout << (*tc.so()).getI() << '\n';
-
-	std::cout << "---\n";
 
 	// the implicit conversion can also be invoked explictly:
 	static_cast<SmallObj&>(tc.so()).set(33);
@@ -93,11 +121,20 @@ int main() {
 
 	std::cout << "---\n";
 
+	// you can make a custom setTo for any type
+	std::cout << tc.test_int() << '\n';
+	tc.test_int() = 4;
+	std::cout << tc.test_int() << '\n';
+
+	std::cout << "---\n";
+
 	// The SetRedirect is converted to it's contained type (Assignable) , and that is printed
 	std::cout << tc.assignable();
 	// Assignable's operator=(int) is called, through SetRedirect's operator=
-	tc.assignable() = 41;
+	tc.assignable() = 18;
 	std::cout << tc.assignable();
+
+	std::cout << "---\n";
 
 	return 0;
 }
