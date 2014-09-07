@@ -55,10 +55,14 @@ void setTo(SmallObj& so, const int& i) {
 class Assignable {
 public:
 	Assignable() : i(6) { }
+	Assignable(int i_) : i(i_) { }
 	Assignable& operator=(const Assignable& src) {
-		return this->operator=(src.i);
+		std::cout << "Assignable.operator=((Assignable)" << src << ") called\n";
+		this->i = src.i;
+		return *this;
 	}
 	Assignable& operator=(int new_i) {
+		std::cout << "Assignable.operator=((int)" << new_i << ") called\n";
 		this->i = new_i;
 		return *this;
 	}
@@ -70,7 +74,7 @@ private:
 };
 
 std::ostream& operator<<(std::ostream& os, const Assignable& a) {
-	os << "i = " << a.i << "\n";
+	os << "i = " << a.i;
 	return os;
 }
 
@@ -129,10 +133,15 @@ int main() {
 	std::cout << "---\n";
 
 	// The SetRedirect is converted to it's contained type (Assignable) , and that is printed
-	std::cout << tc.assignable();
+	std::cout << tc.assignable() << '\n';
+
 	// Assignable's operator=(int) is called, through SetRedirect's operator=
 	tc.assignable() = 18;
-	std::cout << tc.assignable();
+	std::cout << tc.assignable() << '\n';
+
+	// Assignable's operator=(Assignable) is called, through SetRedirect's operator=
+	tc.assignable() = Assignable(33);
+	std::cout << tc.assignable() << '\n';
 
 	std::cout << "---\n";
 
