@@ -36,10 +36,8 @@ public:
 	}
 
 	T* operator->() { return &var; }
-	T& operator*() { return var; }
 	operator T&() { return var; }
 	T* operator->() const { return &var; }
-	T& operator*() const { return var; }
 	operator T&() const { return var; }
 private:
 	T& var;
@@ -53,7 +51,7 @@ class SmallObj {
 public:
 	void set(int i) { this->i = i; std::cout << "so.set(" << i << ")\n"; }
 	SmallObj() : i(5) { }
-	int getI() { return i; }
+	int getI() const { return i; }
 private:
 	int i;
 	void operator=(const SmallObj&) = delete;
@@ -108,6 +106,7 @@ public:
 	SetRedirect<float> test_flt() { return SetRedirect<float>(test_float); }
 	SetRedirect<int> test_int() { return SetRedirect<int>(test_integer); }
 	SetRedirect<SmallObj> so() { return SetRedirect<SmallObj>(small_obj); }
+	SetRedirect<const SmallObj> const_so() { return SetRedirect<const SmallObj>(small_obj); }
 	SetRedirect<Assignable> assignable() { return SetRedirect<Assignable>(a); }
 private:
 	float test_float;
@@ -130,18 +129,16 @@ int main() {
 	std::cout << "---\n";
 
 	// Methods of the contained type can be called using operator->
-	std::cout << tc.so()->getI() << '\n';
+	std::cout << tc.const_so()->getI() << '\n';
+	// tc.const_so()->set(21); // compile error
 	tc.so()->set(21);
-	std::cout << tc.so()->getI() << '\n';
+	std::cout << tc.const_so()->getI() << '\n';
 
 	// custom setters can be declared by providing a specialization of
 	// setTo for you types. Notic that SmallObj has no assignment operators defined.
+	// tc.const_so() = 7; // compile error
 	tc.so() = 7;
 	std::cout << tc.so()->getI() << '\n';
-
-	// "Dereferenceing" ( operator*() ) will give the contained object
-	(*tc.so()).set(24);
-	std::cout << (*tc.so()).getI() << '\n';
 
 	// the implicit conversion can also be invoked explictly:
 	static_cast<SmallObj&>(tc.so()).set(33);
