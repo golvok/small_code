@@ -8,15 +8,21 @@ OBJ_DIR=OBJ
 DIRS=$(EXE_DIR) $(OBJ_DIR)
 
 SOURCES=$(shell find * -type f -name "*.c++")
+SOURCES+=$(shell find * -type f -name "*.c")
 
 OBJECTS=$(SOURCES:%.c++=$(OBJ_DIR)/%.o)
+OBJECTS+=$(SOURCES:%.c=$(OBJ_DIR)/%.o)
 
 EXES=$(SOURCES:%.c++=$(EXE_DIR)/%)
+EXES+=$(SOURCES:%.c=$(EXE_DIR)/%)
 
 all: $(EXES)
 
 $(OBJ_DIR)/%.o: %.c++ | $(OBJ_DIR)
 	g++ -c -Wall -Weffc++ -Wextra -Werror -pedantic -std=c++11 $< -o $@ -ggdb -D_GLIBCXX_DEBUG
+
+$(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
+	gcc -c -Wall -Wextra -Werror -pedantic -std=c99 $< -o $@ -ggdb -D_GLIBCXX_DEBUG
 
 $(EXE_DIR)/%: $(OBJ_DIR)/%.o | $(EXE_DIR)
 	g++ -Wall -Weffc++ -Wextra -Werror -pedantic -std=c++11 $< -o $@ -ggdb -D_GLIBCXX_DEBUG
