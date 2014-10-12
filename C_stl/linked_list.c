@@ -6,9 +6,14 @@
 #define ll_next(ll_node) ll_node->next
 #define ll_get_data(ll_node) ll_node->data
 #define ll_begin(ll) ll->pre_head->next
+#define ll_front(ll) ll_begin(ll)
+#define ll_back(ll) ll->pre_tail->next
 #define ll_end(ll) 0
 #define ll_increment(ll_node) ll_node = ll_next(ll_node)
 #define ll_is_empty(ll) ll_next(ll->pre_head) == 0
+
+#define ll_FOR_EACH(type, var, ll, code) \
+{type var = ll_get_data(ll_begin(ll)) for(;var != ll_end(ll); ll_increment(var)) { code }}
 
 #define DEFINE_LINKED_LIST(type) \
 typedef type type##_ll_node_data; \
@@ -36,7 +41,7 @@ bool type##_ll_node_has_next(type##_ll_node* node) { return ll_next(node) != 0; 
  \
  \
 type##_linked_list* type##_ll_init() { \
-	type##_linked_list *ll; \
+	type##_linked_list* ll; \
  \
 	ll = (type##_linked_list *)malloc(sizeof(type##_linked_list)); \
 	assert(ll); \
@@ -47,7 +52,7 @@ type##_linked_list* type##_ll_init() { \
 	return ll; \
 } \
  \
-void type##_ll_destroy(type##_linked_list *ll) { \
+void type##_ll_destroy(type##_linked_list* ll) { \
 	type##_ll_node* pre_head = ll->pre_head; \
 	while (!type##_ll_is_empty(ll)) { \
 		type##_ll_remove_next(ll, pre_head); \
@@ -58,11 +63,11 @@ void type##_ll_destroy(type##_linked_list *ll) { \
 	free(ll); \
 } \
  \
-int type##_ll_push_front(type##_linked_list *ll, type##_ll_node* to_be_inserted) { \
+int type##_ll_push_front(type##_linked_list* ll, type##_ll_node* to_be_inserted) { \
 	return type##_ll_insert_after(ll, ll->pre_head, to_be_inserted); \
 } \
  \
-int type##_ll_push_back(type##_linked_list *ll, type##_ll_node* to_be_inserted) { \
+int type##_ll_push_back(type##_linked_list* ll, type##_ll_node* to_be_inserted) { \
 	if (type##_ll_is_empty(ll)) { \
 		return type##_ll_insert_after(ll, ll->pre_head, to_be_inserted); \
 	} else { \
@@ -70,15 +75,15 @@ int type##_ll_push_back(type##_linked_list *ll, type##_ll_node* to_be_inserted) 
 	} \
 } \
  \
-int type##_ll_pop_front(type##_linked_list *ll, type##_ll_node_data *ret) { \
+int type##_ll_pop_front(type##_linked_list* ll, type##_ll_node_data *ret) { \
 	return type##_ll_pop_next(ll,ll->pre_head,ret); \
 } \
  \
-int type##_ll_pop_back(type##_linked_list *ll, type##_ll_node_data *ret) { \
+int type##_ll_pop_back(type##_linked_list* ll, type##_ll_node_data *ret) { \
 	return type##_ll_pop_next(ll,ll->pre_tail,ret); \
 } \
  \
-int type##_ll_remove_by_index(type##_linked_list *ll, int index, type##_ll_node_data *ret) { \
+int type##_ll_remove_by_index(type##_linked_list* ll, int index, type##_ll_node_data *ret) { \
 	type##_ll_node* iter = ll->pre_head; \
 	int current_index = 0; \
 	while (true) { \
@@ -146,6 +151,13 @@ void type##__YOU_FORGOT_A_SEMICOLON()
 DEFINE_LINKED_LIST(int);
 DEFINE_LINKED_LIST(float);
 
+#define PRINT_LL(type,ll) do { \
+	for (type##_ll_node* node = ll_begin(ll); node != ll_end(ll); ll_increment(node)) { \
+		printf("%lf, ", *type##_ll_get_data(node)); \
+	} \
+	printf("\n pt = %lf\n", *type##_ll_get_data(ll->pre_tail)); \
+} while (0)
+
 int main() {
 	{
 		int_linked_list* ll = int_ll_init();
@@ -194,10 +206,7 @@ int main() {
 			float_ll_push_front(ll, float_ll_node_init(i));
 		}
 
-		for (float_ll_node* node = ll_begin(ll); node != ll_end(ll); ll_increment(node)) {
-			printf("%lf, ", *float_ll_get_data(node));
-		}
-		printf("\n pt = %lf\n", *float_ll_get_data(ll->pre_tail));
+		PRINT_LL(float,ll);
 
 		for (size_t i = 0; i < 5; ++i) {
 			float_ll_pop_front(ll, 0);
@@ -207,19 +216,13 @@ int main() {
 			float_ll_push_back(ll, float_ll_node_init(i));
 		}
 		
-		for (float_ll_node* node = ll_begin(ll); node != ll_end(ll); ll_increment(node)) {
-			printf("%lf, ", *float_ll_get_data(node));
-		}
-		printf("\n pt = %lf\n", *float_ll_get_data(ll->pre_tail));
+		PRINT_LL(float,ll);
 
 		while (!float_ll_is_empty(ll)) {
 			puts("poping front!");
 			float_ll_pop_front(ll, NULL);
 			puts("list is now:");
-			for (float_ll_node* node = ll_begin(ll); node != ll_end(ll); ll_increment(node)) {
-				printf("%lf, ", *float_ll_get_data(node));
-			}
-			printf("\n pt = %lf\n", *float_ll_get_data(ll->pre_tail));	
+			PRINT_LL(float,ll);
 		}
 
 		float_ll_destroy(ll);
