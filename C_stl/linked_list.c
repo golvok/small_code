@@ -10,7 +10,7 @@
 #define ll_back(ll) ll->pre_tail->next
 #define ll_end(ll) 0
 #define ll_increment(ll_node) ll_node = ll_next(ll_node)
-#define ll_is_empty(ll) ll_next(ll->pre_head) == 0
+#define ll_is_empty(ll) (ll_next(ll->pre_head) == 0)
 
 #define ll_FOR_EACH(type, var, ll, code) \
 {type var = ll_get_data(ll_begin(ll)) for(;var != ll_end(ll); ll_increment(var)) { code }}
@@ -104,7 +104,7 @@ int type##_ll_remove_by_value(type##_linked_list* ll, type##_ll_node_data val) {
 	if (ll_is_empty(ll)) { return 1; } \
 	type##_ll_node* prev_prev = 0; \
 	type##_ll_node* prev = ll_begin(ll); \
-	for (;ll_next(prev) != ll_end(ll); prev_prev = prev, ll_increment(prev)) { \
+	for (;ll_next(prev) != ll_end(ll); ll_increment(prev)) { \
 		if (ll_get_data(ll_next(prev)) == val) { \
 			break; \
 		} \
@@ -140,13 +140,9 @@ int type##_ll_pop_next(type##_linked_list* ll, type##_ll_node* prev, type##_ll_n
 int type##_ll_pop_next_any(type##_linked_list* ll, type##_ll_node* prev_prev, type##_ll_node* prev, type##_ll_node_data* ret) { \
 	if (prev == 0) { return 1; } \
  \
-	if (ll->pre_tail == prev && ll->pre_head != ll->pre_tail && prev_prev == 0) { \
-		assert(0 && "removing the tail without prev_prev is unsupported"); \
-	} \
- \
 	if (prev != ll->pre_head) { \
 		if (prev_prev == 0) { \
-			if (ll->pre_tail != prev) { \
+			if (ll->pre_tail == prev && !ll_is_empty(ll)) { \
 				assert(0 && "need the prev_prev to remove the tail"); \
 			} \
 		} else if (ll_next(prev_prev) != prev) { \
@@ -182,15 +178,17 @@ type##_ll_node* type##_ll_node_init(type##_ll_node_data data) { \
 void type##__YOU_FORGOT_A_SEMICOLON()
 
 
+
+#define PRINT_LL(type,fmt,function,ll) do { \
+	type##_ll_node* node = ll_begin(ll); \
+	for (; node != ll_end(ll); ll_increment(node)) { \
+		printf(fmt", ", function(*type##_ll_get_data(node))); \
+	} \
+	putchar('\n'); \
+} while (0)
+
 DEFINE_LINKED_LIST(int);
 DEFINE_LINKED_LIST(float);
-
-#define PRINT_LL(type,ll) do { \
-	for (type##_ll_node* node = ll_begin(ll); node != ll_end(ll); ll_increment(node)) { \
-		printf("%lf, ", *type##_ll_get_data(node)); \
-	} \
-	printf("\n pt = %lf\n", *type##_ll_get_data(ll->pre_tail)); \
-} while (0)
 
 int main() {
 	{
@@ -240,7 +238,7 @@ int main() {
 			float_ll_push_front(ll, float_ll_node_init(i));
 		}
 
-		PRINT_LL(float,ll);
+		PRINT_LL(float,"%lf",,ll);
 
 		for (size_t i = 0; i < 5; ++i) {
 			float_ll_pop_front(ll, 0);
@@ -250,18 +248,18 @@ int main() {
 			float_ll_push_back(ll, float_ll_node_init(i));
 		}
 		
-		PRINT_LL(float,ll);
+		PRINT_LL(float,"%lf",,ll);
 
 		puts("removing 11.0!");
 		float_ll_remove_by_value(ll,11);
 
-		PRINT_LL(float,ll);
+		PRINT_LL(float,"%lf",,ll);
 
 		while (!float_ll_is_empty(ll)) {
 			puts("poping front!");
 			float_ll_pop_front(ll, NULL);
 			puts("list is now:");
-			PRINT_LL(float,ll);
+			PRINT_LL(float,"%lf",,ll);
 		}
 
 		float_ll_destroy(ll);
