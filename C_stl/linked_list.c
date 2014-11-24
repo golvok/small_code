@@ -192,15 +192,14 @@ DEFINE_LINKED_LIST(float);
 
 int main() {
 	{
+		puts("-------singly linked test-------");
 		int_linked_list* ll = int_ll_init();
 		for (size_t i = 1; i < 11; ++i) {
 			int_ll_push_front(ll, int_ll_node_init(i));
 		}
 
-		for (int_ll_node* node = ll_begin(ll); node != ll_end(ll); ll_increment(node)) {
-			printf("%d, ", *int_ll_get_data(node));
-		}
-		printf("\n pt = %d\n", *int_ll_get_data(ll->pre_tail));
+		PRINT_LL(int, "%d", , ll);
+		printf(" pt = %d\n\n", *int_ll_get_data(ll->pre_tail));
 
 		for (size_t i = 0; i < 5; ++i) {
 			int_ll_pop_front(ll, 0);
@@ -209,20 +208,16 @@ int main() {
 		for (size_t i = 15; i > 10; --i) {
 			int_ll_push_back(ll, int_ll_node_init(i));
 		}
-		
-		for (int_ll_node* node = ll_begin(ll); node != ll_end(ll); ll_increment(node)) {
-			printf("%d, ", *int_ll_get_data(node));
-		}
-		printf("\n pt = %d\n", *int_ll_get_data(ll->pre_tail));
+
+		PRINT_LL(int, "%d", , ll);
+		printf(" pt = %d\n\n", *int_ll_get_data(ll->pre_tail));
 
 		while (!int_ll_is_empty(ll)) {
 			puts("poping front!");
 			int_ll_pop_front(ll, NULL);
 			puts("list is now:");
-			for (int_ll_node* node = ll_begin(ll); node != ll_end(ll); ll_increment(node)) {
-				printf("%d, ", *int_ll_get_data(node));
-			}
-			printf("\n pt = %d\n", *int_ll_get_data(ll->pre_tail));	
+			PRINT_LL(int, "%d", , ll);
+			printf(" pt = %d\n\n", *int_ll_get_data(ll->pre_tail));
 		}
 
 		for (size_t i = 1; i < 6; ++i) {
@@ -233,6 +228,7 @@ int main() {
 	}
 
 	{
+		puts("-------other type test-------");
 		float_linked_list* ll = float_ll_init();
 		for (size_t i = 1; i < 11; ++i) {
 			float_ll_push_front(ll, float_ll_node_init(i));
@@ -247,7 +243,7 @@ int main() {
 		for (size_t i = 15; i > 10; --i) {
 			float_ll_push_back(ll, float_ll_node_init(i));
 		}
-		
+
 		PRINT_LL(float,"%lf",,ll);
 
 		puts("removing 11.0!");
