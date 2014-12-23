@@ -7,14 +7,14 @@ OBJ_DIR=OBJ
 
 DIRS=$(EXE_DIR) $(OBJ_DIR)
 
-SOURCES=$(shell find * -type f -name "*.c++")
-SOURCES+=$(shell find * -type f -name "*.c")
+CPPSOURCES=$(shell find * -type f -name "*.c++")
+CSOURCES+=$(shell find * -type f -name "*.c")
 
-OBJECTS=$(SOURCES:%.c++=$(OBJ_DIR)/%.o)
-OBJECTS+=$(SOURCES:%.c=$(OBJ_DIR)/%.o)
+OBJECTS=$(CPPSOURCES:%.c++=$(OBJ_DIR)/%.o)
+OBJECTS+=$(CSOURCES:%.c=$(OBJ_DIR)/%.o)
 
-EXES=$(SOURCES:%.c++=$(EXE_DIR)/%)
-EXES+=$(SOURCES:%.c=$(EXE_DIR)/%)
+EXES=$(CPPSOURCES:%.c++=$(EXE_DIR)/%)
+EXES+=$(CSOURCES:%.c=$(EXE_DIR)/%)
 
 all: $(EXES)
 
