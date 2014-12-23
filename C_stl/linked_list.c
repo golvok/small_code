@@ -244,6 +244,9 @@ DEFINE_LINKED_LIST_COMMON(TOK_CAT(type,_d)) \
 int type##_dll_remove(type##_dlinked_list* ll, type##_dll_node* node) { \
 	return type##_dll_pop_next_any(ll,node->prev->prev,node->prev,0); \
 } \
+int type##_dll_pop(type##_dlinked_list* ll, type##_dll_node* node, type##_dll_node_data* ret) { \
+	return type##_dll_pop_next(ll,node->prev,ret); \
+} \
  \
 int type##_dll_remove_next(type##_dlinked_list* ll, type##_dll_node* prev) { \
 	return type##_dll_pop_next_any(ll,prev->prev,prev,0); \
