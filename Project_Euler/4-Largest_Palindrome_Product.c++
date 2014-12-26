@@ -23,22 +23,39 @@ int main() {
 
 	size_t digits[NUM_DIGITS*2];
 
+	size_t largest_so_far = 0;
+	std::pair<size_t,size_t> factors {0,0};
+
 	for (size_t i = START_VAL; i > END_VAL; --i) {
+		// std::cout << i << ": "; // DEBUG1
+		bool found_something_larger = false;
 		for (size_t j = START_VAL; j >= i; --j) {
 			size_t num = i*j;
+
+			if (num < largest_so_far) {
+				break;
+			}
+
+			// std::cout << j << " "; // DEBUG1
+
 			size_t k = 0;
-			// std::cout << i << '*' << j << '=' << num << "'s digits are: ";
-			while (true) {
-				digits[k] = num % 10;
-				num /= 10;
-				// std::cout << digits[k];
-				if (num > 0) {
-					++k;
-				} else {
-					break;
+			// std::cout << i << '*' << j << '=' << num << "'s digits are: "; // DEBUG2
+
+			{
+				size_t tmp_num = num;
+				while (true) {
+					digits[k] = tmp_num % 10;
+					tmp_num /= 10;
+					// std::cout << digits[k]; // DEBUG2
+					if (tmp_num > 0) {
+						++k;
+					} else {
+						break;
+					}
 				}
 			}
-			// std::cout << std::endl;
+
+			// std::cout << "\n"; // DEBUG1
 
 			bool is_palindrome = true;
 			for(size_t l = 0; l <= k/2; ++l) {
@@ -48,10 +65,20 @@ int main() {
 				}
 			}
 
-			if (is_palindrome) {
-				std::cout << "largest palindrome: " << i << '*' << j << '=' << i*j << std::endl;
-				return 0;
+			if (num > largest_so_far) {
+				found_something_larger = true;
+				if (is_palindrome) {
+					// std::cout << '^'; // DEBUG1
+					largest_so_far = num;
+					factors = std::make_pair(i,j);
+				}
 			}
 		}
+		// std::cout << '\n'; // DEBUG1
+		if (found_something_larger == false) {
+			// std::cout << "didn't find anything larger\n"; // DEBUG1
+			break;
+		}
 	}
+	std::cout << "largest palindrome: " << factors.first << '*' << factors.second << '=' << largest_so_far << std::endl;
 }
