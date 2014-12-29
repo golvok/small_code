@@ -1,7 +1,7 @@
 #include <iostream>
 #include <math.h>
 
-const size_t NUMBER = 3*10000000019;//6008514751432;
+const size_t NUMBER = 600851475143;
 
 int main () {
 
