@@ -98,7 +98,7 @@ int main() {
 		std::cout << "destroy, now.\n";
 	)
 	SCOPED_TEST(
-		TracerClass2(6,tc1);
+		TracerClass2{tc1};
 	)
 
 	std::cout
