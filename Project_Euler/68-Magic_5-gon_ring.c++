@@ -1,13 +1,10 @@
 #include <iostream>
 #include <vector>
 #include <array>
+#include <algorithm>
 
 typedef unsigned long long int ullong;
 typedef unsigned char uchar;
-
-const ullong N = 3;
-const ullong NUM_DIGITS = N*2;
-const ullong MAXIMAL_SUM = NUM_DIGITS*3 - 3;
 
 template<size_t SIZE>
 class Gon {
@@ -19,8 +16,8 @@ public:
 		: numbers()
 	{}
 
-	bool trySet(ullong composite_digits) {
-		std::array<int,NUM_DIGITS> digits;
+	bool trySet_i(ullong composite_digits) {
+		std::array<uchar,NUM_DIGITS> digits;
 
 		// std::cout << "extracting: ";
 		for (size_t i = 0; i < NUM_DIGITS; ++i) {
@@ -28,13 +25,17 @@ public:
 			// std::cout << composite_digits % 10;
 			composite_digits /= 10;
 		}
-		// std::cout << std::endl;
+		return trySet(digits);
+	}
 
+	template<typename ArrayType>
+	bool trySet(ArrayType digits) {
 		for (size_t i = 0; i < numbers.size(); i += 1) {
 			numbers[i][0] = digits[i*2];
 			numbers[i][2] = digits[i*2+1];
 			numbers[(i+1) % numbers.size()][1] = numbers[i][2];
 		}
+
 		ullong previous_sum = 0;
 		for (size_t i = 0; i < numbers.size(); ++i) {
 			ullong sum = 0;
@@ -54,7 +55,6 @@ public:
 	}
 
 	ullong getNumber() const {
-		ullong the_number = 0;
 		size_t index_of_smallest = 0;
 		{
 			uchar smallest = NUM_DIGITS+1;
@@ -65,14 +65,21 @@ public:
 				}
 			}
 		}
+		ullong the_number = 0;
 		for (size_t i = numbers.size(); i != 0; --i) {
 			size_t real_index = (i+index_of_smallest) % numbers.size();
 
 			for (size_t j = 0; j < numbers[real_index].size(); ++j) {
-				the_number *= 10;
-				the_number += numbers[real_index][j];
+				ullong n = numbers[real_index][j];
+				ullong power_of_10 = 1;
+				do {
+					the_number *= 10;
+					power_of_10 *= 10;
+				} while (power_of_10 <= n);
+				the_number += n;
 			}
 		}
+
 		return the_number;
 	}
 
@@ -89,44 +96,47 @@ std::ostream& operator<<(std::ostream& os, const Gon<SIZE> gon) {
 	return os;
 }
 
+template<size_t N>
+void checkGon(Gon<N>& gon, std::vector<uchar> digits, ullong& max, size_t digits_left, const size_t NUM_DIGITS) {
+	for (uchar i = 1; i <= NUM_DIGITS; ++i) {
+		if (std::find(digits.begin(),digits.end(),i) != digits.end()) {
+			// already used? then skip it.
+			continue;
+		}
+
+		digits.push_back(i);
+
+		if (digits_left == 1) {
+			if (gon.trySet(digits)) {
+				for (auto d : digits) {
+					std::cout << (int)d << " ";
+				}
+				std::cout << " -> ";
+				ullong the_number = gon.getNumber();
+				std::cout << the_number << std::endl;
+				if (the_number > max) {
+					max = the_number;
+				}
+			}
+		} else {
+			checkGon(gon,digits,max,digits_left-1,NUM_DIGITS);
+		}
+
+		digits.pop_back();
+	}
+}
 
 int main() {
-	ullong start = 0;
-	ullong end = 0;
-
-	for (size_t i = 1; i <= NUM_DIGITS; ++i) {
-		start *= 10;
-		end *= 10;
-		start += (NUM_DIGITS-i) + 1;
-		end += i;
-	}
+	const ullong N = 3;
+	const ullong NUM_DIGITS = N*2;
 
 	Gon<N> gon;
 	ullong max = 0;
-	
-	for (ullong i = start; i >= end; --i) {
-		{
-			ullong digits = 0;
-			ullong current_num = i;
-			while (current_num != 0) {
-				digits |= 0x1 << current_num % 10;
-				current_num /= 10;
-			}
-			if (digits != ((((ullong)-1) >> (sizeof(ullong)*8-(NUM_DIGITS+1)) & ((ullong)-1) << 1))) {
-				continue;
-			}
-		}
 
-		// std::cout << "trying " << i << std::endl;
-		
-		if (gon.trySet(i)) {
-			ullong the_number = gon.getNumber();
-			// std::cout << the_number << std::endl;
-			if (the_number > max) {
-				max = the_number;
-			}
-		}
-	}
+	std::vector<uchar> digits;
+	digits.reserve(NUM_DIGITS);
+
+	checkGon(gon,digits,max,NUM_DIGITS,NUM_DIGITS);
 
 	std::cout << max << std::endl;
 	return 0;
