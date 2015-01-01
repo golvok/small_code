@@ -66,7 +66,7 @@ public:
 			}
 		}
 		ullong the_number = 0;
-		for (size_t i = numbers.size(); i != 0; --i) {
+		for (size_t i = 0; i < numbers.size(); ++i) {
 			size_t real_index = (i+index_of_smallest) % numbers.size();
 
 			for (size_t j = 0; j < numbers[real_index].size(); ++j) {
@@ -97,7 +97,7 @@ std::ostream& operator<<(std::ostream& os, const Gon<SIZE> gon) {
 }
 
 template<size_t N>
-void checkGon(Gon<N>& gon, std::vector<uchar> digits, ullong& max, size_t digits_left, const size_t NUM_DIGITS) {
+void checkGon(Gon<N>& gon, std::vector<uchar> digits, ullong& max, ullong& max_16, size_t digits_left, const size_t NUM_DIGITS) {
 	for (uchar i = 1; i <= NUM_DIGITS; ++i) {
 		if (std::find(digits.begin(),digits.end(),i) != digits.end()) {
 			// already used? then skip it.
@@ -111,15 +111,18 @@ void checkGon(Gon<N>& gon, std::vector<uchar> digits, ullong& max, size_t digits
 				for (auto d : digits) {
 					std::cout << (int)d << " ";
 				}
-				std::cout << " -> ";
+				std::cout << "-> ";
 				ullong the_number = gon.getNumber();
 				std::cout << the_number << std::endl;
 				if (the_number > max) {
 					max = the_number;
 				}
+				if (the_number < 10000000000000000 && the_number > max_16) {
+					max_16 = the_number;
+				}
 			}
 		} else {
-			checkGon(gon,digits,max,digits_left-1,NUM_DIGITS);
+			checkGon(gon,digits,max,max_16,digits_left-1,NUM_DIGITS);
 		}
 
 		digits.pop_back();
@@ -127,17 +130,19 @@ void checkGon(Gon<N>& gon, std::vector<uchar> digits, ullong& max, size_t digits
 }
 
 int main() {
-	const ullong N = 3;
+	const ullong N = 5;
 	const ullong NUM_DIGITS = N*2;
 
 	Gon<N> gon;
 	ullong max = 0;
+	ullong max_16 = 0;
 
 	std::vector<uchar> digits;
 	digits.reserve(NUM_DIGITS);
 
-	checkGon(gon,digits,max,NUM_DIGITS,NUM_DIGITS);
+	checkGon(gon,digits,max,max_16,NUM_DIGITS,NUM_DIGITS);
 
-	std::cout << max << std::endl;
+	std::cout << "max = " << max << std::endl;
+	std::cout << "16-digit max = " << max_16 << std::endl;
 	return 0;
 }
