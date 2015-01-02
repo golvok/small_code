@@ -2,6 +2,7 @@
 #include <vector>
 #include <array>
 #include <algorithm>
+#include <cassert>
 
 typedef unsigned long long int ullong;
 typedef unsigned char uchar;
@@ -10,48 +11,56 @@ template<size_t SIZE>
 class Gon {
 private:
 	std::array<std::array<uchar,3>,SIZE> numbers;
+	size_t num_added_digit_pairs;
+	ullong previous_sum;
 public:
 	const static size_t NUM_DIGITS = SIZE*2;
 	Gon()
 		: numbers()
+		, num_added_digit_pairs(0)
+		, previous_sum(0)
 	{}
 
-	bool trySet_i(ullong composite_digits) {
-		std::array<uchar,NUM_DIGITS> digits;
+	bool addDigitPair(uchar digit1, uchar digit2) {
+		numbers[num_added_digit_pairs][0] = digit1;
+		numbers[num_added_digit_pairs][1] = digit2;
+		numbers[(num_added_digit_pairs-1+numbers.size()) % numbers.size()][2] = digit2;
 
-		// std::cout << "extracting: ";
-		for (size_t i = 0; i < NUM_DIGITS; ++i) {
-			digits[i] = composite_digits % 10;
-			// std::cout << composite_digits % 10;
-			composite_digits /= 10;
-		}
-		return trySet(digits);
-	}
+		num_added_digit_pairs += 1;
 
-	template<typename ArrayType>
-	bool trySet(ArrayType digits) {
-		for (size_t i = 0; i < numbers.size(); i += 1) {
-			numbers[i][0] = digits[i*2];
-			numbers[i][2] = digits[i*2+1];
-			numbers[(i+1) % numbers.size()][1] = numbers[i][2];
-		}
-
-		ullong previous_sum = 0;
-		for (size_t i = 0; i < numbers.size(); ++i) {
-			ullong sum = 0;
-			for (size_t j = 0; j < numbers[i].size(); ++j) {
-				sum += numbers[i][j];
+		if (num_added_digit_pairs >= 2) {
+			if (checkSumOf(num_added_digit_pairs-2) == false) {
+				return false;
 			}
-			if (i == 0) {
-				previous_sum = sum;
-			} else {
-				if (sum != previous_sum) {
-					// std::cout << "sum of " << i << " is " << sum << " and not " << previous_sum << std::endl;
+			if (num_added_digit_pairs == numbers.size()) {
+				if (checkSumOf(num_added_digit_pairs-1) == false) {
 					return false;
 				}
 			}
 		}
 		return true;
+	}
+
+	bool checkSumOf(size_t set_to_check) {
+		ullong sum = 0;
+		for (size_t j = 0; j < numbers[set_to_check].size(); ++j) {
+			sum += numbers[set_to_check][j];
+		}
+
+		if (set_to_check == 0) {
+			previous_sum = sum;
+		} else {
+			if (sum != previous_sum) {
+				// std::cout << "sum of " << set_to_check << " is " << sum << " and not " << previous_sum << std::endl;
+				return false;
+			}
+		}
+		return true;
+	}
+
+	void removeDigiPair() {
+		assert(num_added_digit_pairs > 0);
+		num_added_digit_pairs -= 1;
 	}
 
 	ullong getNumber() const {
@@ -98,33 +107,44 @@ std::ostream& operator<<(std::ostream& os, const Gon<SIZE> gon) {
 
 template<size_t N>
 void checkGon(Gon<N>& gon, std::vector<uchar> digits, ullong& max, ullong& max_16, size_t digits_left, const size_t NUM_DIGITS) {
+	digits_left -= 2;
 	for (uchar i = 1; i <= NUM_DIGITS; ++i) {
 		if (std::find(digits.begin(),digits.end(),i) != digits.end()) {
 			// already used? then skip it.
 			continue;
 		}
-
 		digits.push_back(i);
 
-		if (digits_left == 1) {
-			if (gon.trySet(digits)) {
-				for (auto d : digits) {
-					std::cout << (int)d << " ";
-				}
-				std::cout << "-> ";
-				ullong the_number = gon.getNumber();
-				std::cout << the_number << std::endl;
-				if (the_number > max) {
-					max = the_number;
-				}
-				if (the_number < 10000000000000000 && the_number > max_16) {
-					max_16 = the_number;
+		for (uchar i = 1; i <= NUM_DIGITS; ++i) {
+			if (std::find(digits.begin(),digits.end(),i) != digits.end()) {
+				// already used? then skip it.
+				continue;
+			}
+			digits.push_back(i);
+
+			if (gon.addDigitPair(*(++digits.rbegin()),*(digits.rbegin())) == true) {
+				if (digits_left == 0) {
+					// success! see if this solution is better
+					for (auto d : digits) {
+						std::cout << (int)d << " ";
+					}
+					std::cout << "-> ";
+					ullong the_number = gon.getNumber();
+					std::cout << the_number << std::endl;
+					if (the_number > max) {
+						max = the_number;
+					}
+					if (the_number < 10000000000000000 && the_number > max_16) {
+						max_16 = the_number;
+					}
+				} else {
+					checkGon(gon,digits,max,max_16,digits_left,NUM_DIGITS);
 				}
 			}
-		} else {
-			checkGon(gon,digits,max,max_16,digits_left-1,NUM_DIGITS);
-		}
 
+			digits.pop_back();
+			gon.removeDigiPair();
+		}
 		digits.pop_back();
 	}
 }
