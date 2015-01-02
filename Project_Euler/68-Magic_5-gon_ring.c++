@@ -19,10 +19,8 @@ public:
 	bool trySet_i(ullong composite_digits) {
 		std::array<uchar,NUM_DIGITS> digits;
 
-		// std::cout << "extracting: ";
 		for (size_t i = 0; i < NUM_DIGITS; ++i) {
 			digits[i] = composite_digits % 10;
-			// std::cout << composite_digits % 10;
 			composite_digits /= 10;
 		}
 		return trySet(digits);
@@ -46,7 +44,6 @@ public:
 				previous_sum = sum;
 			} else {
 				if (sum != previous_sum) {
-					// std::cout << "sum of " << i << " is " << sum << " and not " << previous_sum << std::endl;
 					return false;
 				}
 			}
@@ -96,39 +93,6 @@ std::ostream& operator<<(std::ostream& os, const Gon<SIZE> gon) {
 	return os;
 }
 
-template<size_t N>
-void checkGon(Gon<N>& gon, std::vector<uchar> digits, ullong& max, ullong& max_16, size_t digits_left, const size_t NUM_DIGITS) {
-	for (uchar i = 1; i <= NUM_DIGITS; ++i) {
-		if (std::find(digits.begin(),digits.end(),i) != digits.end()) {
-			// already used? then skip it.
-			continue;
-		}
-
-		digits.push_back(i);
-
-		if (digits_left == 1) {
-			if (gon.trySet(digits)) {
-				for (auto d : digits) {
-					std::cout << (int)d << " ";
-				}
-				std::cout << "-> ";
-				ullong the_number = gon.getNumber();
-				std::cout << the_number << std::endl;
-				if (the_number > max) {
-					max = the_number;
-				}
-				if (the_number < 10000000000000000 && the_number > max_16) {
-					max_16 = the_number;
-				}
-			}
-		} else {
-			checkGon(gon,digits,max,max_16,digits_left-1,NUM_DIGITS);
-		}
-
-		digits.pop_back();
-	}
-}
-
 int main() {
 	const ullong N = 5;
 	const ullong NUM_DIGITS = N*2;
@@ -137,10 +101,27 @@ int main() {
 	ullong max = 0;
 	ullong max_16 = 0;
 
-	std::vector<uchar> digits;
-	digits.reserve(NUM_DIGITS);
+	std::array<uchar,NUM_DIGITS> digits;
+	for (size_t i = 0; i < digits.size(); ++i) {
+		digits[i] = i+1;
+	}
 
-	checkGon(gon,digits,max,max_16,NUM_DIGITS,NUM_DIGITS);
+	while (std::next_permutation(digits.begin(),digits.end())) {
+		if (gon.trySet(digits)) {
+			for (auto d : digits) {
+				std::cout << (int)d << " ";
+			}
+			std::cout << "-> ";
+			ullong the_number = gon.getNumber();
+			std::cout << the_number << std::endl;
+			if (the_number > max) {
+				max = the_number;
+			}
+			if (the_number < 10000000000000000 && the_number > max_16) {
+				max_16 = the_number;
+			}
+		}
+	}
 
 	std::cout << "max = " << max << std::endl;
 	std::cout << "16-digit max = " << max_16 << std::endl;
