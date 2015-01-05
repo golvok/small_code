@@ -1,5 +1,4 @@
-#include <iostream>
-#include <math.h>
+#include "common.h"
 
 const size_t NUMBER = 600851475143;
 

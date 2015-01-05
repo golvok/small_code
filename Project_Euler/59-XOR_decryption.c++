@@ -1,13 +1,5 @@
-#include <iostream>
-#include <iomanip>
-#include <cstdio>
-#include <array>
-#include <vector>
-#include <cassert>
-#include <cctype>
-#include <cstring>
+#include "common.h"
 
-typedef unsigned char uchar;
 typedef std::array<uchar,1201> MessageArray;
 typedef std::array<uchar,3> KeyType;
 

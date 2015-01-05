@@ -1,4 +1,4 @@
-#include <iostream>
+#include "common.h"
 
 const size_t BOUNDED_BY = 1000;
 

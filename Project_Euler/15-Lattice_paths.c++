@@ -1,44 +1,23 @@
-#include <iostream>
-#include <unordered_map>
+#include "common.h"
 
 const size_t SIDE_LENGTH = 20;
 
-typedef unsigned long long int uintType;
-typedef std::pair<uintType,uintType> Rectangle;
-typedef std::unordered_map<Rectangle,uintType> PathCountCache;
+typedef std::pair<ullong,ullong> Rectangle;
+typedef std::unordered_map<Rectangle,ullong> PathCountCache;
 
 namespace std {
 	template<>
 	struct hash<Rectangle> {
 		size_t operator() (const Rectangle& r) const {
-			auto uint_hasher = std::hash<uintType>();
+			auto uint_hasher = std::hash<ullong>();
 			return uint_hasher(r.first) ^ uint_hasher(r.second);
 		}
 	};
 }
 
-template<typename T, typename U>
-std::ostream& operator<<(std::ostream& os, std::pair<T,U> p) {
-	os << '{' << p.first << ',' << p.second << '}';
-	return os;
-}
+ullong calculatePathCount(Rectangle r, PathCountCache& dim2path_count);
 
-template<typename T, typename U, typename V, typename W>
-void operator+=(std::pair<T,U>& p1, std::pair<V,W>& p2) {
-	p1.first += p2.first;
-	p1.second += p2.second;
-}
-
-template<typename T, typename U, typename V, typename W>
-std::pair<T,U> operator+(std::pair<T,U> p1, const std::pair<V,W>& p2) {
-	p1.first += p2.first;
-	p1.second += p2.second;
-	return p1;
-}
-
-uintType calculatePathCount(Rectangle r, PathCountCache& dim2path_count);
-
-uintType getFromCacheOrCalculate(Rectangle r, PathCountCache& dim2path_count) {
+ullong getFromCacheOrCalculate(Rectangle r, PathCountCache& dim2path_count) {
 	auto cached_value = dim2path_count.find(r);
 	if (cached_value == dim2path_count.end()) {
 		return calculatePathCount(r, dim2path_count);
@@ -47,8 +26,8 @@ uintType getFromCacheOrCalculate(Rectangle r, PathCountCache& dim2path_count) {
 	}
 }
 
-uintType calculatePathCount(Rectangle r, PathCountCache& dim2path_count) {
-	uintType sum = 0;
+ullong calculatePathCount(Rectangle r, PathCountCache& dim2path_count) {
+	ullong sum = 0;
 	if (r.first != 0) {
 		sum += getFromCacheOrCalculate(r + std::make_pair(-1,0), dim2path_count);
 	}

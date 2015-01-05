@@ -1,4 +1,4 @@
-#include <array>
+#include "common.h"
 
 // const std::array<const std::array<const uint,5>,5> MATRIX {{
 // 	{131, 673, 234, 103, 18},
@@ -91,51 +91,6 @@ const std::array<const std::array<const uint,80>,80> MATRIX {{
 	{5304,5499, 564,2801, 679,2653,1783,3608,7359,7797,3284, 796,3222, 437,7185,6135,8571,2778,7488,5746, 678,6140, 861,7750, 803,9859,9918,2425,3734,2698,9005,4864,9818,6743,2475, 132,9486,3825,5472, 919, 292,4411,7213,7699,6435,9019,6769,1388, 802,2124,1345,8493,9487,8558,7061,8777,8833,2427,2238,5409,4957,8503,3171,7622,5779,6145,2417,5873,5563,5693,9574,9491,1937,7384,4563,6842,5432,2751,3406,7981},
 }};
 
-// #include <array> (above)
-#include <iostream>
-#include <vector>
-#include <cstdlib>
-#include <limits>
-
-typedef std::pair<size_t,size_t> Point;
-typedef std::pair<std::ptrdiff_t,std::ptrdiff_t> Direction;
-
-template<typename T, typename U>
-std::ostream& operator<<(std::ostream& os, std::pair<T,U> p) {
-	os << '{' << p.first << ',' << p.second << '}';
-	return os;
-}
-
-template<typename T, typename U, typename V, typename W>
-void operator+=(std::pair<T,U>& p1, std::pair<V,W>& p2) {
-	p1.first += p2.first;
-	p1.second += p2.second;
-}
-
-template<typename T, typename U, typename V, typename W>
-std::pair<T,V> operator+(std::pair<T,U> p1, const std::pair<V,W>& p2) {
-	p1.first += p2.first;
-	p1.second += p2.second;
-	return p1;
-}
-
-template<typename T, typename U, typename MULT_TYPE>
-std::pair<T,U> operator*(std::pair<T,U> p, MULT_TYPE m) {
-	p.first *= m;
-	p.second *= m;
-	return p;
-}
-
-template<typename TwoDeeArrayType>
-typename TwoDeeArrayType::value_type::reference arrayGet(TwoDeeArrayType& a, Point location) {
-	return a[location.second][location.first];
-}
-
-template<typename T>
-T abs(T num) {
-	return (num < 0) ? (-num) : (num);
-}
-
 int main() {
 	const size_t X_SIZE = MATRIX[0].size();
 	const size_t Y_SIZE = MATRIX.size();
@@ -157,7 +112,7 @@ int main() {
 		}
 	}
 
-	std::array<unsigned long long int, NUM_ROWS + 2*SIDE_PADDING> working_row;
+	std::array<ullong, NUM_ROWS + 2*SIDE_PADDING> working_row;
 
 	std::copy(rotated.rbegin()->begin(), rotated.rbegin()->end(), working_row.begin());
 
@@ -167,10 +122,10 @@ int main() {
 		size_t past_last_offset = SIDE_PADDING + NUM_ROWS - abs((int)(Y_SIZE-1)-(int)((NUM_ROWS-1)-i));
 		// std::cout << "i = " << i << ", start = " << start_offset << ", past the end = " << past_last_offset << std::endl;
 		for (j = start_offset; j < past_last_offset; j += 2) {
-			unsigned long long int left = working_row[j-1];
-			unsigned long long int right = working_row[j+1];
-			unsigned long long int min = std::min(left,right);
-			unsigned long long int above = rotated[i][j];
+			ullong left = working_row[j-1];
+			ullong right = working_row[j+1];
+			ullong min = std::min(left,right);
+			ullong above = rotated[i][j];
 
 			// std::cout << "\tof " << left << " and " << right << ", take " << min << " and add " << above << " to get " << (min+above) << std::endl;
 			working_row[j] = min + above;

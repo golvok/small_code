@@ -1,6 +1,4 @@
-#include <iostream>
-#include <cstdlib>
-#include <vector>
+#include "common.h"
 
 const std::vector<std::vector<char>> TRIANGLE {
 	{59},

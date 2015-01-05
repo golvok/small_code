@@ -1,5 +1,4 @@
-#include <iostream>
-#include <cmath>
+#include "common.h"
 
 int main() {
 	int prime_count = 1;

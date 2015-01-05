@@ -1,5 +1,4 @@
-#include <iostream>
-#include <math.h>
+#include "common.h"
 
 const size_t NUM_DIGITS = 6;
 const size_t START_VAL = pow(10,NUM_DIGITS) - 1;

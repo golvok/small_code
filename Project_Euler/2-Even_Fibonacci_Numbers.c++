@@ -1,4 +1,4 @@
-#include <iostream>
+#include "common.h"
 
 int main () {
 	size_t prev_num = 0;

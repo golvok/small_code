@@ -1,6 +1,4 @@
-#include <iostream>
-#include <stdlib.h>
-#include <vector>
+#include "common.h"
 
 const size_t END_NUMBER = 20;
 

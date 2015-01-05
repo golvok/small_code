@@ -1,5 +1,4 @@
-#include <array>
-#include <iostream>
+#include "common.h"
 
 const size_t SEQUENCE_SIZE = 4;
 const size_t X_SIZE = 20;
@@ -27,26 +26,6 @@ const std::array<std::array<int,X_SIZE>,Y_SIZE> numbers {{
 	{20, 73, 35, 29, 78, 31, 90,  1, 74, 31, 49, 71, 48, 86, 81, 16, 23, 57,  5, 54},
 	{ 1, 70, 54, 71, 83, 51, 54, 69, 16, 92, 33, 48, 61, 43, 52,  1, 89, 19, 67, 48},
 }};
-
-typedef std::pair<size_t,size_t> Point;
-typedef std::pair<std::ptrdiff_t,std::ptrdiff_t> Direction;
-
-template<typename T, typename U>
-std::ostream& operator<<(std::ostream& os, std::pair<T,U> p) {
-	os << '{' << p.first << ',' << p.second << '}';
-	return os;
-}
-
-template<typename T, typename U, typename V, typename W>
-void operator+=(std::pair<T,U>& p1, std::pair<V,W>& p2) {
-	p1.first += p2.first;
-	p1.second += p2.second;
-}
-
-template<typename T, std::size_t N, std::size_t M>
-const T arrayGet(const std::array<std::array<T,N>,M>& a, Point location) {
-	return a[location.second][location.first];
-}
 
 void checkSequence(
 	Point startLocation, Direction vector,

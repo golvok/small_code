@@ -1,6 +1,4 @@
-#include <array>
-#include <deque>
-#include <iostream>
+#include "common.h"
 
 using namespace std;
 

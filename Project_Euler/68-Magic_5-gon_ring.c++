@@ -1,11 +1,4 @@
-#include <iostream>
-#include <vector>
-#include <array>
-#include <algorithm>
-#include <cassert>
-
-typedef unsigned long long int ullong;
-typedef unsigned char uchar;
+#include "common.h"
 
 template<size_t SIZE>
 class Gon {
