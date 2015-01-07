@@ -139,6 +139,10 @@ public:
 
 	bool operator!=(const MatrixElem& rhs) const { return !(*this == rhs); }
 
+	operator Point() const {
+		return {x,y};
+	}
+
 	void print(std::ostream& os) const {
 		os << Point{x,y} << " (" << getValue() << ')';
 	}
@@ -149,11 +153,6 @@ std::ostream& operator<<(std::ostream& os, const MatrixElem& elem) {
 	return os;
 }
 
-template<typename TwoDeeAarrayType2>
-auto arrayGet_ME(TwoDeeAarrayType2& arr, const MatrixElem& elem) -> decltype(arrayGet(arr,elem.getLocation())) {
-	return arrayGet(arr,elem.getLocation());
-}
-
 template<typename TwoDeeAarrayType>
 struct MatrixBackedComparator {
 	const TwoDeeAarrayType& best_path;
@@ -162,7 +161,7 @@ struct MatrixBackedComparator {
 		{}
 
 	bool operator()(const MatrixElem& lhs, const MatrixElem& rhs) const {
-		return arrayGet_ME(best_path,lhs) < arrayGet_ME(best_path,rhs);
+		return arrayGet(best_path,lhs) < arrayGet(best_path,rhs);
 	}
 };
 
@@ -181,10 +180,12 @@ int main() {
 
 	std::array<std::array<MatrixElem,X_SIZE>,Y_SIZE> prev_elems;
 
-	node_queue.emplace(0,0);
-	arrayGet(best_path,{0,0}) = arrayGet(MATRIX,{0,0});
+	MatrixElem begin(0,0);
+	MatrixElem goal(X_SIZE-1,Y_SIZE-1);
 
-	MatrixElem goal(MATRIX[0].size()-1,MATRIX.size()-1);
+	node_queue.insert(begin);
+	arrayGet(best_path,begin) = arrayGet(MATRIX,begin);
+
 
 	while (true) {
 		if (node_queue.empty()) {
@@ -202,32 +203,31 @@ int main() {
 		}
 		auto neighbours = curr_elem.getNeighbours();
 		for (auto& neighbour : neighbours) {
-			if (neighbour.getValue() != MatrixElem::INVALID_NODE && arrayGet_ME(visited,neighbour) == false) {
-				uint new_distance = arrayGet_ME(best_path,curr_elem) + neighbour.getValue();
-				if (new_distance < arrayGet_ME(best_path,neighbour)) {
-					arrayGet_ME(best_path,neighbour) = new_distance;
+			if (neighbour.getValue() != MatrixElem::INVALID_NODE && arrayGet(visited,neighbour) == false) {
+				uint new_distance = arrayGet(best_path,curr_elem) + neighbour.getValue();
+				if (new_distance < arrayGet(best_path,neighbour)) {
+					arrayGet(best_path,neighbour) = new_distance;
 					auto found_neighbour_iter = node_queue.find(neighbour);
 					if (found_neighbour_iter != node_queue.end()) {
 						node_queue.erase(found_neighbour_iter);
 					}
 					node_queue.insert(neighbour);
-					arrayGet_ME(prev_elems,neighbour) = curr_elem;
+					arrayGet(prev_elems,neighbour) = curr_elem;
 				}
 			}
 		}
-		arrayGet_ME(visited,curr_elem) = true;
+		arrayGet(visited,curr_elem) = true;
 	}
 
 
 	std::array<std::array<bool,X_SIZE>,Y_SIZE> on_path{{}};
-	MatrixElem begin(0,0);
 	MatrixElem curr_elem = goal;
 	while (true) {
-		arrayGet_ME(on_path,curr_elem) = true;
+		arrayGet(on_path,curr_elem) = true;
 		if (curr_elem == begin) {
 			break;
 		}
-		curr_elem = arrayGet_ME(prev_elems,curr_elem);
+		curr_elem = arrayGet(prev_elems,curr_elem);
 	}
 
 	for (auto& row : on_path) {
@@ -241,7 +241,7 @@ int main() {
 		std::cout << std::endl;
 	}
 
-	std::cout << "min sum is " << arrayGet(best_path,goal.getLocation()) << std::endl;
+	std::cout << "min sum is " << arrayGet(best_path,goal) << std::endl;
 
 	end();
 
