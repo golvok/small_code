@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <set>
 #include <unordered_set>
+#include <queue>
 #include <deque>
 
 #include <cstring>
@@ -53,12 +54,12 @@ std::pair<T,U> operator*(std::pair<T,U> p, MULT_TYPE m) {
 }
 
 template<typename TwoDeeArrayType>
-typename TwoDeeArrayType::value_type::reference arrayGet(TwoDeeArrayType& a, Point location) {
+auto arrayGet(const TwoDeeArrayType& a, const Point& location) -> decltype(a[location.second][location.first]) {
 	return a[location.second][location.first];
 }
 
 template<typename TwoDeeArrayType>
-const typename TwoDeeArrayType::value_type::reference arrayGet(const TwoDeeArrayType& a, Point location) {
+auto arrayGet(TwoDeeArrayType& a, const Point& location) -> decltype(a[location.second][location.first]) {
 	return a[location.second][location.first];
 }
 
@@ -164,4 +165,9 @@ ColIter<TwoDeeArrayType> make_col_iter(TwoDeeArrayType& backing_array, size_t co
 template<typename TwoDeeArrayType>
 ColIter<TwoDeeArrayType> make_col_iter(TwoDeeArrayType& backing_array, size_t column_index, size_t start_row) {
 	return ColIter<TwoDeeArrayType>(backing_array, column_index, start_row);
+}
+
+template <class Key, class Compare>
+std::set<Key, Compare> make_set_with_compare(Compare compare) {
+     return std::set<Key, Compare> (compare);
 }
