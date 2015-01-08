@@ -194,7 +194,7 @@ int main() {
 			curr_elem = *curr_elem_iter;
 			node_queue.erase(curr_elem_iter);
 		}
-		std::cout << "looking at " << curr_elem << std::endl;
+		std::cout << "considering " << curr_elem << std::endl;
 		if (curr_elem == goal) {
 			break;
 		}
@@ -225,6 +225,57 @@ int main() {
 			break;
 		}
 		curr_elem = arrayGet(prev_elems,curr_elem);
+	}
+
+	for (size_t i = 0; i < prev_elems.size(); ++i) {
+		for (size_t j = 0; j < prev_elems[i].size(); ++j) {
+			MatrixElem curr_elem = MatrixElem(j,i);
+			MatrixElem prev_elem = prev_elems[i][j];
+			auto prev = Direction(-j,-i) + prev_elem.getLocation();
+			bool elem_is_on_path = arrayGet(on_path,MatrixElem(j,i));
+
+			if (curr_elem == begin) {
+				std::cout << "{*SS*}";
+				continue;
+			} else if (curr_elem == goal) {
+				std::cout << "{*EE*}";
+				continue;
+			}
+
+			std::cout << '{' << (elem_is_on_path ? '*' : ' ');
+			switch (prev.first) {
+				case -1:
+					switch (prev.second) {
+						case 0:
+							std::cout << "<-"; break;
+						default:
+							std::cout << "XX"; break;
+					}
+					break;
+				case 1:
+					switch (prev.second) {
+						case 0:
+							std::cout << "->"; break;
+						default:
+							std::cout << "XX"; break;
+					}
+					break;
+				case 0:
+					switch (prev.second) {
+						case 1:
+							std::cout << "\\/"; break;
+						case -1:
+							std::cout << "/\\"; break;
+						default:
+							std::cout << "XX"; break;
+					}
+					break;
+				default:
+					std::cout << "XX"; break;
+			}
+			std::cout << (elem_is_on_path ? '*' : ' ') << '}';
+		}
+		std::cout << std::endl;
 	}
 
 	for (auto& row : on_path) {
