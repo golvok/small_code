@@ -167,7 +167,34 @@ ColIter<TwoDeeArrayType> make_col_iter(TwoDeeArrayType& backing_array, size_t co
 	return ColIter<TwoDeeArrayType>(backing_array, column_index, start_row);
 }
 
-template <class Key, class Compare>
+template<typename Key, typename Compare>
 std::set<Key, Compare> make_set_with_compare(Compare compare) {
      return std::set<Key, Compare> (compare);
 }
+
+template<typename ContainerType, typename FunctionType>
+void for_each(const ContainerType& c, const FunctionType& f) {
+	std::for_each(std::begin(c), std::end(c), f);
+}
+
+template<typename ContainerType>
+void print_each(const ContainerType& c, std::ostream& os = std::cout) {
+	os << "{ ";
+	for_each(c,[&os](typename ContainerType::const_reference elem) { os << elem << ", "; });
+	os << "}";
+}
+
+// template<typename T, typename U>
+// struct is_same {
+// };
+
+// template<typename T>
+// struct is_same<T, T> {
+//     typedef T type;
+// };
+
+// template<typename ContainerType>
+// std::ostream& operator<<(std::ostream& os, const ContainerType& c) {
+// 	print_each(c,os);
+// 	return os;
+// }

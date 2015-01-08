@@ -8,9 +8,12 @@ const std::array<const std::array<const uint,5>,5> MATRIX_ {{
 	{805, 732, 524,  37, 331},
 }};
 
-const std::array<const std::array<const uint,3>,2> MATRIX__ {{
-	{ 0,  1,  0,},
-	{ 1,  1,  0,},
+const std::array<const std::array<const uint,2>,5> MATRIX__ {{
+	{ 0,  1,},
+	{ 0,  1,},
+	{ 0,  1,},
+	{ 0,  1,},
+	{ 1,  0,},
 }};
 
 const std::array<const std::array<const uint,80>,80> MATRIX {{
@@ -162,6 +165,8 @@ struct MatrixBackedComparator {
 	}
 };
 
+
+
 void end() {}
 
 int main() {
@@ -172,7 +177,7 @@ int main() {
 	for (auto& row : best_path) {
 		std::fill(row.begin(), row.end(), std::numeric_limits<uint>::max());
 	}
-	auto node_queue = make_set_with_compare<MatrixElem>(MatrixBackedComparator<decltype(best_path)>(best_path));
+	auto node_queue = std::multiset<MatrixElem,MatrixBackedComparator<decltype(best_path)>>(MatrixBackedComparator<decltype(best_path)>(best_path));
 	std::array<std::array<bool,X_SIZE>,Y_SIZE> visited{{}};
 
 	std::array<std::array<MatrixElem,X_SIZE>,Y_SIZE> prev_elems;
@@ -186,6 +191,7 @@ int main() {
 
 	while (true) {
 		if (node_queue.empty()) {
+			std::cout << "ran out of nodes!\n";
 			break;
 		}
 		MatrixElem curr_elem;
@@ -194,21 +200,32 @@ int main() {
 			curr_elem = *curr_elem_iter;
 			node_queue.erase(curr_elem_iter);
 		}
-		std::cout << "considering " << curr_elem << std::endl;
+		// std::cout << "considering " << curr_elem << std::endl;
 		if (curr_elem == goal) {
+			std::cout << "+++ found goal! +++\n";
 			break;
 		}
 		auto neighbours = curr_elem.getNeighbours();
 		for (auto& neighbour : neighbours) {
+			// std::cout << '.';
 			if (neighbour.getValue() != MatrixElem::INVALID_NODE && arrayGet(visited,neighbour) == false) {
 				uint new_distance = arrayGet(best_path,curr_elem) + neighbour.getValue();
 				if (new_distance < arrayGet(best_path,neighbour)) {
+					// std::cout << "\tbefore: ";
+					// print_each(node_queue);
+					// std::cout << std::endl;
 					auto found_neighbour_iter = node_queue.find(neighbour);
 					if (found_neighbour_iter != node_queue.end()) {
 						node_queue.erase(found_neighbour_iter);
+						// std::cout << "\tupdating " << neighbour << std::endl;
+						// print_each(node_queue);
+						// std::cout << std::endl;
 					}
 					arrayGet(best_path,neighbour) = new_distance;
+					// std::cout << "\tadding " << neighbour << ": ";
 					node_queue.insert(neighbour);
+					// print_each(node_queue);
+					// std::cout << std::endl;
 					arrayGet(prev_elems,neighbour) = curr_elem;
 				}
 			}
@@ -220,6 +237,9 @@ int main() {
 	std::array<std::array<bool,X_SIZE>,Y_SIZE> on_path{{}};
 	MatrixElem curr_elem = goal;
 	while (true) {
+		if (curr_elem.getValue() == MatrixElem::INVALID_NODE) {
+			break;
+		}
 		arrayGet(on_path,curr_elem) = true;
 		if (curr_elem == begin) {
 			break;
