@@ -8,12 +8,9 @@ const std::array<const std::array<const uint,5>,5> MATRIX_ {{
 	{805, 732, 524,  37, 331},
 }};
 
-const std::array<const std::array<const uint,5>,5> MATRIX__ {{
-	{  1, 673, 234, 103, 189,},
-	{  2, 803, 353, 111, 555,},
-	{  3, 699, 535, 121, 956,},
-	{  4,  96,   8,   9,  10,},
-	{  5,   6,   7, 372,  11,},
+const std::array<const std::array<const uint,3>,2> MATRIX__ {{
+	{ 0,  1,  0,},
+	{ 1,  1,  0,},
 }};
 
 const std::array<const std::array<const uint,80>,80> MATRIX {{
@@ -206,11 +203,11 @@ int main() {
 			if (neighbour.getValue() != MatrixElem::INVALID_NODE && arrayGet(visited,neighbour) == false) {
 				uint new_distance = arrayGet(best_path,curr_elem) + neighbour.getValue();
 				if (new_distance < arrayGet(best_path,neighbour)) {
-					arrayGet(best_path,neighbour) = new_distance;
 					auto found_neighbour_iter = node_queue.find(neighbour);
 					if (found_neighbour_iter != node_queue.end()) {
 						node_queue.erase(found_neighbour_iter);
 					}
+					arrayGet(best_path,neighbour) = new_distance;
 					node_queue.insert(neighbour);
 					arrayGet(prev_elems,neighbour) = curr_elem;
 				}
