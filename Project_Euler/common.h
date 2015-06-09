@@ -15,6 +15,8 @@
 #include <unordered_set>
 #include <queue>
 #include <deque>
+#include <stack>
+#include <string>
 
 #include <cstring>
 #include <cmath>
@@ -34,7 +36,7 @@ std::ostream& operator<<(std::ostream& os, std::pair<T,U> p) {
 }
 
 template<typename T, typename U, typename V, typename W>
-void operator+=(std::pair<T,U>& p1, std::pair<V,W>& p2) {
+void operator+=(std::pair<T,U>& p1, const std::pair<V,W>& p2) {
 	p1.first += p2.first;
 	p1.second += p2.second;
 }
