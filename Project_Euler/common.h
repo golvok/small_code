@@ -29,6 +29,15 @@ typedef std::pair<std::ptrdiff_t,std::ptrdiff_t> Direction;
 typedef unsigned char uchar;
 typedef unsigned long long int ullong;
 
+namespace std {
+	template<>
+	struct hash<Point> {
+		size_t operator()(const Point& p) const {
+			return p.first+p.second;
+		}
+	};
+}
+
 template<typename T, typename U>
 std::ostream& operator<<(std::ostream& os, std::pair<T,U> p) {
 	os << '{' << p.first << ',' << p.second << '}';
