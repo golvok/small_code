@@ -40,6 +40,8 @@ union SudokuOperationData {
 };
 
 class SudokuOpDeque {
+	struct OpHash;
+	struct OpEquals;
 public:
 	class Operation {
 		SudokuOperations op;
@@ -48,10 +50,45 @@ public:
 		Operation(const SudokuOperations& op, const SudokuOperationData& data) : op(op), data(data) {}
 		const SudokuOperations& getOp() const { return op; }
 		const SudokuOperationData& getData() const { return data; }
+		friend struct SudokuOpDeque::OpHash;
+		friend struct SudokuOpDeque::OpEquals;
 	};
 private:
+	struct OpHash { size_t operator()(const SudokuOpDeque::Operation& op) const {
+		switch (op.op) {
+			case SudokuOperations::SET_TO:
+			case SudokuOperations::REMOVE_GUESS:
+				return
+					  std::hash<Point>()(op.data.PointAndNumber.point)
+					^ std::hash<uint>()(op.data.PointAndNumber.number);
+			case SudokuOperations::SEARCH_FOR_ONLY_ONE:
+				return
+					  std::hash<SetOfNine*>()(op.data.so9AndValue.so9)
+					^ std::hash<uint>()(op.data.so9AndValue.search_for);
+		}
+		assert(0 && "operation type not set: hashing failed");
+		return 0;
+	}};
+
+	struct OpEquals { size_t operator()(const SudokuOpDeque::Operation& lhs, const SudokuOpDeque::Operation& rhs) const {
+		if (lhs.op != rhs.op) { return false; }
+		switch (lhs.op) {
+			case SudokuOperations::SET_TO:
+			case SudokuOperations::REMOVE_GUESS:
+				return
+					   (lhs.data.PointAndNumber.point  == rhs.data.PointAndNumber.point )
+					&& (lhs.data.PointAndNumber.number == rhs.data.PointAndNumber.number);
+			case SudokuOperations::SEARCH_FOR_ONLY_ONE:
+				return
+					   (lhs.data.so9AndValue.so9        == rhs.data.so9AndValue.so9 )
+					&& (lhs.data.so9AndValue.search_for == rhs.data.so9AndValue.search_for);
+		}
+		assert(0 && "operation type not set: equivalence test failed");
+		return false;
+	}};
 
 	std::deque<Operation> op_deque;
+	std::unordered_set<Operation, OpHash, OpEquals> previously_done;
 public:
 	SudokuOpDeque()
 		: op_deque()
@@ -59,7 +96,14 @@ public:
 	{}
 
 	void emplace_back(SudokuOperations&& op, SudokuOperationData&& data) {
-		op_deque.emplace_back(Operation(op, data));
+		Operation new_op(op, data);
+		const auto& find_results = previously_done.find(new_op);
+		if (find_results == previously_done.end()) {
+			previously_done.insert(new_op);
+			op_deque.push_back(new_op);
+		} else {
+			// std::cout << "not doing that again!\n";
+		}
 	}
 
 	bool empty() { return op_deque.empty(); }
@@ -446,14 +490,12 @@ public:
 	}
 
 	void setNumber(Point square_to_set, uint num_to_set, SudokuOpDeque& op_deque) {
+		assert(num_to_set <= 9 && "a number set must be 9 or less");
 		// std::cout << "setting " << square_to_set << " to " << num_to_set << '\n';
 
 		const Possibilities& p_of_sts_before_set = getPossibilities(square_to_set);
 		arrayGet(grid,square_to_set) = num_to_set;
 		arrayGet(local_masks,square_to_set).reset();
-
-		// std::cout << "updated so9s\n";
-		// this->print_with_guesses(std::cout);
 		
 		// iterate over the row, col, and box to:
 		//   remove candidate counts in other so9s, to:
