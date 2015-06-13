@@ -39,7 +39,34 @@ union SudokuOperationData {
 	{}
 };
 
-using SudokuOpDeque = std::deque<std::pair<SudokuOperations,SudokuOperationData>>;
+class SudokuOpDeque {
+public:
+	class Operation {
+		SudokuOperations op;
+		SudokuOperationData data;
+	public:
+		Operation(const SudokuOperations& op, const SudokuOperationData& data) : op(op), data(data) {}
+		const SudokuOperations& getOp() const { return op; }
+		const SudokuOperationData& getData() const { return data; }
+	};
+private:
+
+	std::deque<Operation> op_deque;
+public:
+	SudokuOpDeque()
+		: op_deque()
+		, previously_done()
+	{}
+
+	void emplace_back(SudokuOperations&& op, SudokuOperationData&& data) {
+		op_deque.emplace_back(Operation(op, data));
+	}
+
+	bool empty() { return op_deque.empty(); }
+	void pop_front() { op_deque.pop_front(); }
+
+	const Operation& front() { return op_deque.front(); }
+};
 
 class Sudoku;
 
@@ -117,10 +144,10 @@ public:
 			count -= 1;
 			if (count == 1) {
 				// std::cout << "only one " << num << " in " << getTypeAsStr(getType()) << ' ' << getIndex() << "!\n";
-				op_deque.push_back(std::make_pair(
+				op_deque.emplace_back(
 					SudokuOperations::SEARCH_FOR_ONLY_ONE,
 					SudokuOperationData(this, num)
-				));
+				);
 			}
 		}
 	}
@@ -474,10 +501,10 @@ public:
 			arrayGet(local_masks,square_to_change)[guess_to_remove-1] = 0;
 			Possibilities p = getPossibilities(square_to_change);
 			if (p.isOnlyOne() && hasNumberAt(square_to_change) == false) {
-				op_deque.emplace_back(std::make_pair(
+				op_deque.emplace_back(
 					SudokuOperations::SET_TO,
 					SudokuOperationData{square_to_change, p.getLowest()}
-				));
+				);
 			}
 		}
 	}
@@ -657,10 +684,10 @@ std::vector<uint> solve(std::vector<uint>& grid) {
 		for (size_t j = 0; j < 9; ++j) {
 			uint grid_number = grid[i*9 + j];
 			if (grid_number != 0) {
-				op_deque.emplace_back(std::make_pair(
+				op_deque.emplace_back(
 					SudokuOperations::SET_TO,
 					SudokuOperationData{Point{j,i},grid_number}
-				));
+				);
 			}
 		}
 	}
@@ -678,8 +705,8 @@ std::vector<uint> solve(std::vector<uint>& grid) {
 		// update guesses.
 		while (op_deque.empty() == false) {
 			auto& op_and_data = op_deque.front();
-			SudokuOperations& op = op_and_data.first;
-			SudokuOperationData& data = op_and_data.second;
+			const SudokuOperations& op = op_and_data.getOp();
+			const SudokuOperationData& data = op_and_data.getData();
 			switch (op) {
 				case SudokuOperations::SET_TO:
 					sudoku.setNumber(data.PointAndNumber.point, data.PointAndNumber.number, op_deque);
@@ -690,10 +717,10 @@ std::vector<uint> solve(std::vector<uint>& grid) {
 				case SudokuOperations::SEARCH_FOR_ONLY_ONE:
 					for (const Point& squ : *data.so9AndValue.so9) {
 						if (sudoku.getPossibilities(squ).test(data.so9AndValue.search_for)) {
-							op_deque.push_back(std::make_pair(
+							op_deque.emplace_back(
 								SudokuOperations::SET_TO,
 								SudokuOperationData(squ, data.so9AndValue.search_for)
-							));
+							);
 							break;
 						}
 					}
@@ -712,13 +739,13 @@ std::vector<uint> solve(std::vector<uint>& grid) {
 		for (Point squ : sudoku) {
 			// std::cout << "looking at " << squ << "\n";
 			const Possibilities& p = sudoku.getPossibilities(squ);
-			if (p.isOnlyOne() && !sudoku.hasNumberAt(squ)) {
+			if (p.isOnlyOne()) {
 				uint the_one = p.getLowest();
 				// std::cout << squ << " can only be " << the_one << "\n";
-				op_deque.emplace_back(std::make_pair(
+				op_deque.emplace_back(
 					SudokuOperations::SET_TO,
 					SudokuOperationData{squ,the_one}
-				));
+				);
 			}
 		}
 
@@ -744,10 +771,10 @@ std::vector<uint> solve(std::vector<uint>& grid) {
 						for (Point squ2 : so9) {
 							if (p != sudoku.getPossibilities(squ2)) {
 								for (uint candidate_in_tuple : p) {
-									op_deque.emplace_back(std::make_pair(
+									op_deque.emplace_back(
 										SudokuOperations::REMOVE_GUESS,
 										SudokuOperationData{squ2,candidate_in_tuple}
-									));
+									);
 								}
 							} else {
 								// std::cout << squ2 << ", ";
