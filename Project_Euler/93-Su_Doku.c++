@@ -810,7 +810,7 @@ std::vector<uint> get_input_and_solve() {
 	std::vector<uint> grid;
 
 	for (char c : grid_string) {
-		grid.push_back(std::stoul(&c));
+		grid.push_back(c - '0');
 	}
 
 	return grid;
