@@ -101,8 +101,15 @@ public:
 		if (find_results == previously_done.end()) {
 			previously_done.insert(new_op);
 			op_deque.push_back(new_op);
-		} else {
-			// std::cout << "not doing that again!\n";
+		}
+	}
+
+	void emplace_front(SudokuOperations&& op, SudokuOperationData&& data) {
+		Operation new_op(op, data);
+		const auto& find_results = previously_done.find(new_op);
+		if (find_results == previously_done.end()) {
+			previously_done.insert(new_op);
+			op_deque.push_front(new_op);
 		}
 	}
 
@@ -161,7 +168,13 @@ public:
 		, index(src.index)
 	{ }
 
-	SetOfNine(const SetOfNine&) = delete;
+	SetOfNine(const SetOfNine& src)
+		: numbers_in_set(src.numbers_in_set)
+		, candidate_counts(src.candidate_counts)
+		, type(src.type)
+		, index(src.index)
+	{ }
+
 
 	bool hasNumber(uint num) const {
 		return numbers_in_set[num-1] == true;
@@ -178,12 +191,13 @@ public:
 		}
 	}
 
-	void decrementCandidateCountOf(uint num, SudokuOpDeque& op_deque) {
+	bool decrementCandidateCountOf(uint num, SudokuOpDeque& op_deque) {
 		uint& count = candidate_counts[num-1];
 		if (count == 0) {
-			// do nothing
+			return SUCCESS;
 		} else if (count == 1) {
-			assert(0 && "decrement to 0!? - that's a problem");
+			// this is bad.
+			return FALIURE;
 		} else {
 			count -= 1;
 			if (count == 1) {
@@ -193,6 +207,7 @@ public:
 					SudokuOperationData(this, num)
 				);
 			}
+			return SUCCESS;
 		}
 	}
 
@@ -222,7 +237,7 @@ public:
 				return 0;
 			break;
 			case Orientation::VERTICAL:
-				os << "line" << line; 
+				os << "line" << line;
 				return DIMENSION - line;
 			break;
 			default:
@@ -483,20 +498,24 @@ public:
 		};
 	}
 
-	void decrementAllCandidateCountsOf(Point squ, uint num, SudokuOpDeque& op_deque) {
+	bool decrementAllCandidateCountsOf(Point squ, uint num, SudokuOpDeque& op_deque) {
 		for (SetOfNine* so9 : getSetsOfNine(squ)) {
-			so9->decrementCandidateCountOf(num,op_deque);
+			if (so9->decrementCandidateCountOf(num,op_deque) == FALIURE) {
+				return FALIURE;
+			}
 		}
+
+		return SUCCESS;
 	}
 
-	void setNumber(Point square_to_set, uint num_to_set, SudokuOpDeque& op_deque) {
+	bool setNumber(Point square_to_set, uint num_to_set, SudokuOpDeque& op_deque) {
 		assert(num_to_set <= 9 && "a number set must be 9 or less");
 		// std::cout << "setting " << square_to_set << " to " << num_to_set << '\n';
 
 		const Possibilities& p_of_sts_before_set = getPossibilities(square_to_set);
 		arrayGet(grid,square_to_set) = num_to_set;
 		arrayGet(local_masks,square_to_set).reset();
-		
+
 		// iterate over the row, col, and box to:
 		//   remove candidate counts in other so9s, to:
 		//     see if this has created something unique that so9
@@ -507,7 +526,9 @@ public:
 			// remove guess count from so9s of the square we set
 			for (uint guess : p_of_sts_before_set) {
 				if (guess != num_to_set) {
-					so9->decrementCandidateCountOf(guess, op_deque);
+					if(so9->decrementCandidateCountOf(guess, op_deque) == FALIURE) {
+						return FALIURE;
+					}
 				}
 			}
 			for (auto& squ : *so9) {
@@ -518,7 +539,9 @@ public:
 				if (getPossibilities(squ).test(num_to_set)) {
 					for(auto& squs_so9 : getSetsOfNine(squ)) {
 						if (squs_so9 != so9) {
-							squs_so9->decrementCandidateCountOf(num_to_set, op_deque);
+							if (squs_so9->decrementCandidateCountOf(num_to_set, op_deque) == FALIURE) {
+								return FALIURE;
+							}
 						}
 					}
 					already_decremented.insert(squ);
@@ -534,12 +557,15 @@ public:
 		// this->print_with_guesses(std::cout);
 		// this->print_to_stream(std::cout);
 
+		return SUCCESS;
 	}
 
-	void removeGuess(Point square_to_change, uint guess_to_remove, SudokuOpDeque& op_deque) {
+	bool removeGuess(Point square_to_change, uint guess_to_remove, SudokuOpDeque& op_deque) {
 		// std::cout << "removing " << guess_to_remove << " from " << square_to_change << "\n";
 		if (getPossibilities(square_to_change).test(guess_to_remove)) {
-			decrementAllCandidateCountsOf(square_to_change,guess_to_remove,op_deque);
+			if (decrementAllCandidateCountsOf(square_to_change,guess_to_remove,op_deque) == FALIURE) {
+				return FALIURE;
+			}
 			arrayGet(local_masks,square_to_change)[guess_to_remove-1] = 0;
 			Possibilities p = getPossibilities(square_to_change);
 			if (p.isOnlyOne() && hasNumberAt(square_to_change) == false) {
@@ -549,13 +575,15 @@ public:
 				);
 			}
 		}
+
+		return SUCCESS;
 	}
 
 	const Possibilities getPossibilities(Point square) {
 		return Possibilities(getRow(square),getCol(square),getBox(square),arrayGet(local_masks,square));
 	}
 
-	void print_to_stream(std::ostream& os) const {
+	void print_to_stream(std::ostream& os, bool show_guess_counts = false) const {
 		os << "╔═══════╦═══════╦═══════╗\n";
 		for (size_t row_num = 0; row_num < DIMENSION; ++row_num) {
 			if (row_num % 3 == 0 && row_num != 0) {
@@ -572,25 +600,30 @@ public:
 				os << " ";
 			}
 			os << "║";
-			os << "   ";
 
-			rows[row_num].print(os, Orientation::HORIZONTAL, 1);
+			if (show_guess_counts) {
+				os << "   ";
+				rows[row_num].print(os, Orientation::HORIZONTAL, 1);
+			}
 
 			os << '\n';
 		}
-		
-		os << "╚═══════╩═══════╩═══════╝\n";
-		os << "\n";
 
-		for (size_t col_num = 0; col_num < DIMENSION; ++col_num) {
-			for (size_t i = 0; i < col_num; ++i) {
-				os << "  ";
-				if (i % 3 == 2) {
+		os << "╚═══════╩═══════╩═══════╝";
+
+		if (show_guess_counts) {
+			os << '\n';
+			for (size_t col_num = 0; col_num < DIMENSION; ++col_num) {
+				os << '\n';
+				for (size_t i = 0; i < col_num; ++i) {
 					os << "  ";
+					if (i % 3 == 2) {
+						os << "  ";
+					}
 				}
+
+				cols[col_num].print(os, Orientation::HORIZONTAL, 1);
 			}
-			cols[col_num].print(os, Orientation::HORIZONTAL, 1);
-			os << "\n";
 		}
 	}
 
@@ -607,7 +640,7 @@ public:
 					if (col_num % 3 == 0) {
 						os << "║";
 					}
-				
+
 					for (size_t j = 0; j < DIMENSION_SQRT; ++j) {
 						uint test_possibility_num = i*3+j+1;
 						if (hasNumberAt(current_square)) {
@@ -633,9 +666,8 @@ public:
 				os << "╟───┼───┼───╫───┼───┼───╫───┼───┼───╢\n";
 			}
 		}
-		
-		os << "╚═══╧═══╧═══╩═══╧═══╧═══╩═══╧═══╧═══╝\n";
-		os << "\n";		
+
+		os << "╚═══╧═══╧═══╩═══╧═══╧═══╩═══╧═══╧═══╝";
 	}
 
 	Sudoku()
@@ -716,23 +748,65 @@ std::ostream& operator<<(std::ostream& os, const Sudoku& s) {
 	return os;
 }
 
+using SudokuState = std::pair<Sudoku,SudokuOpDeque>;
+using SudokuStateList = std::vector<SudokuState>;
+
+std::pair<SudokuStateList,bool> attempt(SudokuState& state);
+
 std::vector<uint> solve(std::vector<uint>& grid) {
 
-	Sudoku sudoku;
+	std::stack<SudokuStateList> state_stack;
 
-	SudokuOpDeque op_deque;
-	
-	for (size_t i = 0; i < 9; ++i) {
-		for (size_t j = 0; j < 9; ++j) {
-			uint grid_number = grid[i*9 + j];
-			if (grid_number != 0) {
-				op_deque.emplace_back(
-					SudokuOperations::SET_TO,
-					SudokuOperationData{Point{j,i},grid_number}
-				);
+	{ // new scope
+		SudokuOpDeque first_op_deque;
+
+		for (size_t i = 0; i < 9; ++i) {
+			for (size_t j = 0; j < 9; ++j) {
+				uint grid_number = grid[i*9 + j];
+				if (grid_number != 0) {
+					first_op_deque.emplace_back(
+						SudokuOperations::SET_TO,
+						SudokuOperationData{Point{j,i},grid_number}
+					);
+				}
+			}
+		}
+
+		state_stack.emplace(SudokuStateList{{Sudoku(), std::move(first_op_deque)}});
+	}
+
+	while (state_stack.empty() == false) {
+		SudokuStateList state_list = state_stack.top();
+		state_stack.pop();
+
+		for (SudokuState& state : state_list) {
+			// std::cout << ">>> stack level=" << state_stack.size() << ", going with grid:\n" << state.first << '\n';
+			SudokuStateList new_states;
+			bool success;
+			std::tie(new_states,success) = attempt(state);
+
+			if (new_states.empty()) {
+				if (success) {
+					// std::cout << "Solved?\n";
+					std::cout << state.first << '\n';
+					return {};
+				} else {// else: try the next thing.
+					// std::cout << "!!! things went illegal! reverting. !!!\n";
+				}
+			} else {
+				state_stack.emplace(new_states);
 			}
 		}
 	}
+
+	std::cout << "failed?\n";
+	return {};
+}
+
+std::pair<SudokuStateList,bool> attempt(SudokuState& state) {
+
+	Sudoku& sudoku = state.first;
+	SudokuOpDeque& op_deque = state.second;
 
 	size_t iteration_number = 0;
 
@@ -740,7 +814,7 @@ std::vector<uint> solve(std::vector<uint>& grid) {
 		iteration_number++;
 
 		if (iteration_number > 1000) {
-			std::cout << "GIVING UP!!!!\n";
+			// std::cout << "GIVING UP!!!!\n";
 			break;
 		}
 
@@ -751,10 +825,14 @@ std::vector<uint> solve(std::vector<uint>& grid) {
 			const SudokuOperationData& data = op_and_data.getData();
 			switch (op) {
 				case SudokuOperations::SET_TO:
-					sudoku.setNumber(data.PointAndNumber.point, data.PointAndNumber.number, op_deque);
+					if (sudoku.setNumber(data.PointAndNumber.point, data.PointAndNumber.number, op_deque) == FALIURE) {
+						return {{},false};
+					}
 				break;
 				case SudokuOperations::REMOVE_GUESS:
-					sudoku.removeGuess(data.PointAndNumber.point, data.PointAndNumber.number, op_deque);
+					if (sudoku.removeGuess(data.PointAndNumber.point, data.PointAndNumber.number, op_deque) == FALIURE) {
+						return {{},false};
+					}
 				break;
 				case SudokuOperations::SEARCH_FOR_ONLY_ONE:
 					for (const Point& squ : *data.so9AndValue.so9) {
@@ -779,7 +857,6 @@ std::vector<uint> solve(std::vector<uint>& grid) {
 			// boxes in particular
 		// hidden twin, naked twin, triplets...
 		for (Point squ : sudoku) {
-			// std::cout << "looking at " << squ << "\n";
 			const Possibilities& p = sudoku.getPossibilities(squ);
 			if (p.isOnlyOne()) {
 				uint the_one = p.getLowest();
@@ -799,13 +876,11 @@ std::vector<uint> solve(std::vector<uint>& grid) {
 
 		for (auto& so9_set : so9_sets) {
 			for (const SetOfNine& so9 : *so9_set) {
-				// std::cout << "looking in " << so9.getType() << ' ' << so9.getIndex() << "\n";
 				std::unordered_multiset<Possibilities> previously_seen;
 				for (Point squ : so9) {
 					Possibilities p = sudoku.getPossibilities(squ);
 					uint num_poss = p.getNumPossibilities();
 					previously_seen.insert(p);
-					// std::cout << "\tI see " << p << "\n";
 
 					// naked tuples - naked pair & triplet & etc.
 					if (previously_seen.count(p) == num_poss && num_poss > 1) {
@@ -813,7 +888,7 @@ std::vector<uint> solve(std::vector<uint>& grid) {
 						for (Point squ2 : so9) {
 							if (p != sudoku.getPossibilities(squ2)) {
 								for (uint candidate_in_tuple : p) {
-									op_deque.emplace_back(
+									op_deque.emplace_front(
 										SudokuOperations::REMOVE_GUESS,
 										SudokuOperationData{squ2,candidate_in_tuple}
 									);
@@ -829,11 +904,37 @@ std::vector<uint> solve(std::vector<uint>& grid) {
 		}
 	}
 
-	end_func();
 
-	std::cout << sudoku;
+	Point has_fewest_possibilities = {-1,-1};
+	uint fewest_possibilities = (uint)-1;
+	for (const Point& squ : sudoku) {
+		uint num_possibilities = sudoku.getPossibilities(squ).getNumPossibilities();
+		if (num_possibilities > 0 && num_possibilities < fewest_possibilities) {
+			has_fewest_possibilities = squ;
+			fewest_possibilities = num_possibilities;
+		}
+	}
 
-	return {};
+	if (has_fewest_possibilities == Point{-1,-1}) {
+		// everything is set, and the puzzle is solved!
+		return {{},true};
+	}
+
+	// if we got here, then logic has failed us, so lets push some guesses on on the stack!
+	// std::cout << "logic has failed!\n";
+	SudokuStateList retval;
+
+	for (uint poss : sudoku.getPossibilities(has_fewest_possibilities)) {
+		// std::cout << "trying " << has_fewest_possibilities << " as " << poss << "\n";
+		SudokuState state_dup = state;
+		state_dup.second.emplace_back(
+			SudokuOperations::SET_TO,
+			SudokuOperationData(has_fewest_possibilities, poss)
+		);
+		retval.emplace_back(state_dup);
+	}
+
+	return {retval,false};
 }
 
 std::vector<uint> get_input_and_solve() {
@@ -860,9 +961,9 @@ std::vector<uint> get_input_and_solve() {
 
 int main() {
 
-	for (uint i = 0; i < 50; ++i) {
+	for (uint i = 1; i <= 50; ++i) {
 		std::vector<uint> grid = get_input_and_solve();
-		// if (i < 5) {
+		// if (i <= 5) {
 		// 	continue; // skip first so many
 		// }
 		std::vector<uint> solved_grid = solve(grid);

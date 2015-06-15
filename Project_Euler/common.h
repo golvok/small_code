@@ -33,7 +33,7 @@ namespace std {
 	template<>
 	struct hash<Point> {
 		size_t operator()(const Point& p) const {
-			return p.first+p.second;
+			return p.first+(p.second^static_cast<size_t>(0xFB87BAD12158D31E));
 		}
 	};
 }
@@ -209,3 +209,21 @@ void print_each(const ContainerType& c, std::ostream& os = std::cout) {
 // 	print_each(c,os);
 // 	return os;
 // }
+
+template<typename IterType>
+class IteratorPair {
+	IterType first;
+	IterType last;
+public:
+	IteratorPair(IterType first, IterType last)
+		: first(first), last(last)
+	{}
+
+	IterType begin() {
+		return first;
+	}
+
+	IterType end() {
+		return last;
+	}
+};
