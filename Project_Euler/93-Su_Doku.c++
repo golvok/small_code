@@ -39,6 +39,26 @@ union SudokuOperationData {
 	{}
 };
 
+class SudokuStatistics {
+	uint num_guess_sqares;
+
+public:
+	SudokuStatistics()
+		: num_guess_sqares(0)
+	{ }
+
+	void addGuessSquare() { num_guess_sqares++; }
+
+	void print(std::ostream& os) {
+		os
+			<< "==STATISTICS==\n"
+			<< "\tnumber of guess squares = " << num_guess_sqares << '\n'
+		;
+	}
+};
+
+SudokuStatistics global_stats;
+
 class SudokuOpDeque {
 	struct OpHash;
 	struct OpEquals;
@@ -923,6 +943,7 @@ std::pair<SudokuStateList,bool> attempt(SudokuState& state) {
 	// if we got here, then logic has failed us, so lets push some guesses on on the stack!
 	// std::cout << "logic has failed!\n";
 	SudokuStateList retval;
+	global_stats.addGuessSquare();
 
 	for (uint poss : sudoku.getPossibilities(has_fewest_possibilities)) {
 		// std::cout << "trying " << has_fewest_possibilities << " as " << poss << "\n";
@@ -959,7 +980,7 @@ std::vector<uint> get_input_and_solve() {
 	return grid;
 }
 
-int main() {
+int main(int argc, char** argv) {
 
 	for (uint i = 1; i <= 50; ++i) {
 		std::vector<uint> grid = get_input_and_solve();
@@ -968,6 +989,10 @@ int main() {
 		// }
 		std::vector<uint> solved_grid = solve(grid);
 		end_func();
+	}
+
+	if (argc == 2 && std::string(argv[1]) == "--stats") {
+		global_stats.print(std::cout);
 	}
 
 	return 0;
