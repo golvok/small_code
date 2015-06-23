@@ -41,18 +41,29 @@ union SudokuOperationData {
 
 class SudokuStatistics {
 	uint num_guess_sqares;
+	uint num_puzzles_in_stats;
+	uint total_iterations;
 
 public:
 	SudokuStatistics()
 		: num_guess_sqares(0)
+		, num_puzzles_in_stats(0)
+		, total_iterations(0)
 	{ }
 
 	void addGuessSquare() { num_guess_sqares++; }
+	void markIterationStart() { total_iterations++; }
+	void markPuzzleStart() { num_puzzles_in_stats += 1;	}
+	void markPuzzleEnd() { }
 
 	void print(std::ostream& os) {
 		os
 			<< "==STATISTICS==\n"
-			<< "\tnumber of guess squares = " << num_guess_sqares << '\n'
+			<< "number of puzzles solved  = " << num_puzzles_in_stats << '\n'
+			<< "number of guessed squares = " << num_guess_sqares << '\n'
+			<< "average per puzzle:\n"
+			<< "\t- iterations            = " << ((float)total_iterations)/(num_puzzles_in_stats==0 ? 1 : num_puzzles_in_stats) << '\n'
+			<< "\t- iterations to solve   = " << "TODO\n"
 		;
 	}
 };
@@ -773,7 +784,8 @@ using SudokuStateList = std::vector<SudokuState>;
 
 std::pair<SudokuStateList,bool> attempt(SudokuState& state);
 
-std::vector<uint> solve(std::vector<uint>& grid) {
+Sudoku solve(std::vector<uint>& grid) {
+	global_stats.markPuzzleStart();
 
 	std::stack<SudokuStateList> state_stack;
 
@@ -808,8 +820,8 @@ std::vector<uint> solve(std::vector<uint>& grid) {
 			if (new_states.empty()) {
 				if (success) {
 					// std::cout << "Solved?\n";
-					std::cout << state.first << '\n';
-					return {};
+					global_stats.markPuzzleEnd();
+					return state.first;
 				} else {// else: try the next thing.
 					// std::cout << "!!! things went illegal! reverting. !!!\n";
 				}
@@ -819,8 +831,8 @@ std::vector<uint> solve(std::vector<uint>& grid) {
 		}
 	}
 
-	std::cout << "failed?\n";
-	return {};
+	assert(0&& "failed to find a solution - should be impossible");
+	return Sudoku();
 }
 
 std::pair<SudokuStateList,bool> attempt(SudokuState& state) {
@@ -828,13 +840,13 @@ std::pair<SudokuStateList,bool> attempt(SudokuState& state) {
 	Sudoku& sudoku = state.first;
 	SudokuOpDeque& op_deque = state.second;
 
-	size_t iteration_number = 0;
-
+	uint iteration_number = 0;
 	while (op_deque.empty() == false) {
+		global_stats.markIterationStart();
 		iteration_number++;
 
 		if (iteration_number > 1000) {
-			// std::cout << "GIVING UP!!!!\n";
+			assert(0&& "too many iterations - something is wrong.");
 			break;
 		}
 
@@ -958,7 +970,7 @@ std::pair<SudokuStateList,bool> attempt(SudokuState& state) {
 	return {retval,false};
 }
 
-std::vector<uint> get_input_and_solve() {
+std::vector<uint> get_input_for_one_grid() {
 	std::string word;
 	uint game_num;
 	std::cin >> word;
@@ -980,18 +992,33 @@ std::vector<uint> get_input_and_solve() {
 	return grid;
 }
 
-int main(int argc, char** argv) {
+int main(int argc, const char** argv) {
+	bool print_stats = false;
+	bool print_solutions = true;
 
-	for (uint i = 1; i <= 50; ++i) {
-		std::vector<uint> grid = get_input_and_solve();
-		// if (i <= 5) {
-		// 	continue; // skip first so many
-		// }
-		std::vector<uint> solved_grid = solve(grid);
+	if (argc == 2) {
+		const std::string param(argv[1]);
+		if (param == "--stats") {
+			print_stats = true;
+		} else if (param == "--stats-only") {
+			print_stats = true;
+			print_solutions = false;
+		}
+	}
+
+	for (uint i = 1; ; ++i) {
+		std::vector<uint> grid = get_input_for_one_grid();
+		if (std::cin.eof() == true) {
+			break;
+		}
+		Sudoku solved = solve(grid);
+		if (print_solutions) {
+			std::cout << solved << '\n';
+		}
 		end_func();
 	}
 
-	if (argc == 2 && std::string(argv[1]) == "--stats") {
+	if (print_stats) {
 		global_stats.print(std::cout);
 	}
 
