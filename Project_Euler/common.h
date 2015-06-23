@@ -227,3 +227,29 @@ public:
 		return last;
 	}
 };
+
+class RedirectOStream {
+	std::ostream* os;
+
+public:
+	RedirectOStream()
+		: os(nullptr)
+	{}
+
+	void setStream(std::ostream* os) {
+		this->os = os;
+	}
+
+	template<typename T>
+	void print_to_stream(const T& t) {
+		if (os) {
+			(*os) << t;
+		}
+	}
+};
+
+template<typename T>
+RedirectOStream& operator<<(RedirectOStream& ros, const T& t) {
+	ros.print_to_stream(t);
+	return ros;
+}

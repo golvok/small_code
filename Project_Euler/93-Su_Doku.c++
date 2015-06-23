@@ -56,7 +56,8 @@ public:
 	void markPuzzleStart() { num_puzzles_in_stats += 1;	}
 	void markPuzzleEnd() { }
 
-	void print(std::ostream& os) {
+	template<typename STREAMCLASS>
+	void print(STREAMCLASS& os) {
 		os
 			<< "==STATISTICS==\n"
 			<< "number of puzzles solved  = " << num_puzzles_in_stats << '\n'
@@ -68,7 +69,9 @@ public:
 	}
 };
 
+/************ GLOBALS ****************/
 SudokuStatistics global_stats;
+RedirectOStream debug_out;
 
 class SudokuOpDeque {
 	struct OpHash;
@@ -228,11 +231,12 @@ public:
 			return SUCCESS;
 		} else if (count == 1) {
 			// this is bad.
+			debug_out << "no more places for " << num << " in "; print_identity(debug_out);	debug_out << '\n';
 			return FALIURE;
 		} else {
 			count -= 1;
 			if (count == 1) {
-				// std::cout << "only one " << num << " in " << getTypeAsStr(getType()) << ' ' << getIndex() << "!\n";
+				debug_out << "only one " << num << " in "; print_identity(debug_out); debug_out << '\n';
 				op_deque.emplace_back(
 					SudokuOperations::SEARCH_FOR_ONLY_ONE,
 					SudokuOperationData(this, num)
@@ -255,7 +259,7 @@ public:
 		return numbers_in_set;
 	}
 
-	size_t print(std::ostream& os, Orientation o, size_t line) const {
+	size_t print_verbosely(std::ostream& os, Orientation o, size_t line) const {
 		switch (o) {
 			case Orientation::HORIZONTAL:
 				os << "{ ";
@@ -275,6 +279,11 @@ public:
 				assert(0);
 				return 0;
 		}
+	}
+
+	template<typename STREAMCLASS>
+	void print_identity(STREAMCLASS& os) const {
+		os << getTypeAsStr(getType()) << ' ' << getIndex();
 	}
 
 	template<class NodeType>
@@ -372,10 +381,16 @@ public:
 
 const uint SetOfNine::DIMENSION = SetOfNine::DIMENSION_T;
 
+std::ostream& operator<<(std::ostream& os, const SetOfNine& so9) {
+	so9.print_identity(os);
+	return os;
+}
+
 std::ostream& operator<<(std::ostream& os, SetOfNine::Type t) {
 	os << SetOfNine::getTypeAsStr(t);
 	return os;
 }
+
 
 class Possibilities {
 	std::bitset<9> set;
@@ -471,7 +486,8 @@ public:
 		return iterator(*this,10);
 	}
 
-	void print(std::ostream& os = std::cout) const {
+	template<typename STREAMCLASS>
+	void print(STREAMCLASS& os) const {
 		for (uint num : *this) {
 			os << num;
 		}
@@ -532,6 +548,7 @@ public:
 	bool decrementAllCandidateCountsOf(Point squ, uint num, SudokuOpDeque& op_deque) {
 		for (SetOfNine* so9 : getSetsOfNine(squ)) {
 			if (so9->decrementCandidateCountOf(num,op_deque) == FALIURE) {
+				debug_out << "removing " << num << " candidate from " << so9 << " failed!\n";
 				return FALIURE;
 			}
 		}
@@ -541,7 +558,7 @@ public:
 
 	bool setNumber(Point square_to_set, uint num_to_set, SudokuOpDeque& op_deque) {
 		assert(num_to_set <= 9 && "a number set must be 9 or less");
-		// std::cout << "setting " << square_to_set << " to " << num_to_set << '\n';
+		debug_out << "setting " << square_to_set << " to " << num_to_set << '\n';
 
 		const Possibilities& p_of_sts_before_set = getPossibilities(square_to_set);
 		arrayGet(grid,square_to_set) = num_to_set;
@@ -558,6 +575,7 @@ public:
 			for (uint guess : p_of_sts_before_set) {
 				if (guess != num_to_set) {
 					if(so9->decrementCandidateCountOf(guess, op_deque) == FALIURE) {
+						debug_out << square_to_set << " was the only place for " << guess << " in " << *so9 << '\n';
 						return FALIURE;
 					}
 				}
@@ -571,6 +589,7 @@ public:
 					for(auto& squs_so9 : getSetsOfNine(squ)) {
 						if (squs_so9 != so9) {
 							if (squs_so9->decrementCandidateCountOf(num_to_set, op_deque) == FALIURE) {
+								debug_out << "setting " << square_to_set << " to " << num_to_set << " made it so that there is no place for it in " << *squs_so9 << '\n';
 								return FALIURE;
 							}
 						}
@@ -584,17 +603,20 @@ public:
 		getRow(square_to_set).setHasNumber(num_to_set);
 		getCol(square_to_set).setHasNumber(num_to_set);
 
-		// std::cout << "grid is now:\n";
-		// this->print_with_guesses(std::cout);
-		// this->print_to_stream(std::cout);
+		debug_out << "grid is now:\n";
+		this->print_with_guesses(debug_out);
+		debug_out << '\n';
+		// this->print_to_stream(debug_out);
+		// debug_out << '\n';
 
 		return SUCCESS;
 	}
 
 	bool removeGuess(Point square_to_change, uint guess_to_remove, SudokuOpDeque& op_deque) {
-		// std::cout << "removing " << guess_to_remove << " from " << square_to_change << "\n";
+		debug_out << "removing " << guess_to_remove << " from " << square_to_change << "\n";
 		if (getPossibilities(square_to_change).test(guess_to_remove)) {
 			if (decrementAllCandidateCountsOf(square_to_change,guess_to_remove,op_deque) == FALIURE) {
+				debug_out << " removing " << guess_to_remove << " from " << square_to_change << " failed!\n";
 				return FALIURE;
 			}
 			arrayGet(local_masks,square_to_change)[guess_to_remove-1] = 0;
@@ -614,7 +636,8 @@ public:
 		return Possibilities(getRow(square),getCol(square),getBox(square),arrayGet(local_masks,square));
 	}
 
-	void print_to_stream(std::ostream& os, bool show_guess_counts = false) const {
+	template<typename STREAMCLASS>
+	void print_to_stream(STREAMCLASS& os, bool show_guess_counts = false) const {
 		os << "╔═══════╦═══════╦═══════╗\n";
 		for (size_t row_num = 0; row_num < DIMENSION; ++row_num) {
 			if (row_num % 3 == 0 && row_num != 0) {
@@ -634,7 +657,7 @@ public:
 
 			if (show_guess_counts) {
 				os << "   ";
-				rows[row_num].print(os, Orientation::HORIZONTAL, 1);
+				rows[row_num].print_verbosely(os, Orientation::HORIZONTAL, 1);
 			}
 
 			os << '\n';
@@ -653,12 +676,13 @@ public:
 					}
 				}
 
-				cols[col_num].print(os, Orientation::HORIZONTAL, 1);
+				cols[col_num].print_verbosely(os, Orientation::HORIZONTAL, 1);
 			}
 		}
 	}
 
-	void print_with_guesses(std::ostream& os) {
+	template<typename STREAMCLASS>
+	void print_with_guesses(STREAMCLASS& os) {
 		os << "╔═══╤═══╤═══╦═══╤═══╤═══╦═══╤═══╤═══╗\n";
 		for (size_t row_num = 0; row_num < DIMENSION; ++row_num) {
 			if (row_num % 3 == 0 && row_num != 0) {
@@ -779,7 +803,29 @@ std::ostream& operator<<(std::ostream& os, const Sudoku& s) {
 	return os;
 }
 
-using SudokuState = std::pair<Sudoku,SudokuOpDeque>;
+class SudokuState {
+public:
+	Sudoku sudoku;
+	SudokuOpDeque op_deque;
+
+	SudokuState() = default;
+	SudokuState(const SudokuState&) = default;
+	SudokuState(SudokuState&&) = default;
+	SudokuState(Sudoku&& sudoku_src, SudokuOpDeque op_deque_src)
+		: sudoku(std::move(sudoku_src))
+		, op_deque(std::move(op_deque_src))
+		, iteration_count(0)
+	{}
+
+	SudokuState& operator=(const SudokuState&) = default;
+
+	void increment_iteration_count() { iteration_count += 1; }
+	uint get_iteration_count() { return iteration_count; }
+
+private:
+	uint iteration_count = 0;
+};
+
 using SudokuStateList = std::vector<SudokuState>;
 
 std::pair<SudokuStateList,bool> attempt(SudokuState& state);
@@ -808,27 +854,33 @@ Sudoku solve(std::vector<uint>& grid) {
 	}
 
 	while (state_stack.empty() == false) {
-		SudokuStateList state_list = state_stack.top();
-		state_stack.pop();
+		SudokuStateList& state_list = state_stack.top();
 
-		for (SudokuState& state : state_list) {
-			// std::cout << ">>> stack level=" << state_stack.size() << ", going with grid:\n" << state.first << '\n';
+		if (state_list.empty() == true) {
+			state_stack.pop();
+		} else {
+			SudokuState& state = state_list.back();
+			debug_out << ">>> stack level=" << state_stack.size() << ", going with grid:\n" << state.sudoku << '\n';
 			SudokuStateList new_states;
 			bool success;
 			std::tie(new_states,success) = attempt(state);
 
 			if (new_states.empty()) {
 				if (success) {
-					// std::cout << "Solved?\n";
+					debug_out << "Solved?\n";
 					global_stats.markPuzzleEnd();
-					return state.first;
+					return state.sudoku;
 				} else {// else: try the next thing.
-					// std::cout << "!!! things went illegal! reverting. !!!\n";
+					debug_out << "!!! things went illegal! reverting. !!!\ngrid was:\n";
+					state.sudoku.print_with_guesses(debug_out);
+					debug_out << '\n';
 				}
 			} else {
 				state_stack.emplace(new_states);
 			}
-		}
+
+			state_list.pop_back();
+		};
 	}
 
 	assert(0&& "failed to find a solution - should be impossible");
@@ -837,8 +889,8 @@ Sudoku solve(std::vector<uint>& grid) {
 
 std::pair<SudokuStateList,bool> attempt(SudokuState& state) {
 
-	Sudoku& sudoku = state.first;
-	SudokuOpDeque& op_deque = state.second;
+	Sudoku& sudoku = state.sudoku;
+	SudokuOpDeque& op_deque = state.op_deque;
 
 	uint iteration_number = 0;
 	while (op_deque.empty() == false) {
@@ -881,8 +933,9 @@ std::pair<SudokuStateList,bool> attempt(SudokuState& state) {
 			op_deque.pop_front();
 		}
 
-		// std::cout << "before iteration " << iteration_number << ", grid is:\n";
-		// sudoku.print_with_guesses(std::cout);
+		debug_out << "before iteration " << iteration_number << ", grid is:\n";
+		sudoku.print_with_guesses(debug_out);
+		debug_out << '\n';
 
 		// do logic
 		// eg. only places for number in one SO9 are also all in one other SO9
@@ -892,7 +945,7 @@ std::pair<SudokuStateList,bool> attempt(SudokuState& state) {
 			const Possibilities& p = sudoku.getPossibilities(squ);
 			if (p.isOnlyOne()) {
 				uint the_one = p.getLowest();
-				// std::cout << squ << " can only be " << the_one << "\n";
+				debug_out << squ << " can only be " << the_one << "\n";
 				op_deque.emplace_back(
 					SudokuOperations::SET_TO,
 					SudokuOperationData{squ,the_one}
@@ -916,7 +969,7 @@ std::pair<SudokuStateList,bool> attempt(SudokuState& state) {
 
 					// naked tuples - naked pair & triplet & etc.
 					if (previously_seen.count(p) == num_poss && num_poss > 1) {
-						// std::cout << "found a naked tuple " << p << " in " << so9.getType() << ' ' << so9.getIndex() << " consisting of ";
+						debug_out << "found a naked tuple " << p << " in " << so9 << " consisting of ";
 						for (Point squ2 : so9) {
 							if (p != sudoku.getPossibilities(squ2)) {
 								for (uint candidate_in_tuple : p) {
@@ -926,10 +979,10 @@ std::pair<SudokuStateList,bool> attempt(SudokuState& state) {
 									);
 								}
 							} else {
-								// std::cout << squ2 << ", ";
+								debug_out << squ2 << ", ";
 							}
 						}
-						// std::cout << "\n";
+						debug_out << "\n";
 					}
 				}
 			}
@@ -953,14 +1006,14 @@ std::pair<SudokuStateList,bool> attempt(SudokuState& state) {
 	}
 
 	// if we got here, then logic has failed us, so lets push some guesses on on the stack!
-	// std::cout << "logic has failed!\n";
+	debug_out << "logic has failed!\n";
 	SudokuStateList retval;
 	global_stats.addGuessSquare();
 
 	for (uint poss : sudoku.getPossibilities(has_fewest_possibilities)) {
-		// std::cout << "trying " << has_fewest_possibilities << " as " << poss << "\n";
+		debug_out << "going to try " << has_fewest_possibilities << " as " << poss << "\n";
 		SudokuState state_dup = state;
-		state_dup.second.emplace_back(
+		state_dup.op_deque.emplace_back(
 			SudokuOperations::SET_TO,
 			SudokuOperationData(has_fewest_possibilities, poss)
 		);
@@ -1003,6 +1056,8 @@ int main(int argc, const char** argv) {
 		} else if (param == "--stats-only") {
 			print_stats = true;
 			print_solutions = false;
+		} else if (param == "--debug") {
+			debug_out.setStream(&std::cout);
 		}
 	}
 
