@@ -43,18 +43,20 @@ class SudokuStatistics {
 	uint num_guess_sqares;
 	uint num_puzzles_in_stats;
 	uint total_iterations;
+	uint total_iterations_to_solve;
 
 public:
 	SudokuStatistics()
 		: num_guess_sqares(0)
 		, num_puzzles_in_stats(0)
 		, total_iterations(0)
+		, total_iterations_to_solve(0)
 	{ }
 
 	void addGuessSquare() { num_guess_sqares++; }
 	void markIterationStart() { total_iterations++; }
 	void markPuzzleStart() { num_puzzles_in_stats += 1;	}
-	void markPuzzleEnd() { }
+	void markPuzzleEnd(uint iterations_to_solve) { total_iterations_to_solve += iterations_to_solve; }
 
 	template<typename STREAMCLASS>
 	void print(STREAMCLASS& os) {
@@ -64,7 +66,7 @@ public:
 			<< "number of guessed squares = " << num_guess_sqares << '\n'
 			<< "average per puzzle:\n"
 			<< "\t- iterations            = " << ((float)total_iterations)/(num_puzzles_in_stats==0 ? 1 : num_puzzles_in_stats) << '\n'
-			<< "\t- iterations to solve   = " << "TODO\n"
+			<< "\t- iterations to solve   = " << ((float)total_iterations_to_solve)/(num_puzzles_in_stats==0 ? 1 : num_puzzles_in_stats) << '\n'
 		;
 	}
 };
@@ -868,7 +870,7 @@ Sudoku solve(std::vector<uint>& grid) {
 			if (new_states.empty()) {
 				if (success) {
 					debug_out << "Solved?\n";
-					global_stats.markPuzzleEnd();
+					global_stats.markPuzzleEnd(state.get_iteration_count());
 					return state.sudoku;
 				} else {// else: try the next thing.
 					debug_out << "!!! things went illegal! reverting. !!!\ngrid was:\n";
@@ -895,6 +897,8 @@ std::pair<SudokuStateList,bool> attempt(SudokuState& state) {
 	uint iteration_number = 0;
 	while (op_deque.empty() == false) {
 		global_stats.markIterationStart();
+		state.increment_iteration_count();
+
 		iteration_number++;
 
 		if (iteration_number > 1000) {

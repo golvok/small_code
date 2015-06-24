@@ -253,3 +253,13 @@ RedirectOStream& operator<<(RedirectOStream& ros, const T& t) {
 	ros.print_to_stream(t);
 	return ros;
 }
+
+template<typename COLLECTION_TYPE, typename SEARCH_TYPE>
+bool contains(const COLLECTION_TYPE& collection, const SEARCH_TYPE& search_val) {
+	for (auto& elem : collection) {
+		if (elem == search_val) {
+			return true;
+		}
+	}
+	return false;
+}
