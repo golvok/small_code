@@ -957,6 +957,10 @@ std::pair<SudokuStateList,bool> attempt(SudokuState& state) {
 			}
 		}
 
+		if (op_deque.empty() == false) {
+			continue;
+		}
+
 		std::array<const std::vector<SetOfNine>*, 3> so9_sets {
 			&sudoku.getRows(),
 			&sudoku.getCols(),
@@ -990,6 +994,10 @@ std::pair<SudokuStateList,bool> attempt(SudokuState& state) {
 					}
 				}
 			}
+		}
+
+		if (op_deque.empty() == false) {
+			continue;
 		}
 	}
 
