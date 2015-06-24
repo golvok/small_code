@@ -71,9 +71,21 @@ public:
 	}
 };
 
+class SudokuConfig {
+private:
+	bool do_logic_box_number_in_only_in_row_or_col;
+public:
+	SudokuConfig()
+		: do_logic_box_number_in_only_in_row_or_col(false)
+	{}
+	void setDoLogicBoxNumberInOnlyInRowOrCol(bool val) { do_logic_box_number_in_only_in_row_or_col = val; }
+	bool doLogicBoxNumberInOnlyInRowOrCol() { return do_logic_box_number_in_only_in_row_or_col; }
+};
+
 /************ GLOBALS ****************/
 SudokuStatistics global_stats;
 RedirectOStream debug_out;
+SudokuConfig global_config;
 
 class SudokuOpDeque {
 	struct OpHash;
@@ -523,11 +535,11 @@ class Sudoku {
 
 	std::array<std::array<std::bitset<9>,9>,9> local_masks;
 
+public:
 	SetOfNine& getBox(Point square_in_box) { return boxes[square_in_box.first/3 + (square_in_box.second/3)*3]; }
 	SetOfNine& getRow(Point square_in_row) { return rows[square_in_row.second]; }
 	SetOfNine& getCol(Point square_in_col) { return cols[square_in_col.first]; }
 
-public:
 	const SetOfNine& getBox(Point square_in_box) const { return boxes[square_in_box.first/3 + (square_in_box.second/3)*3]; }
 	const SetOfNine& getRow(Point square_in_row) const { return rows[square_in_row.second]; }
 	const SetOfNine& getCol(Point square_in_col) const { return cols[square_in_col.first]; }
@@ -999,6 +1011,66 @@ std::pair<SudokuStateList,bool> attempt(SudokuState& state) {
 		if (op_deque.empty() == false) {
 			continue;
 		}
+
+		if (global_config.doLogicBoxNumberInOnlyInRowOrCol()) {
+			// logic:
+			// if all the places a number can be in a so9 are also all in one (other) so9,
+			// then they must be in the intersection of the so9
+			for (const SetOfNine& box : sudoku.getBoxes()) {
+				std::array<std::set<SetOfNine const*>,9> so9s_that_this_number_is_in;
+				for (Point squ : box) {
+					for (uint num : sudoku.getPossibilities(squ)) {
+						for (SetOfNine const* so9 : sudoku.getSetsOfNine(squ)) {
+							so9s_that_this_number_is_in[num-1].insert(so9);
+						}
+					}
+				}
+
+				for (uint num = 1; num <= so9s_that_this_number_is_in.size(); ++num) {
+					auto& so9_set = so9s_that_this_number_is_in[num-1];
+
+					uint n_rows = 0;
+					SetOfNine const* a_row = nullptr;
+					uint n_cols = 0;
+					SetOfNine const* a_col = nullptr;
+					for (SetOfNine const* so9 : so9_set) {
+						if (so9->getType() == SetOfNine::Type::ROW) {
+							n_rows += 1;
+							a_row = so9;
+						} else if (so9->getType() == SetOfNine::Type::COL) {
+							n_cols += 1;
+							a_col = so9;
+						}
+					}
+
+					auto row_pair = std::make_pair(n_rows,a_row);
+					auto col_pair = std::make_pair(n_cols,a_col);
+
+					std::array<decltype(row_pair),2> pairs {
+						row_pair,
+						col_pair
+					};
+
+					for (auto& pair : pairs) {
+						if (pair.first == 1) {
+							for (Point squ : *pair.second) {
+								if (sudoku.getBox(squ) != box) {
+									op_deque.emplace_back(
+										SudokuOperations::REMOVE_GUESS,
+										SudokuOperationData{squ, num}
+									);
+								}
+							}
+						}
+					}
+				}
+			}
+
+			if (op_deque.empty() == false) {
+				continue;
+			}
+		}
+
 	}
 
 
@@ -1061,16 +1133,30 @@ int main(int argc, const char** argv) {
 	bool print_stats = false;
 	bool print_solutions = true;
 
-	if (argc == 2) {
-		const std::string param(argv[1]);
-		if (param == "--stats") {
-			print_stats = true;
-		} else if (param == "--stats-only") {
-			print_stats = true;
-			print_solutions = false;
-		} else if (param == "--debug") {
-			debug_out.setStream(&std::cout);
-		}
+	std::vector<std::string> args;
+	for (size_t i = 1; i < (size_t)argc; ++i) {
+		args.push_back(argv[i]);
+	}
+
+	if (contains(args, "--stats")) {
+		print_stats = true;
+	}
+
+	if (contains(args, "--stats-only")) {
+		print_stats = true;
+		print_solutions = false;
+	}
+
+	if (contains(args, "--debug")) {
+		debug_out.setStream(&std::cout);
+	} else {
+		debug_out.setStream(nullptr);
+	}
+
+	if (contains(args, "--Lno-box-number-in-only-in-row-or-col")) {
+		global_config.setDoLogicBoxNumberInOnlyInRowOrCol(false);
+	} else {
+		global_config.setDoLogicBoxNumberInOnlyInRowOrCol(true);
 	}
 
 	for (uint i = 1; ; ++i) {
