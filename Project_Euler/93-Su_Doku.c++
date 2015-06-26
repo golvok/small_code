@@ -73,13 +73,18 @@ public:
 
 class SudokuConfig {
 private:
-	bool do_logic_box_number_in_only_in_row_or_col;
+	bool do_logic_box_number_only_in_row_or_col;
+	bool do_logic_tuple_finding;
 public:
 	SudokuConfig()
-		: do_logic_box_number_in_only_in_row_or_col(false)
+		: do_logic_box_number_only_in_row_or_col(false)
+		, do_logic_tuple_finding(false)
 	{}
-	void setDoLogicBoxNumberInOnlyInRowOrCol(bool val) { do_logic_box_number_in_only_in_row_or_col = val; }
-	bool doLogicBoxNumberInOnlyInRowOrCol() { return do_logic_box_number_in_only_in_row_or_col; }
+	void setDoLogicBoxNumberOnlyInRowOrCol(bool val) { do_logic_box_number_only_in_row_or_col = val; }
+	bool doLogicBoxNumberInOnlyInRowOrCol() { return do_logic_box_number_only_in_row_or_col; }
+
+	void setDoTupleFinding(bool val) { do_logic_tuple_finding = val; }
+	bool doTupleFinding() { return do_logic_tuple_finding; }
 };
 
 /************ GLOBALS ****************/
@@ -979,37 +984,39 @@ std::pair<SudokuStateList,bool> attempt(SudokuState& state) {
 			&sudoku.getBoxes(),
 		};
 
-		for (auto& so9_set : so9_sets) {
-			for (const SetOfNine& so9 : *so9_set) {
-				std::unordered_multiset<Possibilities> previously_seen;
-				for (Point squ : so9) {
-					Possibilities p = sudoku.getPossibilities(squ);
-					uint num_poss = p.getNumPossibilities();
-					previously_seen.insert(p);
+		if (global_config.doTupleFinding()) {
+			for (auto& so9_set : so9_sets) {
+				for (const SetOfNine& so9 : *so9_set) {
+					std::unordered_multiset<Possibilities> previously_seen;
+					for (Point squ : so9) {
+						Possibilities p = sudoku.getPossibilities(squ);
+						uint num_poss = p.getNumPossibilities();
+						previously_seen.insert(p);
 
-					// naked tuples - naked pair & triplet & etc.
-					if (previously_seen.count(p) == num_poss && num_poss > 1) {
-						debug_out << "found a naked tuple " << p << " in " << so9 << " consisting of ";
-						for (Point squ2 : so9) {
-							if (p != sudoku.getPossibilities(squ2)) {
-								for (uint candidate_in_tuple : p) {
-									op_deque.emplace_front(
-										SudokuOperations::REMOVE_GUESS,
-										SudokuOperationData{squ2,candidate_in_tuple}
-									);
+						// naked tuples - naked pair & triplet & etc.
+						if (previously_seen.count(p) == num_poss && num_poss > 1) {
+							debug_out << "found a naked tuple " << p << " in " << so9 << " consisting of ";
+							for (Point squ2 : so9) {
+								if (p != sudoku.getPossibilities(squ2)) {
+									for (uint candidate_in_tuple : p) {
+										op_deque.emplace_front(
+											SudokuOperations::REMOVE_GUESS,
+											SudokuOperationData{squ2,candidate_in_tuple}
+										);
+									}
+								} else {
+									debug_out << squ2 << ", ";
 								}
-							} else {
-								debug_out << squ2 << ", ";
 							}
+							debug_out << "\n";
 						}
-						debug_out << "\n";
 					}
 				}
 			}
-		}
 
-		if (op_deque.empty() == false) {
-			continue;
+			if (op_deque.empty() == false) {
+				continue;
+			}
 		}
 
 		if (global_config.doLogicBoxNumberInOnlyInRowOrCol()) {
@@ -1130,33 +1137,74 @@ std::vector<uint> get_input_for_one_grid() {
 }
 
 int main(int argc, const char** argv) {
-	bool print_stats = false;
-	bool print_solutions = true;
 
 	std::vector<std::string> args;
 	for (size_t i = 1; i < (size_t)argc; ++i) {
 		args.push_back(argv[i]);
 	}
 
-	if (contains(args, "--stats")) {
-		print_stats = true;
-	}
+	// set defaults
+	bool print_stats = false;
+	bool print_solutions = true;
+	debug_out.setStream(nullptr);
+	global_config.setDoLogicBoxNumberOnlyInRowOrCol(true);
+	global_config.setDoTupleFinding(true);
 
-	if (contains(args, "--stats-only")) {
-		print_stats = true;
-		print_solutions = false;
-	}
+	// read params
+	for (auto& arg : args) {
+		bool arg_is_used = false;
+		if (arg == "--stats") {
+			print_stats = true;
+			arg_is_used = true;
+		}
 
-	if (contains(args, "--debug")) {
-		debug_out.setStream(&std::cout);
-	} else {
-		debug_out.setStream(nullptr);
-	}
+		if (arg == "--stats-only") {
+			print_stats = true;
+			print_solutions = false;
+			arg_is_used = true;
+		}
 
-	if (contains(args, "--Lno-box-number-in-only-in-row-or-col")) {
-		global_config.setDoLogicBoxNumberInOnlyInRowOrCol(false);
-	} else {
-		global_config.setDoLogicBoxNumberInOnlyInRowOrCol(true);
+		if (arg == "--debug") {
+			debug_out.setStream(&std::cout);
+			arg_is_used = true;
+		}
+
+		if (arg == "-Lno-box-number-only-in-row-or-col") {
+			global_config.setDoLogicBoxNumberOnlyInRowOrCol(false);
+			arg_is_used = true;
+		}
+
+		if (arg == "-Lbox-number-only-in-row-or-col") {
+			global_config.setDoLogicBoxNumberOnlyInRowOrCol(true);
+			arg_is_used = true;
+		}
+
+		if (arg == "-Lno-tuple-finding") {
+			global_config.setDoTupleFinding(false);
+			arg_is_used = true;
+		}
+
+		if (arg == "-Ltuple-finding") {
+			global_config.setDoTupleFinding(true);
+			arg_is_used = true;
+		}
+
+		if (arg == "-Lno-logic") {
+			global_config.setDoLogicBoxNumberOnlyInRowOrCol(false);
+			global_config.setDoTupleFinding(false);
+			arg_is_used = true;
+		}
+
+		if (arg == "-Llogic") {
+			global_config.setDoLogicBoxNumberOnlyInRowOrCol(true);
+			global_config.setDoTupleFinding(true);
+			arg_is_used = true;
+		}
+
+		if (arg_is_used == false) {
+			std::cerr << "unknown argument: " << arg << '\n';
+			exit(1);
+		}
 	}
 
 	for (uint i = 1; ; ++i) {
