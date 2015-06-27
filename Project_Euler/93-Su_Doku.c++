@@ -1146,6 +1146,7 @@ int main(int argc, const char** argv) {
 	// set defaults
 	bool print_stats = false;
 	bool print_solutions = true;
+	bool print_pe_output = false;
 	debug_out.setStream(nullptr);
 	global_config.setDoLogicBoxNumberOnlyInRowOrCol(true);
 	global_config.setDoTupleFinding(true);
@@ -1160,6 +1161,13 @@ int main(int argc, const char** argv) {
 
 		if (arg == "--stats-only") {
 			print_stats = true;
+			print_solutions = false;
+			arg_is_used = true;
+		}
+
+		if (arg == "--project-euler-output") {
+			print_pe_output = true;
+			print_stats = false;
 			print_solutions = false;
 			arg_is_used = true;
 		}
@@ -1207,12 +1215,17 @@ int main(int argc, const char** argv) {
 		}
 	}
 
+	uint project_euler_sum = 0;
+
 	for (uint i = 1; ; ++i) {
 		std::vector<uint> grid = get_input_for_one_grid();
 		if (std::cin.eof() == true) {
 			break;
 		}
 		Sudoku solved = solve(grid);
+		project_euler_sum += 100*solved.getNumberAt({0,0});
+		project_euler_sum +=  10*solved.getNumberAt({1,0});
+		project_euler_sum +=   1*solved.getNumberAt({2,0});
 		if (print_solutions) {
 			std::cout << solved << '\n';
 		}
@@ -1221,6 +1234,10 @@ int main(int argc, const char** argv) {
 
 	if (print_stats) {
 		global_stats.print(std::cout);
+	}
+
+	if (print_pe_output) {
+		std::cout << "sum of 3 digit numbers in top left corners = " << project_euler_sum << '\n';
 	}
 
 	return 0;
