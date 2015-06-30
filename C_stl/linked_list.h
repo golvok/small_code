@@ -31,13 +31,13 @@ int prefix##ll_remove_next(prefix##linked_list* ll, prefix##ll_node* node); \
 int prefix##ll_pop_next(prefix##linked_list* ll, prefix##ll_node* node, prefix##ll_node_data* ret); \
 int prefix##ll_pop_next_any(prefix##linked_list* ll, prefix##ll_node* prev_prev, prefix##ll_node* prev, prefix##ll_node_data* ret); \
  \
-prefix##ll_node* prefix##ll_node_init(prefix##ll_node_data data); \
+prefix##ll_node* prefix##ll_node_construct(prefix##ll_node_data data); \
 void prefix##ll_node_destroy(prefix##ll_node* node); \
 bool prefix##ll_node_has_next(prefix##ll_node* node) { return ll_next(node) != 0; } \
  \
 void prefix##ll_extra_insert_code_(prefix##ll_node* node, prefix##ll_node* new_next); \
  \
-prefix##linked_list* prefix##ll_init() { \
+prefix##linked_list* prefix##ll_construct() { \
 	prefix##linked_list* ll; \
  \
 	ll = (prefix##linked_list *)malloc(sizeof(prefix##linked_list)); \
@@ -61,14 +61,14 @@ void prefix##ll_destroy(prefix##linked_list* ll) { \
 } \
  \
 int prefix##ll_push_front(prefix##linked_list* ll, prefix##ll_node_data data_to_insert) { \
-	return prefix##ll_insert_after(ll, ll->pre_head, prefix##ll_node_init(data_to_insert)); \
+	return prefix##ll_insert_after(ll, ll->pre_head, prefix##ll_node_construct(data_to_insert)); \
 } \
  \
 int prefix##ll_push_back(prefix##linked_list* ll, prefix##ll_node_data data_to_insert) { \
 	if (prefix##ll_is_empty(ll)) { \
-		return prefix##ll_insert_after(ll, ll->pre_head, prefix##ll_node_init(data_to_insert)); \
+		return prefix##ll_insert_after(ll, ll->pre_head, prefix##ll_node_construct(data_to_insert)); \
 	} else { \
-		return prefix##ll_insert_after(ll, ll_next(ll->pre_tail), prefix##ll_node_init(data_to_insert)); \
+		return prefix##ll_insert_after(ll, ll_next(ll->pre_tail), prefix##ll_node_construct(data_to_insert)); \
 	} \
 } \
  \
@@ -135,7 +135,7 @@ void prefix##ll_node_destroy(prefix##ll_node* node) { \
 	free(node); \
 } \
  \
-prefix##ll_node* prefix##ll_node_init(prefix##ll_node_data data) { \
+prefix##ll_node* prefix##ll_node_construct(prefix##ll_node_data data) { \
 	prefix##ll_node* new_node = calloc(sizeof(prefix##ll_node),1); \
 	ll_get_data(new_node) = data; \
 	return new_node; \

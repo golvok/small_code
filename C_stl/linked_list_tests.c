@@ -7,7 +7,7 @@ DEFINE_LINKED_LIST(float)
 int main() {
 	{
 		puts("-------singly linked test-------");
-		int_linked_list* ll = int_ll_init();
+		int_linked_list* ll = int_ll_construct();
 		for (size_t i = 1; i < 11; ++i) {
 			int_ll_push_front(ll, i);
 		}
@@ -45,7 +45,7 @@ int main() {
 
 	{
 		puts("-------other type test-------");
-		float_linked_list* ll = float_ll_init();
+		float_linked_list* ll = float_ll_construct();
 		for (size_t i = 1; i < 11; ++i) {
 			float_ll_push_front(ll, i);
 		}
@@ -79,7 +79,7 @@ int main() {
 
 	{
 		puts("-------doubly likned list test-------");
-		int_dlinked_list* ll = int_dll_init();
+		int_dlinked_list* ll = int_dll_construct();
 		for (size_t i = 1; i < 11; ++i) {
 			int_dll_push_front(ll, i);
 		}
