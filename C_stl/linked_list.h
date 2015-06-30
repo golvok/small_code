@@ -1,17 +1,20 @@
+#ifndef LINKED_LIST_H
+#define LINKED_LIST_H
+
 #include <stdlib.h>
 #include <stdbool.h>
 #include <assert.h>
 #include <stdio.h>
 
-#define ll_next(ll_node) ll_node->next
-#define ll_prev(dll_node) (dll_node->prev)
-#define ll_get_data(ll_node) ll_node->data
-#define ll_begin(ll) ll->pre_head->next
-#define ll_front(ll) ll_begin(ll)
-#define ll_back(ll) ll->pre_tail->next
-#define ll_end(ll) 0
-#define ll_increment(ll_node) ll_node = ll_next(ll_node)
-#define ll_is_empty(ll) (ll_next(ll->pre_head) == 0)
+#define ll_next(ll_node) ((ll_node)->next)
+#define ll_prev(dll_node) (((dll_node)->prev))
+#define ll_get_data(ll_node) ((ll_node)->data)
+#define ll_begin(ll) ((ll)->pre_head->next)
+#define ll_front(ll) (ll_begin(ll))
+#define ll_back(ll) ((ll)->pre_tail->next)
+#define ll_end(ll) ((0))
+#define ll_increment(ll_node) ((ll_node) = ll_next((ll_node)))
+#define ll_is_empty(ll) ((ll_next((ll)->pre_head) == 0))
 
 #define ll_FOR_EACH(type, var, ll, code) \
 {type var = ll_get_data(ll_begin(ll)) for(;var != ll_end(ll); ll_increment(var)) { code }}
@@ -40,7 +43,7 @@ prefix##linked_list* prefix##ll_init() { \
 	ll = (prefix##linked_list *)malloc(sizeof(prefix##linked_list)); \
 	assert(ll); \
  \
-	ll->pre_head = prefix##ll_node_init(0); \
+	ll->pre_head = calloc(sizeof(prefix##ll_node),1); \
 	ll->pre_tail = ll->pre_head; \
  \
 	return ll; \
@@ -57,15 +60,15 @@ void prefix##ll_destroy(prefix##linked_list* ll) { \
 	free(ll); \
 } \
  \
-int prefix##ll_push_front(prefix##linked_list* ll, prefix##ll_node* to_be_inserted) { \
-	return prefix##ll_insert_after(ll, ll->pre_head, to_be_inserted); \
+int prefix##ll_push_front(prefix##linked_list* ll, prefix##ll_node_data data_to_insert) { \
+	return prefix##ll_insert_after(ll, ll->pre_head, prefix##ll_node_init(data_to_insert)); \
 } \
  \
-int prefix##ll_push_back(prefix##linked_list* ll, prefix##ll_node* to_be_inserted) { \
+int prefix##ll_push_back(prefix##linked_list* ll, prefix##ll_node_data data_to_insert) { \
 	if (prefix##ll_is_empty(ll)) { \
-		return prefix##ll_insert_after(ll, ll->pre_head, to_be_inserted); \
+		return prefix##ll_insert_after(ll, ll->pre_head, prefix##ll_node_init(data_to_insert)); \
 	} else { \
-		return prefix##ll_insert_after(ll, ll->ll_next(pre_tail), to_be_inserted); \
+		return prefix##ll_insert_after(ll, ll_next(ll->pre_tail), prefix##ll_node_init(data_to_insert)); \
 	} \
 } \
  \
@@ -197,8 +200,7 @@ int type##_ll_remove_by_value(type##_linked_list* ll, type##_ll_node_data val) {
 	} \
 	if (ll_end(ll) == ll_next(prev)) { return 1; } \
 	return type##_ll_remove_next_any(ll,prev_prev,prev); \
-} \
-void type##_YOU_FORGOT_A_SEMICOLON()
+}
 
 
 #define DEFINE_DBL_LINKED_LIST(type) \
@@ -266,8 +268,7 @@ int type##_dll_remove_by_value(type##_dlinked_list* ll, type##_dll_node_data val
 	} \
 	if (ll_end(ll) == ll_next(prev)) { return 1; } \
 	return type##_dll_remove_next(ll,prev); \
-} \
-void type##_YOU_FORGOT_A_SEMICOLON()
+}
 
 
 #define PRINT_XLL__(prefix,fmt,function,ll) do { \
@@ -282,3 +283,5 @@ void type##_YOU_FORGOT_A_SEMICOLON()
 
 #define PRINT_DLL(type,fmt,function,ll) PRINT_XLL(TOK_CAT(type,_d),fmt,function,ll)
 #define PRINT_LL(type,fmt,function,ll) PRINT_XLL(TOK_CAT(type,_),fmt,function,ll)
+
+#endif /* LINKED_LIST_H */

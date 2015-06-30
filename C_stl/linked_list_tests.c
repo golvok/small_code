@@ -1,15 +1,15 @@
 #include "linked_list.h"
 
-DEFINE_DBL_LINKED_LIST(int);
-DEFINE_LINKED_LIST(int);
-DEFINE_LINKED_LIST(float);
+DEFINE_DBL_LINKED_LIST(int)
+DEFINE_LINKED_LIST(int)
+DEFINE_LINKED_LIST(float)
 
 int main() {
 	{
 		puts("-------singly linked test-------");
 		int_linked_list* ll = int_ll_init();
 		for (size_t i = 1; i < 11; ++i) {
-			int_ll_push_front(ll, int_ll_node_init(i));
+			int_ll_push_front(ll, i);
 		}
 
 		PRINT_LL(int, "%d", , ll);
@@ -20,7 +20,7 @@ int main() {
 		}
 
 		for (size_t i = 15; i > 10; --i) {
-			int_ll_push_back(ll, int_ll_node_init(i));
+			int_ll_push_back(ll, i);
 		}
 
 		// int_ll_pop_back(ll,0); // should fail
@@ -37,7 +37,7 @@ int main() {
 		}
 
 		for (size_t i = 1; i < 6; ++i) {
-			int_ll_push_front(ll, int_ll_node_init(i));
+			int_ll_push_front(ll, i);
 		}
 
 		int_ll_destroy(ll);
@@ -47,7 +47,7 @@ int main() {
 		puts("-------other type test-------");
 		float_linked_list* ll = float_ll_init();
 		for (size_t i = 1; i < 11; ++i) {
-			float_ll_push_front(ll, float_ll_node_init(i));
+			float_ll_push_front(ll, i);
 		}
 
 		PRINT_LL(float,"%lf",,ll);
@@ -57,7 +57,7 @@ int main() {
 		}
 
 		for (size_t i = 15; i > 10; --i) {
-			float_ll_push_back(ll, float_ll_node_init(i));
+			float_ll_push_back(ll, i);
 		}
 
 		PRINT_LL(float,"%lf",,ll);
@@ -81,7 +81,7 @@ int main() {
 		puts("-------doubly likned list test-------");
 		int_dlinked_list* ll = int_dll_init();
 		for (size_t i = 1; i < 11; ++i) {
-			int_dll_push_front(ll, int_dll_node_init(i));
+			int_dll_push_front(ll, i);
 		}
 
 		PRINT_DLL(int, "%d", , ll);
