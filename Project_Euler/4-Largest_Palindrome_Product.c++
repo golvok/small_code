@@ -13,7 +13,13 @@ const size_t OVERFLOW_TEST = START_VAL*START_VAL;
  * 9: 999920317 * 999980347 = 999 900 665 566 009 999 in 293.8s
  */
 
+RedirectOStream dout1;
+RedirectOStream dout2;
+
 int main() {
+
+	dout1.setStream(&std::cout);
+	dout2.setStream(nullptr);
 
 	if (sqrt(OVERFLOW_TEST) != START_VAL) {
 		std::cout << "too many digits for type\n";
@@ -26,7 +32,7 @@ int main() {
 	std::pair<size_t,size_t> factors {0,0};
 
 	for (size_t i = START_VAL; i > END_VAL; --i) {
-		// std::cout << i << ": "; // DEBUG1
+		dout1 << i << ":\n";
 		bool found_something_larger = false;
 		for (size_t j = START_VAL; j >= i; --j) {
 			size_t num = i*j;
@@ -35,17 +41,17 @@ int main() {
 				break;
 			}
 
-			// std::cout << j << " "; // DEBUG1
+			dout1 << '\t' << j;
 
 			size_t k = 0;
-			// std::cout << i << '*' << j << '=' << num << "'s digits are: "; // DEBUG2
+			dout2 << i << '*' << j << '=' << num << "'s digits are: ";
 
 			{
 				size_t tmp_num = num;
 				while (true) {
 					digits[k] = tmp_num % 10;
 					tmp_num /= 10;
-					// std::cout << digits[k]; // DEBUG2
+					dout2 << digits[k];
 					if (tmp_num > 0) {
 						++k;
 					} else {
@@ -53,8 +59,6 @@ int main() {
 					}
 				}
 			}
-
-			// std::cout << "\n"; // DEBUG1
 
 			bool is_palindrome = true;
 			for(size_t l = 0; l <= k/2; ++l) {
@@ -67,15 +71,15 @@ int main() {
 			if (num > largest_so_far) {
 				found_something_larger = true;
 				if (is_palindrome) {
-					// std::cout << '^'; // DEBUG1
+					dout1 << '^';
 					largest_so_far = num;
 					factors = std::make_pair(i,j);
 				}
 			}
 		}
-		// std::cout << '\n'; // DEBUG1
+		dout1 << '\n';
 		if (found_something_larger == false) {
-			// std::cout << "didn't find anything larger\n"; // DEBUG1
+			dout1 << "didn't find anything larger\n";
 			break;
 		}
 	}
