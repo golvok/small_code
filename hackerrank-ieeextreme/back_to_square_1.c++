@@ -34,7 +34,7 @@ int main() {
 
 		// std::cout << "num_squares = " << num_squares << '\n';
 		
-		vector<float> probs { -0 };
+		vector<float> probs { 1 };
 		for (uint i = 1; i < num_squares; ++i) {
 			probs.push_back(get<float>(std::cin));
 		}
@@ -45,7 +45,6 @@ int main() {
 		// });
 		// std::cout << '\n';
 		
-		// iterate and split mult by p(1) and p(n+1) unless n+1 is num_squares
 
 		double expected = 1; // takes one move to "get to" start
 
@@ -70,11 +69,7 @@ int main() {
 
 		uint num_moves = 0;
 
-		std::vector<seq_prob> seq_probs { seq_prob( probs[1], 1 ) };
-		expected = (1 * p_of_1_to_N) * (num_moves + num_squares);
-		// std::cout << "expcted is now = " << expected << '\n';
-
-		num_moves += 1;
+		std::vector<seq_prob> seq_probs { seq_prob( 1, 0 ) };
 
 		while (true) {
 			double next_expected = 0;
@@ -86,12 +81,14 @@ int main() {
 
 				next_seq_probs.push_back( seq_prob( elem.prob * (1-probs[elem.square]), 1 ) );
 				// std::cout << "added " << next_seq_probs.back() << '\n';
+
 				float elem_expected = ( elem.prob * p_of_1_to_N ) * (num_moves + num_squares);
 				// std::cout << "elem_expected = " << elem_expected << '\n';
+
 				next_expected += elem_expected;
 				if ( elem.square + 1 == num_squares) {
 					// drop this branch 
-				} else {
+				} else if (num_moves != 0) {
 					elem.prob *= probs[elem.square];
 					elem.square += 1;
 					next_seq_probs.push_back( elem );
@@ -112,8 +109,8 @@ int main() {
 			}
 		}
 
-		// cout << std::lround(expected) << '\n';
-		cout << expected << '\n';
+		// std::cout << std::lround(expected) << '\n';
+		std::cout << expected << '\n';
 		
 	}
 	
