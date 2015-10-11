@@ -2,6 +2,8 @@
 .SUFFIXES:
 MAKEFLAGS+=" -r "
 
+CXXFLAGS += -Wall -Weffc++ -Wextra -Werror -pedantic -std=c++11 -ggdb -D_GLIBCXX_DEBUG
+
 EXE_DIR=EXE
 OBJ_DIR=OBJ
 
@@ -19,7 +21,7 @@ EXES+=$(CSOURCES:%.c=$(EXE_DIR)/%)
 all: $(EXES)
 
 $(OBJ_DIR)/%.o: %.c++ | $(OBJ_DIR)
-	$(CXX) -c -Wall -Weffc++ -Wextra -Werror -pedantic -std=c++11 $< -o $@ -ggdb -D_GLIBCXX_DEBUG
+	$(CXX) -c $(CXXFLAGS) $< -o $@
 
 $(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
 	$(CC) -c -Wall -Wextra -Werror -pedantic -std=gnu99 $< -o $@ -ggdb
