@@ -47,99 +47,37 @@ int main() {
 		// });
 		// std::cout << '\n';
 
-
-		struct seq_prob : print_printable {
-			float prob;
-			uint square;
-			seq_prob(float prob, uint square) : prob(prob), square(square) { }
-			void print(std::ostream& os) const {
-				os << "{p=" << prob << ",s=" << square << '}';
+		float numerator = 1;
+		// std::cout << "(1";
+		for (uint i = 1; i < num_squares; ++i) {
+			// std::cout << " + " << probs[i];
+			float product_term = probs[i];
+			for (uint j = i-1; j != 0; --j) {
+				// std::cout << '*' << probs[j];
+				product_term *= probs[j];
 			}
-		};
-
-		const float p_of_1_to_N = [&]() -> float {
-			float p = 1;
-			std::for_each(probs.begin() + 1, probs.end(), [&](float prob){
-				p *= prob;
-			});
-			return p;
-		}();
-
-		// std::cout << "p_of_1_to_N = " << p_of_1_to_N << '\n';
-
-		double expected = ( p_of_1_to_N ) * ( num_squares );
-		// std::cout << "expcted is now = " << expected << std::endl;
-
-		uint num_moves = 0;
-		while (true) {
-			double next_expected = 0;
-			std::cout << "\nlevel = " << num_moves << '\n';
-
-			unsigned long long int bin_sequence = 0;
-
-			while (true) {
-				double elem_prob = 1;
-				uint seqence_num = 0;
-				// std::cout << "binary: " << std::bitset<sizeof(bin_sequence)*8>(bin_sequence) << '\n';
-				for (size_t i = 0; i <= num_moves; ++i) {
-					if ((bin_sequence & (1ULL << (num_moves - i)))) {
-						seqence_num += 1;
-						if (seqence_num == num_squares) {
-							// std::cout << "X ";
-							elem_prob = 0;
-							bin_sequence = bin_sequence | ((1ULL << (num_moves - i))-1);
-							// std::cout << "binary skips to: " << std::bitset<sizeof(bin_sequence)*8>(bin_sequence) << '\n';
-							break;
-						} else {
-							elem_prob *= probs[seqence_num-1];
-							// std::cout << '(' << probs[seqence_num-1] << ')';
-						}
-					} else {
-						if (i != 0) {
-							elem_prob *= (1-probs[seqence_num]);
-							// std::cout << '(' << (1-probs[seqence_num]) << ')';
-						} else {
-							// std::cout << '(' << elem_prob << ')';
-						}
-						seqence_num = 1; // go back to one
-					}
-					// std::cout << seqence_num << ' ';
-				}
-				if (elem_prob != 0) {
-					// std::cout << '(' << (1-probs[seqence_num]) << ") 1 ";
-					elem_prob *= 1-probs[seqence_num];
-
-					// std::cout << ": " << elem_prob;
-					elem_prob *= p_of_1_to_N;
-					double elem_expected = ( elem_prob ) * (num_moves + num_squares);
-					// std::cout << " : " << elem_prob << " : " << elem_expected << '\n';
-
-					next_expected += elem_expected;
-				} else {
-					// std::cout << '\n';
-				}
-
-				bin_sequence += 1;
-				// done if incremented first one isn't going to be a 1
-				if (bin_sequence & (1ULL << (num_moves))) {
-					break;
-				}
-			}
-
-			std::cout << "next_expected = " << next_expected << '\n';
-
-			expected += next_expected;
-			num_moves += 1;
-
-			std::cout << "expcted is now = " << expected << std::endl; // '\n';
-
-			if (next_expected < 0.01) {
-				break;
-			}
+			numerator += product_term;
 		}
+		// std::cout << ")/(1 -";
 
-		// std::cout << std::lround(expected) << '\n';
-		std::cout << expected << '\n';
+		float denominator = 1;
+		for (uint i = 1; i < num_squares; ++i) {
+			// std::cout << " ( (1-" << probs[i] << ")";
+			float sum_term = 1-probs[i];
+			for (uint j = 1; j < i; ++j) {
+				// std::cout << "*" << probs[j];
+				sum_term *= probs[j];
+			}
+			if (i != num_squares-1) {
+				// std::cout << " ) -";
+			}
+			denominator -= sum_term;
+		}
+		// std::cout << " ) ) + 1 \n";
+
+		float expected = numerator/denominator;
+		std::cout << std::llround(expected) << '\n';
+		// std::cout << expected << '\n';
 
 	}
 
