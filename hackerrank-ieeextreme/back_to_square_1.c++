@@ -36,22 +36,22 @@ int main() {
 
 		// std::cout << "num_squares = " << num_squares << '\n';
 
-		vector<float> probs { 1 };
+		vector<double> probs { 1 };
 		for (uint i = 1; i < num_squares; ++i) {
-			probs.push_back(get<float>(std::cin));
+			probs.push_back(get<double>(std::cin));
 		}
 
 		// std::cout << "probs:";
-		// std::for_each(probs.begin() + 1, probs.end(), [&](float prob){
+		// std::for_each(probs.begin() + 1, probs.end(), [&](double prob){
 			// std::cout << prob << ' ';
 		// });
 		// std::cout << '\n';
 
-		float numerator = 1;
+		double numerator = 1;
 		// std::cout << "(1";
 		for (uint i = 1; i < num_squares; ++i) {
 			// std::cout << " + " << probs[i];
-			float product_term = probs[i];
+			double product_term = probs[i];
 			for (uint j = i-1; j != 0; --j) {
 				// std::cout << '*' << probs[j];
 				product_term *= probs[j];
@@ -60,10 +60,10 @@ int main() {
 		}
 		// std::cout << ")/(1 -";
 
-		float denominator = 1;
+		double denominator = 1;
 		for (uint i = 1; i < num_squares; ++i) {
 			// std::cout << " ( (1-" << probs[i] << ")";
-			float sum_term = 1-probs[i];
+			double sum_term = 1-probs[i];
 			for (uint j = 1; j < i; ++j) {
 				// std::cout << "*" << probs[j];
 				sum_term *= probs[j];
@@ -75,7 +75,7 @@ int main() {
 		}
 		// std::cout << " ) ) + 1 \n";
 
-		float expected = numerator/denominator;
+		double expected = numerator/denominator;
 		std::cout << std::llround(expected) << '\n';
 		// std::cout << expected << '\n';
 
