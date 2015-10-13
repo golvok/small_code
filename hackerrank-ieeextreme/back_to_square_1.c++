@@ -66,33 +66,35 @@ int main() {
 			       i=0
 		*/
 
-		double numerator = 1;
-		// std::cout << "(1";
-		for (uint i = 1; i < num_squares; ++i) {
-			// std::cout << " + " << probs[i];
+		double numerator = 0;
+		// std::cout << "(";
+		for (uint i = num_squares-1; i != 0; --i) {
+			// std::cout << probs[i];
 			double product_term = probs[i];
 			for (uint j = i-1; j != 0; --j) {
 				// std::cout << '*' << probs[j];
 				product_term *= probs[j];
 			}
+			// std::cout << " + ";
 			numerator += product_term;
 		}
-		// std::cout << ")/(1 -";
+		numerator += 1;
+		// std::cout << "1)/(1 -";
 
 		double denominator = 1;
-		for (uint i = 1; i < num_squares; ++i) {
+		for (uint i = num_squares-1; i != 0; --i) {
 			// std::cout << " ( (1-" << probs[i] << ")";
 			double sum_term = 1-probs[i];
 			for (uint j = 1; j < i; ++j) {
 				// std::cout << "*" << probs[j];
 				sum_term *= probs[j];
 			}
-			if (i != num_squares-1) {
+			if (i != 1) {
 				// std::cout << " ) -";
 			}
 			denominator -= sum_term;
 		}
-		// std::cout << " ) ) + 1 \n";
+		// std::cout << " ) )\n";
 
 		double expected = numerator/denominator;
 		std::cout << std::llround(expected) << '\n';
