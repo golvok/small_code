@@ -2,7 +2,7 @@
 .SUFFIXES:
 MAKEFLAGS+=" -r "
 
-CXXFLAGS += -Wall -Weffc++ -Wextra -Werror -pedantic -std=c++11 -ggdb -D_GLIBCXX_DEBUG
+CXXFLAGS += -Wall -Weffc++ -Wextra -Werror -pedantic -std=c++14 -ggdb -D_GLIBCXX_DEBUG
 
 EXE_DIR=EXE
 OBJ_DIR=OBJ
