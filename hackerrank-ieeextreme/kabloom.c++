@@ -28,7 +28,7 @@ auto operator<<(STREAM& os, const T& t) -> decltype(static_cast<const print_prin
 
 using score_type = unsigned long long;
 using card_type = unsigned char;
-const card_type JOKER_CARD = 14;
+const card_type JOKER_CARD = 'R';
 
 score_type getScoreOfMatch(card_type card1, card_type card2) {
 	if (card1 != card2 && card1 != JOKER_CARD && card2 != JOKER_CARD) {
@@ -39,11 +39,13 @@ score_type getScoreOfMatch(card_type card1, card_type card2) {
 		}());
 	}
 	switch (card1) {
-		case 1: // ace
+		case 'A':
 			return 20*2;
-		case 11: // face cards
-		case 12:
-		case 13:
+		case 'T':
+			return 10*2;
+		case 'J':
+		case 'Q':
+		case 'K':
 			return 15*2;
 		case JOKER_CARD:
 			if (card2 == JOKER_CARD) {
@@ -52,7 +54,7 @@ score_type getScoreOfMatch(card_type card1, card_type card2) {
 				return getScoreOfMatch(card2, card1); // reverse order
 			}
 		default: // normal cards
-			return card1*2;
+			return (card1-'0')*2;
 	}
 }
 
@@ -166,28 +168,10 @@ int main() {
 		std::array<std::vector<card_type>,2> rows;
 		for (auto& row : rows) {
 			for (size_t i = 0; i < row_size; ++i) {
-				auto new_card = get<char>(std::cin);
-				std::cout << new_card;
-				switch (new_card) {
-					case 'J':
-						row.push_back(11); break;
-					case 'Q':
-						row.push_back(12); break;
-					case 'K':
-						row.push_back(13); break;
-					case 'A':
-						row.push_back( 1); break;
-					case 'T':
-						row.push_back(10); break;
-					case 'R':
-						row.push_back(JOKER_CARD); break;
-					default:
-						row.push_back(new_card - '0'); break;
-				}
-				std::cout << ':' << (unsigned int)row.back();
-				std::cout << ' ';
+				row.push_back(get<char>(std::cin));
+				// std::cout << row.back() << ' ';
 			}
-			std::cout << '\n';
+			// std::cout << '\n';
 		}
 
 		MaxScoreCache cache;
