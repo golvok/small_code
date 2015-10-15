@@ -201,42 +201,6 @@ int main() {
 		// std::cout << "FINAL SCORE = " << score << '\n';
 		std::cout << score << '\n';
 
-		// auto& top = rows[0];
-		// auto& bottom = rows[1];
-
-		// BottomTopRange btr_of_all{0,row_size,0,row_size};
-
-		// MaxScoreCache cache(row_size);
-		// std::stack<std::pair<BottomTopRange,std::pair<bool,score_type>>> btr_stack;
-		// btr_stack.emplace(btr_of_all,std::make_pair(true,0));
-
-		// while (btr_stack.empty() == false) {
-		// 	auto stack_top = btr_stack.top();
-		// 	const BottomTopRange& btr = stack_top.first;
-
-		// 	if (cache.hasScore(btr) || btr.isEmptyRange()) {
-		// 		// add getScore to other child, then parent
-		// 		btr_stack.pop();
-		// 		stack.top().second.second += cache.getScore(btr);
-		// 	} else {
-		// 		// todo: cache all possible matches - only n^2
-		// 		for (size_t i = btr.begin_top; i < btr.end_top; ++i) {
-		// 			for (size_t j = btr.begin_bottom; j < btr.end_bottom; ++j) {
-		// 				if (top.at(i) == bottom.at(j)) {
-		// 					stack_top.second.second = getScoreOfMatch(top.at(i),bottom.at(j));
-		// 					btr_stack.emplace(BottomTopRange{btr.begin_top, i          , btr.begin_bottom, j             },std::make_pair(true , 0));
-		// 					btr_stack.emplace(BottomTopRange{i            , btr.end_top, j               , btr.end_bottom},std::make_pair(false, 0));
-		// 				}
-		// 			}
-		// 		}
-		// 	}
-
-		// 	if (stack_top.second.first) {
-		// 		cache.setScore(btr,stack_top.second.second);
-		// 	}
-		// }
-
-		// std::cout << cache.getScore(btr_of_all) << '\n';
 	}
 
 	return 0;
