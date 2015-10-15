@@ -9,6 +9,7 @@
 #include <vector>
 #include <stdexcept>
 #include <sstream>
+#include <unordered_map>
 
 template<typename T, typename STREAM>
 T get(STREAM& is) {
@@ -73,38 +74,53 @@ struct BottomTopRange : print_printable {
 		os << "{ {" << this->begin_top << ',' << this->end_top << "},{" << this->begin_bottom << ',' << this->end_bottom << "} }";
 	}
 	bool isEmptyRange() const { return begin_top == end_top || begin_bottom == end_bottom; }
+
+	bool operator==(const BottomTopRange& rhs) const {
+		return (begin_top == rhs.begin_top) && (end_top == rhs.end_top) && (begin_bottom == rhs.begin_bottom) && (end_bottom == rhs.end_bottom);
+	}
 };
+
+namespace std {
+	template<>
+	struct hash<BottomTopRange>{
+		size_t operator()(const BottomTopRange& btr) const {
+			return
+				  ( std::hash<size_t>()( btr.begin_top    ) + 1000 )
+				^ ( std::hash<size_t>()( btr.end_top      ) + 1000 )
+				^ ( std::hash<size_t>()( btr.begin_bottom ) + 1000 )
+				^ ( std::hash<size_t>()( btr.end_bottom   ) + 1000 )
+			;
+		}
+	};
+}
 
 class MaxScoreCache {
 private:
-	// todo: use better datastructure.. row_size can be up to 1000!!
-	std::vector<std::vector<std::vector<std::vector<score_type>>>> score_matrix;
+	std::unordered_map<BottomTopRange,score_type> scores;
 public:
-	MaxScoreCache(size_t row_size) : score_matrix() {
-		score_matrix.resize(row_size+1);
-		for (auto& a : score_matrix) {
-			a.resize(row_size+1);
-			for (auto& b : a) {
-				b.resize(row_size+1);
-				for (auto& c : b) {
-					c.resize(row_size+1);
-				}
-			}
-		}
-	}
+	MaxScoreCache() : scores() { }
 
 	void setScore(score_type s, BottomTopRange btr) {
 		// std::cout << btr << " ?= " << s;
-		auto& stored_score = getScore(btr);
-		if (stored_score < s) {
-			stored_score = s;
-			// std::cout << " SET";
+		if (s == 0) {
+			// std::cout << "NOSET\n";
+		} else {
+			auto insert_results = scores.emplace(btr,s);
+			if (insert_results.second == false && insert_results.first->second < s) {
+				insert_results.first->second = s;
+				// std::cout << " SET";
+			}
+			// std::cout << '\n';
 		}
-		// std::cout << '\n';
 	}
 
-	score_type& getScore(BottomTopRange btr) {
-		return score_matrix.at(btr.begin_top).at(btr.end_top).at(btr.begin_bottom).at(btr.end_bottom);
+	score_type getScore(BottomTopRange btr) {
+		auto find_results = scores.find(btr);
+		if (find_results == scores.end()) {
+			return 0;
+		} else {
+			return find_results->second;
+		}
 	}
 
 	bool hasScore(BottomTopRange btr) {
@@ -120,8 +136,10 @@ score_type calculate_score(
 ) {
 	if (cache.hasScore(btr)) {
 		// std::cout << btr << " already has a score\n";
+		return cache.getScore(btr);
 	} else if (btr.isEmptyRange()) {
 		// std::cout << btr << " is empty\n";
+		return 0;
 	} else {
 		// todo: cache all possible matches? - only n^2
 		for (size_t i = btr.begin_top; i < btr.end_top; ++i) {
@@ -134,8 +152,8 @@ score_type calculate_score(
 				}
 			}
 		}
+		return cache.getScore(btr);
 	}
-	return cache.getScore(btr);
 }
 
 int main() {
@@ -148,30 +166,31 @@ int main() {
 		std::array<std::vector<card_type>,2> rows;
 		for (auto& row : rows) {
 			for (size_t i = 0; i < row_size; ++i) {
-				auto new_card = get<std::string>(std::cin);
-				// std::cout << new_card;
-				const auto letter2value = {
-					std::make_pair('J', (char)('0' + 11)),
-					std::make_pair('Q', (char)('0' + 12)),
-					std::make_pair('K', (char)('0' + 13)),
-					std::make_pair('A', (char)('0' +  1)),
-					std::make_pair('T', (char)('0' + 10)),
-					std::make_pair('R', (char)('0' + JOKER_CARD)),
-				};
-				for (const auto& pair : letter2value) {
-					if (new_card[0] == pair.first) {
-						new_card[0] = pair.second;
-						break;
-					}
+				auto new_card = get<char>(std::cin);
+				std::cout << new_card;
+				switch (new_card) {
+					case 'J':
+						row.push_back(11); break;
+					case 'Q':
+						row.push_back(12); break;
+					case 'K':
+						row.push_back(13); break;
+					case 'A':
+						row.push_back( 1); break;
+					case 'T':
+						row.push_back(10); break;
+					case 'R':
+						row.push_back(JOKER_CARD); break;
+					default:
+						row.push_back(new_card - '0'); break;
 				}
-				row.push_back(new_card[0] - '0');
-				// std::cout << ':' << (unsigned int)row.back();
-				// std::cout << ' ';
+				std::cout << ':' << (unsigned int)row.back();
+				std::cout << ' ';
 			}
-			// std::cout << '\n';
+			std::cout << '\n';
 		}
 
-		MaxScoreCache cache(row_size);
+		MaxScoreCache cache;
 		score_type score = calculate_score(
 			rows[0],
 			rows[1],
