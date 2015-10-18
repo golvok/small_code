@@ -87,10 +87,10 @@ namespace std {
 	struct hash<BottomTopRange>{
 		size_t operator()(const BottomTopRange& btr) const {
 			return
-				  ( std::hash<size_t>()( btr.begin_top    ) + 1000 )
-				^ ( std::hash<size_t>()( btr.end_top      ) + 1000 )
-				^ ( std::hash<size_t>()( btr.begin_bottom ) + 1000 )
-				^ ( std::hash<size_t>()( btr.end_bottom   ) + 1000 )
+				  ( std::hash<size_t>()( btr.begin_top    ) + 1000*0 )
+				^ ( std::hash<size_t>()( btr.end_top      ) + 1000*1 )
+				^ ( std::hash<size_t>()( btr.begin_bottom ) + 1000*2 )
+				^ ( std::hash<size_t>()( btr.end_bottom   ) + 1000*3 )
 			;
 		}
 	};
