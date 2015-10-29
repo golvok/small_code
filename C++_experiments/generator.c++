@@ -1,18 +1,29 @@
 #include <iostream>
 
-template<typename VALUE_TYPE, typename NEXT, typename DONE>
+namespace detail {
+	struct identity {
+	template<typename U>
+		constexpr auto operator()(U&& v) const noexcept -> decltype(std::forward<U>(v)) {
+			return std::forward<U>(v);
+		}
+	};
+}
+
+template<typename INDEX_TYPE, typename NEXT, typename DONE, typename TRANSFORM>
 class generator_iterator {
 private:
-	VALUE_TYPE current;
+	INDEX_TYPE current;
 	NEXT next;
 	DONE done;
+	TRANSFORM transform;
 	bool is_end_iterator;
 
 public:
-	generator_iterator(VALUE_TYPE current, NEXT next, DONE done, bool is_end_iterator)
+	generator_iterator(INDEX_TYPE current, NEXT next, DONE done, TRANSFORM transform, bool is_end_iterator)
 		: current(current)
 		, next(next)
 		, done(done)
+		, transform(transform)
 		, is_end_iterator(is_end_iterator)
 	{ }
 
@@ -35,67 +46,92 @@ public:
 
 	bool operator!=(const generator_iterator& rhs) const { return !(*this == rhs); }
 
-	VALUE_TYPE operator*() const {
-		return current;
+	auto operator*() const {
+		return transform(current);
 	}
 };
 
-template<typename VALUE_TYPE, typename NEXT, typename DONE>
+template<typename INDEX_TYPE, typename NEXT, typename DONE, typename TRANSFORM>
 class generator {
 public:
-	using iter_type = generator_iterator<VALUE_TYPE,NEXT,DONE>;
+	using iter_type = generator_iterator<INDEX_TYPE,NEXT,DONE,TRANSFORM>;
 
 private:
-	VALUE_TYPE current;
+	INDEX_TYPE current;
 	DONE done;
 	NEXT next;
+	TRANSFORM transform;
 
 public:
-	generator(VALUE_TYPE initial, DONE done, NEXT next)
+	generator(INDEX_TYPE initial, DONE done, NEXT next, TRANSFORM transform)
 		: current(initial)
 		, done(done)
 		, next(next)
+		, transform(transform)
 	{ }
 
 	iter_type begin() {
-		return iter_type(current,next,done,false);
+		return iter_type(current,next,done,transform,false);
 	}
 
 	iter_type end() {
-		return iter_type(current,next,done,true);
+		return iter_type(current,next,done,transform,true);
 	}
 };
 
-template<typename VALUE_TYPE, typename NEXT, typename DONE>
-auto make_generator(VALUE_TYPE initial, DONE done, NEXT next) {
-	return generator<VALUE_TYPE,NEXT,DONE>(
+template<typename INDEX_TYPE, typename PTYPE1, typename NEXT, typename DONE, typename TRANSFORM = detail::identity>
+auto make_generator(PTYPE1 initial, DONE done, NEXT next, TRANSFORM transform = TRANSFORM(), decltype(transform(initial),done(initial),next(initial))* = nullptr) {
+	return generator<INDEX_TYPE,NEXT,DONE,TRANSFORM>(
 		initial,
 		done,
-		next
+		next,
+		transform
 	);
 }
 
-template<typename VALUE_TYPE, typename NEXT>
-auto make_generator(VALUE_TYPE initial, VALUE_TYPE past_end, NEXT next) {
-	return make_generator(
+template<
+	typename INDEX_TYPE, typename PTYPE1, typename PTYPE2, typename NEXT, typename TRANSFORM = detail::identity,
+	typename = std::enable_if_t<
+		std::is_convertible<PTYPE1,INDEX_TYPE>::value && std::is_convertible<PTYPE2,INDEX_TYPE>::value
+	>
+>
+auto make_generator(PTYPE1 initial, PTYPE2 past_end, NEXT next, TRANSFORM transform = TRANSFORM(), decltype(transform(initial),next(initial))* = nullptr) {
+	return make_generator<INDEX_TYPE>(
 		initial,
-		[=](const VALUE_TYPE& current ) { return current == past_end; },
-		next
+		[=](const INDEX_TYPE& current ) { return current == (INDEX_TYPE)past_end; },
+		next,
+		transform
 	);
 }
 
 template<typename GEN>
 auto make_generator(GEN&& gen) {
-	using value_type = typename GEN::value_type;
-	return make_generator(
+	using index_type = typename GEN::index_type;
+	return make_generator<index_type>(
 		gen.initial(),
-		[&](const value_type& current) { return gen.done(current); },
-		[&](const value_type& current) { return gen.next(current); }
+		[&](const index_type& current) { return gen.done(current); },
+		[&](const index_type& current) { return gen.next(current); },
+		[&](const index_type& current) { return gen.transform(current); }
 	);
 }
 
+template<typename INDEX_TYPE, typename PTYPE1, typename PTYPE2, typename TRANSFORM = detail::identity>
+auto xrange(const PTYPE1& start, const PTYPE2& end, TRANSFORM transform = TRANSFORM()) {
+    return make_generator<INDEX_TYPE>(
+        start,
+        end + 1,
+        [](INDEX_TYPE i) { return i + 1; },
+        transform
+    );
+}
+
+template<typename INDEX_TYPE, typename PTYPE1>
+auto xrange(const PTYPE1& end) {
+    return xrange<INDEX_TYPE>(0,end);
+}
+
 int main() {
-	for (const auto& i : make_generator(1,11,[](const auto& i){ return i+1; })) {
+	for (const auto& i : make_generator<int>(1,11,[](const auto& i){ return i+1; })) {
 		std::cout << i << ' ';
 	}
 
@@ -107,20 +143,20 @@ int main() {
 		}
 	};
 
-	for (const auto& i : make_generator(1,1024,my_gen())) {
+	for (const auto& i : make_generator<uint>(1,1024,my_gen())) {
 		std::cout << i << ' ';
 	}
 
 	std::cout << '\n';
 
-	for (const auto& i : make_generator(1,[](const auto& i){ return i == 5; },[](const auto& i){ return i+1; })) {
+	for (const auto& i : make_generator<long>(1,[](const auto& i){ return i == 5; },[](const auto& i){ return i+1; })) {
 		std::cout << i << ' ';
 	}
 
 	std::cout << '\n';
 
 	struct my_gen2 {
-		using value_type = float;
+		using index_type = float;
 		size_t max_calls;
 		size_t calls_so_far;
 
@@ -129,18 +165,22 @@ int main() {
 			, calls_so_far(0)
 		{ }
 
-		value_type initial() const {
+		index_type initial() const {
 			return 3.0;
 		}
 
-		value_type next(const value_type& current) {
+		index_type next(const index_type& current) {
 			calls_so_far += 1;
 			return calls_so_far*4.5 + current;
 		}
 
-		bool done(const value_type& current) const {
+		bool done(const index_type& current) const {
 			(void)current; // don't use
 			return max_calls <= calls_so_far;
+		}
+
+		auto transform(index_type index) {
+			return 3*index;
 		}
 	};
 
@@ -148,4 +188,20 @@ int main() {
 		std::cout << f << ' ';
 	}
 	std::cout << '\n';
+
+	for (const auto& g : xrange<int>(1,5)) {
+		std::cout << g << ' ';
+	}
+	std::cout << '\n';
+
+	for (const auto& h : xrange<long>(5)) {
+		std::cout << h << ' ';
+	}
+	std::cout << '\n';
+
+	for (const auto& l : xrange<size_t>(1,3,[](const auto& index) -> float { return index*0.5; })) {
+		std::cout << l << ' ';
+	}
+	std::cout << '\n';
+
 }
