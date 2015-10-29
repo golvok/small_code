@@ -9,6 +9,12 @@ namespace detail {
 	};
 }
 
+template<typename INDEX_TYPE>
+struct generator_base {
+	using index_type = INDEX_TYPE;
+	auto transform(const index_type& index) { return detail::identity()(index); }
+};
+
 template<typename INDEX_TYPE, typename NEXT, typename DONE, typename TRANSFORM>
 class generator_iterator {
 private:
@@ -186,6 +192,31 @@ int main() {
 
 	for (const auto& f : make_generator(my_gen2(7))) {
 		std::cout << f << ' ';
+	}
+	std::cout << '\n';
+
+	struct my_gen3 : public generator_base<size_t> {
+		size_t max_value;
+
+		my_gen3(size_t max_value)
+			: max_value(max_value)
+		{ }
+
+		index_type initial() const {
+			return 2.0f;
+		}
+
+		index_type next(const index_type& current) {
+			return current*current;
+		}
+
+		bool done(const index_type& current) const {
+			return max_value <= current;
+		}
+	};
+
+	for (const auto& f2 : make_generator(my_gen3(300))) {
+		std::cout << f2 << ' ';
 	}
 	std::cout << '\n';
 
