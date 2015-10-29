@@ -91,7 +91,11 @@ int main() {
 	}
 	std::cout << '\n';
 
-	for (const auto& h : xrange<long>(5)) {
+	#define in :
+	#define xrange_l xrange<long>
+
+	// is this python or C++?
+	for (auto h in xrange_l(5)) {
 		std::cout << h << ' ';
 	}
 	std::cout << '\n';
