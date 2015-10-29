@@ -121,7 +121,12 @@ auto make_generator(GEN&& gen) {
 	);
 }
 
-template<typename INDEX_TYPE, typename PTYPE1, typename PTYPE2, typename TRANSFORM = detail::identity>
+template<
+	typename INDEX_TYPE, typename PTYPE1, typename PTYPE2, typename TRANSFORM = detail::identity,
+	typename = std::enable_if_t<
+		std::is_convertible<PTYPE1,INDEX_TYPE>::value && std::is_convertible<PTYPE2,INDEX_TYPE>::value
+	>
+>
 auto xrange(const PTYPE1& start, const PTYPE2& end, TRANSFORM transform = TRANSFORM()) {
     return make_generator<INDEX_TYPE>(
         start,
@@ -131,7 +136,7 @@ auto xrange(const PTYPE1& start, const PTYPE2& end, TRANSFORM transform = TRANSF
     );
 }
 
-template<typename INDEX_TYPE, typename PTYPE1>
-auto xrange(const PTYPE1& end) {
-    return xrange<INDEX_TYPE>(0,end);
+template<typename INDEX_TYPE, typename PTYPE1, typename TRANSFORM = detail::identity>
+auto xrange(const PTYPE1& end, TRANSFORM transform = TRANSFORM(), decltype(transform(end),-1)* = nullptr) {
+    return xrange<INDEX_TYPE>(0,end,transform);
 }

@@ -100,6 +100,11 @@ int main() {
 	}
 	std::cout << '\n';
 
+	for (auto h2 in xrange_l(5,[](auto i) { return i*2; })) {
+		std::cout << h2 << ' ';
+	}
+	std::cout << '\n';
+
 	for (const auto& l : xrange<size_t>(1,3,[](const auto& index) -> float { return index*0.5; })) {
 		std::cout << l << ' ';
 	}
