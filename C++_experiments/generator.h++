@@ -128,15 +128,15 @@ template<
 	>
 >
 auto xrange(const PTYPE1& start, const PTYPE2& end, TRANSFORM transform = TRANSFORM()) {
-    return make_generator<INDEX_TYPE>(
-        start,
-        end + 1,
-        [](INDEX_TYPE i) { return i + 1; },
-        transform
-    );
+	return make_generator<INDEX_TYPE>(
+		start,
+		end + 1,
+		[](INDEX_TYPE i) { return i + 1; },
+		transform
+	);
 }
 
 template<typename INDEX_TYPE, typename PTYPE1, typename TRANSFORM = detail::identity>
 auto xrange(const PTYPE1& end, TRANSFORM transform = TRANSFORM(), decltype(transform(end),-1)* = nullptr) {
-    return xrange<INDEX_TYPE>(0,end,transform);
+	return xrange<INDEX_TYPE>(0,end,transform);
 }
