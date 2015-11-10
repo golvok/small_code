@@ -128,10 +128,11 @@ template<
 	>
 >
 auto xrange(const PTYPE1& start, const PTYPE2& end, TRANSFORM transform = TRANSFORM()) {
+	const bool forwards = end >= start;
 	return make_generator<INDEX_TYPE>(
 		start,
-		end + 1,
-		[](INDEX_TYPE i) { return i + 1; },
+		end + (forwards ? 1 : -1),
+		[=](INDEX_TYPE i) { return i + (forwards ? 1 : -1); },
 		transform
 	);
 }
