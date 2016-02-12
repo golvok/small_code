@@ -131,4 +131,21 @@ int main(int argc, char** argv) {
 			std::cout << std::setfill('0') << std::setw(num_digits) << *base_r_iter << ' ' << std::setfill('0') << std::setw(num_digits) << *new_r_iter << '\n';
 		}
 	}
+
+	std::vector<std::vector<double>> x_values_matrix = {
+		{ 2, 3, 3, },
+		{ 2, 3, 4, },
+		{ 2, 3, 5, },
+		{ 2, 4, 5, },
+	};
+	std::vector<double> powers = { 1, 2, 3 };
+	std::vector<double> output;
+	output.reserve(x_values_matrix.size());
+	for (const auto& x_values : x_values_matrix) {
+		std::vector<double> powered(powers.size(), 0);
+		boost::transform(x_values, powers, powered.begin(), me::power() );
+		output.push_back(std::accumulate(powered.begin(), powered.end(), 1.0, std::multiplies<double>()));
+	}
+
+	boost::copy(output, std::ostream_iterator<double>(std::cout, ", "));
 }
