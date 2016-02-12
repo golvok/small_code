@@ -182,8 +182,26 @@ int main() {
 			cache
 		);
 
-		// std::cout << "FINAL SCORE = " << score << '\n';
-		std::cout << score << '\n';
+		std::vector<size_t> indicies;
+		for (size_t i = 0; i <= row_size; ++i) {
+			indicies.push_back(i);
+		}
+
+		for (auto a : indicies) {
+			std::cout << "\n---" << a << "---\n";
+			for (auto b : indicies) {
+				std::cout << "\n-" << b << "-\n\n";
+				for (auto c : indicies) {
+					for (auto d :indicies) {
+						std::cout << cache.getScore(BottomTopRange(a,c,b,d)) << '\t';
+					}
+					std::cout << '\n';
+				}
+			}
+		}
+
+		std::cout << "FINAL SCORE = " << score << '\n';
+		// std::cout << score << '\n';
 
 	}
 
