@@ -6,13 +6,16 @@ from PIL import Image, ImageDraw, ImageFilter
 
 ## config ##
 # meta
-num_images = 1000
+num_images = 10000
 output_dir = "lines/"
 output_prefix = output_dir
 
 # dimensions
 end_width = 10
 working_padding = 5; # on all sides
+
+# general
+background_colour = 0
 
 # line related
 acceptable_deviation_factor = 1/4
@@ -32,7 +35,7 @@ os.mkdir(output_dir);
 
 for iimage in range(num_images):
 	# create 8-bit greyscale image, with the padding
-	im = Image.new('L', (working_width, working_height))
+	im = Image.new('L', (working_width, working_height), background_colour)
 	draw = ImageDraw.Draw(im)
 
 	horiz_not_vert = random.choice([True, False])
