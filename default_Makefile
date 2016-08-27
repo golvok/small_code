@@ -1,36 +1,39 @@
 .PHONY: all
 .SUFFIXES:
-MAKEFLAGS+=" -r "
+MAKEFLAGS+=" -r -j 4"
+
 
 CXXFLAGS += -Wall -Weffc++ -Wextra -Werror -pedantic -std=c++14 -ggdb -D_GLIBCXX_DEBUG
 
 EXE_DIR=EXE
 OBJ_DIR=OBJ
 
-DIRS=$(EXE_DIR) $(OBJ_DIR)
+DIRS+=$(EXE_DIR) $(OBJ_DIR)
 
-CPPSOURCES=$(shell find * -type f -name "*.c++")
+CPPSOURCES+=$(shell find * -type f -name "*.c++")
 CSOURCES+=$(shell find * -type f -name "*.c")
 
-OBJECTS=$(CPPSOURCES:%.c++=$(OBJ_DIR)/%.o)
+OBJECTS+=$(CPPSOURCES:%.c++=$(OBJ_DIR)/%.o)
 OBJECTS+=$(CSOURCES:%.c=$(OBJ_DIR)/%.o)
+.PRECIOUS: $(OBJECTS)
 
-EXES=$(CPPSOURCES:%.c++=$(EXE_DIR)/%)
-EXES+=$(CSOURCES:%.c=$(EXE_DIR)/%)
+EXES+=$(filter-out $(IGNORE_EXES),$(CPPSOURCES:%.c++=$(EXE_DIR)/%))
+EXES+=$(filter-out $(IGNORE_EXES),$(CSOURCES:%.c=$(EXE_DIR)/%))
 
 all: $(EXES)
 
 $(OBJ_DIR)/%.o: %.c++ | $(OBJ_DIR)
-	$(CXX) -c $(CXXFLAGS) $< -o $@
+	$(CXX) -c $(CXXFLAGS) $^ -o $@
 
 $(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
 	$(CC) -c -Wall -Wextra -Werror -pedantic -std=gnu99 $< -o $@ -ggdb
 
 $(EXE_DIR)/%: $(OBJ_DIR)/%.o | $(EXE_DIR)
-	$(CXX) $(LDFLAGS) $< -o $@ -ggdb
+	$(CXX) $(LDFLAGS) $^ -o $@ -ggdb
 
 $(DIRS):
 	mkdir -p $@
 
 clean:
-	rm -r $(EXES)
+	rm -f $(EXES)
+	rm -f $(OBJECTS)
