@@ -9,6 +9,7 @@
 using namespace std;
 
 #define MY_DEBUG
+#define PRINT_NUMS
 
 
 
@@ -20,9 +21,9 @@ using namespace std;
 
 
 #ifdef MY_DEBUG
-#define DEBUG_STMT(x) x
+    #define DEBUG_STMT(x) x
 #else
-#define DEBUG_STMT(x)
+    #define DEBUG_STMT(x)
 #endif
 
 size_t combine_hashes(size_t seed, size_t v) {
@@ -31,9 +32,9 @@ size_t combine_hashes(size_t seed, size_t v) {
 
 struct Rect {
     size_t t, b, l, r;
-    size_t area() const { return (t-b)*(l-r); };
-    size_t width() const { return l - r; }
-    size_t height() const { return b - t; }
+    size_t area() const { return width() * height(); };
+    size_t width() const { return l - r + 1; }
+    size_t height() const { return b - t + 1; }
 
     bool operator==(const Rect& rhs) const {
         return (t == rhs.t) && (b == rhs.b) && (l == rhs.l) && (r == rhs.r);
@@ -50,8 +51,8 @@ namespace std {
     struct hash<Rect> {
         size_t operator()(const Rect& r) const {
             return combine_hashes(
-                combine_hashes(std::hash<int>()(r.t), std::hash<int>()(r.b)),
-                combine_hashes(std::hash<int>()(r.l), std::hash<int>()(r.r))
+                combine_hashes(std::hash<size_t>()(r.t), std::hash<size_t>()(r.b)),
+                combine_hashes(std::hash<size_t>()(r.l), std::hash<size_t>()(r.r))
             );
         }
     };
@@ -71,7 +72,7 @@ int sumUnder(const Rect& r, const Matrix& matrix) {
 int sumUnderRowSlice(size_t row, size_t cstart, size_t cstop, const Matrix& matrix) {
     const auto& row_vec = matrix[row];
     auto sum = std::accumulate(begin(row_vec)+cstart, begin(row_vec)+cstop+1, 0);
-    DEBUG_STMT((std::cout << "slice sum of " << Rect{row, row, cstart, cstop} << " is " << sum << '\n');)
+    // DEBUG_STMT((std::cout << "slice sum of " << Rect{row, row, cstart, cstop} << " is " << sum << '\n');)
     return sum;
 }
 
@@ -161,7 +162,11 @@ public:
 // numMatrix.sumRegion(0, 1, 2, 3);
 // numMatrix.sumRegion(1, 2, 3, 4);
 
-
+#ifdef PRINT_NUMS
+    #define PRINT_WITH_NEWLINE(x) std::cout << x << '\n';
+#else
+    #define PRINT_WITH_NEWLINE(x) x
+#endif
 
 int main() {
     {
@@ -188,39 +193,42 @@ int main() {
 
         NumMatrix num_matrix(matrix);
 
-        std::cout << num_matrix.sumRegion(14,15,14,16) << '\n';
-        std::cout << num_matrix.sumRegion(4,10,4,17) << '\n';
-        std::cout << num_matrix.sumRegion(16,10,16,17) << '\n';
-        std::cout << num_matrix.sumRegion(11,18,15,18) << '\n';
-        std::cout << num_matrix.sumRegion(9,7,17,18) << '\n';
-        std::cout << num_matrix.sumRegion(13,1,14,2) << '\n';
-        std::cout << num_matrix.sumRegion(9,15,9,18) << '\n';
-        std::cout << num_matrix.sumRegion(7,6,11,16) << '\n';
-        std::cout << num_matrix.sumRegion(16,16,17,16) << '\n';
-        std::cout << num_matrix.sumRegion(15,2,17,11) << '\n';
-        std::cout << num_matrix.sumRegion(14,17,16,18) << '\n';
-        std::cout << num_matrix.sumRegion(10,9,14,14) << '\n';
-        std::cout << num_matrix.sumRegion(7,4,15,15) << '\n';
-        std::cout << num_matrix.sumRegion(6,12,12,13) << '\n';
-        std::cout << num_matrix.sumRegion(1,8,12,14) << '\n';
-        std::cout << num_matrix.sumRegion(1,16,6,18) << '\n';
-        std::cout << num_matrix.sumRegion(3,5,11,10) << '\n';
-        std::cout << num_matrix.sumRegion(12,13,17,16) << '\n';
-        std::cout << num_matrix.sumRegion(11,18,17,18) << '\n';
-        std::cout << num_matrix.sumRegion(7,11,9,14) << '\n';
-        std::cout << num_matrix.sumRegion(6,16,12,18) << '\n';
-        std::cout << num_matrix.sumRegion(5,3,12,9) << '\n';
-        std::cout << num_matrix.sumRegion(8,12,10,16) << '\n';
-        std::cout << num_matrix.sumRegion(0,18,1,18) << '\n';
-        std::cout << num_matrix.sumRegion(17,10,17,10) << '\n';
-        std::cout << num_matrix.sumRegion(14,12,14,18) << '\n';
-        std::cout << num_matrix.sumRegion(12,12,15,12) << '\n';
-        std::cout << num_matrix.sumRegion(9,7,9,16) << '\n';
-        std::cout << num_matrix.sumRegion(11,15,14,17) << '\n';
-        std::cout << num_matrix.sumRegion(12,0,17,12) << '\n';
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(14,15,14,16) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(4,10,4,17) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(16,10,16,17) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(11,18,15,18) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(9,7,17,18) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(13,1,14,2) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(9,15,9,18) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(7,6,11,16) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(16,16,17,16) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(15,2,17,11) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(14,17,16,18) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(10,9,14,14) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(7,4,15,15) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(6,12,12,13) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(1,8,12,14) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(1,16,6,18) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(3,5,11,10) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(12,13,17,16) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(11,18,17,18) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(7,11,9,14) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(6,16,12,18) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(5,3,12,9) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(8,12,10,16) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(0,18,1,18) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(17,10,17,10) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(14,12,14,18) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(12,12,15,12) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(9,7,9,16) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(11,15,14,17) );
+        PRINT_WITH_NEWLINE( num_matrix.sumRegion(12,0,17,12) );
         
 
-        std::cout << "\n=========\n\n";
+        auto& dummy = PRINT_WITH_NEWLINE( "\n=========\n" );
+        (void)dummy;
+
+    }
 
     }
 }
