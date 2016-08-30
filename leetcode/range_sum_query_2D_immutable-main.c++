@@ -17,6 +17,36 @@ int sumRegion(NumMatrix& nm, int rstart, int cstart, int rstop, int cstop);
 
 int main() {
     {
+        vector<vector<int>> matrix;
+
+        NumMatrix* num_matrix = make_num_matrix(matrix);
+        (void)num_matrix;
+
+        auto& dummy = PRINT_WITH_NEWLINE( "\n=========\n" );
+        (void)dummy;
+    }
+
+    {
+        vector<vector<int>> matrix{
+            {3,0,1,4,2},
+            {5,6,3,2,1},
+            {1,2,0,1,5},
+            {4,1,0,1,7},
+            {1,0,3,0,5}
+        };
+
+        NumMatrix* num_matrix = make_num_matrix(matrix);
+        (void)num_matrix;
+
+        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 2,1,4,3) );
+        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 1,1,2,2) );
+        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 1,2,2,4) );
+
+        auto& dummy = PRINT_WITH_NEWLINE( "\n=========\n" );
+        (void)dummy;
+    }
+
+    {
         vector<vector<int>> matrix{
             {-56570,17068,-26223,-53913,-26086,26309,65796,-56742,-74513,73420,-23726,89259,64856,91259,47122,-66481,-94327,-88320,56730},
             {33743,-36980,81122,-85032,-48099,-27038,-24047,20088,-49668,-12309,-98620,-42131,-17465,-77191,-12069,-55025,30930,-13511,-29547},
