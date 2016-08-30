@@ -11,3 +11,6 @@ equidistant-towns/eq_towns
 */EXE
 */OBJ
 */DEPS
+
+*.mti
+*.wlf
