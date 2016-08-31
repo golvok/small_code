@@ -57,9 +57,70 @@ namespace std {
     };
 }
 
-using Matrix = vector<vector<int>>;
+using VecVecInt = vector<vector<int>>;
 
-int sumUnder(const Rect& r, const Matrix& matrix) {
+struct ContigMatrix {
+    int* memory;
+    int** row_ptrs;
+
+    ContigMatrix() : memory(nullptr), row_ptrs(nullptr) { }
+
+    ContigMatrix(size_t width, size_t height)
+        : memory(new int[width*height])
+        , row_ptrs(new int*[height])
+    {
+        for (size_t row = 0; row != height; ++row) {
+            row_ptrs[row] = memory + row * width;
+        }
+    }
+
+    ContigMatrix(ContigMatrix&&) = default;
+    ContigMatrix(const ContigMatrix&) = delete;
+
+    ContigMatrix& operator=(ContigMatrix&&) = default;
+    ContigMatrix& operator=(const ContigMatrix&) = delete;
+
+    ~ContigMatrix() {
+        // purposefully leak ? Doesn't seem to help, actually.
+        delete [] memory;
+        delete [] row_ptrs;
+    }
+
+    const int* operator[](const size_t& i) const {
+        return row_ptrs[i];
+    }
+
+    int* operator[](const size_t& i) {
+        return row_ptrs[i];
+    }
+};
+
+struct VecMatrix {
+    VecVecInt matrix;
+
+    VecMatrix() : matrix() { }
+
+    VecMatrix(size_t width, size_t height) : matrix(height, std::vector<int>(width, 0)) { }
+
+    VecMatrix(VecMatrix&&) = default;
+    VecMatrix(const VecMatrix&) = delete;
+
+    VecMatrix& operator=(VecMatrix&&) = default;
+    VecMatrix& operator=(const VecMatrix&) = delete;
+
+    std::vector<int>& operator[](size_t i) {
+        return matrix[i];
+    }
+
+    const std::vector<int>& operator[](size_t i) const {
+        return matrix[i];
+    }
+};
+
+// set to ContigMatrix for speed
+using SFMatrix = VecMatrix;
+
+int sumUnder(const Rect& r, const VecVecInt& matrix) {
     int sum = 0;
     for (size_t row = r.t; row != r.b; ++row) {
         const auto& row_vec = matrix[row];
@@ -70,7 +131,7 @@ int sumUnder(const Rect& r, const Matrix& matrix) {
     return sum;
 }
 
-int sumUnderRowSlice(size_t row, size_t cstart, size_t cstop, const Matrix& matrix) {
+int sumUnderRowSlice(size_t row, size_t cstart, size_t cstop, const VecVecInt& matrix) {
     const auto& row_vec = matrix[row];
     auto sum = std::accumulate(begin(row_vec)+cstart, begin(row_vec)+cstop+1, 0);
     // DEBUG_STMT((std::cout << "slice sum of " << Rect{row, row, cstart, cstop} << " is " << sum << '\n');)
@@ -97,33 +158,35 @@ size_t num_supergrid_levels_between(T start, T stop) {
     return count;
 }
 
-Matrix createSumFromMatrixFromMatrix(
+SFMatrix createSumFromMatrixFromMatrix(
     const size_t rstart, const size_t rstop, const ptrdiff_t rstep,
     const size_t cstart, const size_t cstop, const ptrdiff_t cstep,
     const size_t mat_height, const size_t mat_width,
-    const Matrix& matrix
+    const VecVecInt& matrix
 ) {
-    Matrix sum_from_matrix;
+    const size_t true_rstart = rstart+1;
+    const size_t true_rstop = rstop+1;
+    const size_t true_cstart = cstart+1;
+    const size_t true_cstop = cstop+1;
+    const size_t true_mat_height = mat_height + 2;
+    const size_t true_mat_width = mat_width + 2;
 
-    if (mat_height == 0 || mat_width == 0) {
+    SFMatrix sum_from_matrix(true_mat_width, true_mat_height);
+
+    if (mat_width == 0 || mat_height == 0) {
         return sum_from_matrix;
     }
 
-    sum_from_matrix.resize(mat_height);
-
-    // init first row - corner case
-    sum_from_matrix[rstart].resize(mat_width);
-    sum_from_matrix[rstart][cstart] = matrix[rstart][cstart];
-    for (size_t col = (cstart+cstep); col != cstop+cstep; col += cstep) {
-        sum_from_matrix[rstart][col] = sum_from_matrix[rstart][col-cstep] + matrix[rstart][col];
+    // init first row to zeroes - corner case
+    for (size_t col = 0; col != true_mat_width; ++col) {
+        sum_from_matrix[true_rstart-rstep][col] = 0;
     }
 
     // init rest
-    for (size_t row = (rstart+rstep); row != rstop+rstep; row += rstep) {
-        sum_from_matrix[row].resize(mat_width);
-        sum_from_matrix[row][cstart] = sum_from_matrix[row-rstep][cstart] + matrix[row][cstart]; // init first element - corner case
-        for (size_t col = (cstart+cstep); col != cstop+cstep; col += cstep) {
-            sum_from_matrix[row][col] = sum_from_matrix[row-rstep][col] + sum_from_matrix[row][col-cstep] - sum_from_matrix[row-rstep][col-cstep] + matrix[row][col];
+    for (size_t row = true_rstart; row != true_rstop+rstep; row += rstep) {
+        sum_from_matrix[row][true_cstart-cstep] = 0; // init first element - corner case
+        for (size_t col = true_cstart; col != true_cstop+cstep; col += cstep) {
+            sum_from_matrix[row][col] = sum_from_matrix[row-rstep][col] + sum_from_matrix[row][col-cstep] - sum_from_matrix[row-rstep][col-cstep] + matrix[row-1][col-1];
         }
     }
 
@@ -137,31 +200,33 @@ public:
 
     size_t max_supergrid_size;
 
-    Matrix matrix;
+    VecVecInt matrix;
     const size_t min_supergrid_size_to_sum = 1;
     const int LEVELROWCOL_UNINIT_VALUE = std::numeric_limits<int>::min();
 
     std::unordered_map<Rect,int> rect2sum;
     std::vector<std::vector<std::vector<int>>> levelrowcol2sum;
 
-    const bool constant_lookup_mode;
+    const bool sum_from_matrix_mode;
+    const bool one_matrix_sum_from_matrix_mode;
 
 
-    const Matrix sum_from_bottom_right;
-    const Matrix sum_from_bottom_left;
-    const Matrix sum_from_top_right;
-    const Matrix sum_from_top_left;
+    const SFMatrix sum_from_bottom_right;
+    const SFMatrix sum_from_bottom_left;
+    const SFMatrix sum_from_top_right;
+    const SFMatrix sum_from_top_left;
 
     const int total_matrix_sum;
 
-    NumMatrix(vector<vector<int>>& _matrix, bool _constant_lookup_mode = true)
+    NumMatrix(vector<vector<int>>& _matrix, bool _sum_from_matrix_mode = true, bool _one_matrix_sum_from_matrix_mode = true)
         : mat_height(_matrix.size())
         , mat_width(mat_height == 0 ? 0 : _matrix[0].size())
         , max_supergrid_size(0)
         , matrix(std::move(_matrix))
         , rect2sum()
         , levelrowcol2sum()
-        , constant_lookup_mode(_constant_lookup_mode)
+        , sum_from_matrix_mode(_sum_from_matrix_mode)
+        , one_matrix_sum_from_matrix_mode(_one_matrix_sum_from_matrix_mode)
         , sum_from_bottom_right(createSumFromMatrixFromMatrix(
             mat_height-1, 0, -1,
             mat_width-1,  0, -1,
@@ -188,13 +253,13 @@ public:
         ))
         , total_matrix_sum(sumUnder(Rect{0, mat_height, 0, mat_width}, matrix))
     {
-        if (constant_lookup_mode) {
+        if (sum_from_matrix_mode) {
             // do nothing?
         } else {
             max_supergrid_size = nearest_supergrid_length_less(mat_width);
 
             // const auto num_supergrid_levels = 2 + num_supergrid_levels_between(min_supergrid_size_to_sum, max_supergrid_size);
-            
+
             levelrowcol2sum.resize(max_supergrid_size+1);
             for (size_t index = min_supergrid_size_to_sum; index <= max_supergrid_size; index *= SUPERGRID_CONTSANT) {
                 levelrowcol2sum[index].resize(mat_height);
@@ -206,21 +271,22 @@ public:
     }
 
     int sumRegion(size_t row1, size_t col1, size_t row2, size_t col2) {
-        if (constant_lookup_mode) {
-            int sum = total_matrix_sum;
-            if (row1 != 0) {
-                sum -= sum_from_top_right[row1-1][col1];
+        if (sum_from_matrix_mode) {
+            if (one_matrix_sum_from_matrix_mode) {
+                return 0
+                    + sum_from_top_left[1+ row2  ][1+ col2  ]
+                    - sum_from_top_left[1+ row2  ][1+ col1-1]
+                    - sum_from_top_left[1+ row1-1][1+ col2  ]
+                    + sum_from_top_left[1+ row1-1][1+ col1-1]
+                ;
+            } else {
+                return  total_matrix_sum
+                     - sum_from_top_right[1+ row1-1][1+ col1]
+                     - sum_from_bottom_right[1+ row1][1+ col2+1]
+                     - sum_from_bottom_left[1+ row2+1][1+ col2]
+                     - sum_from_top_left[1+ row2][1+ col1-1]
+                ;
             }
-            if (col2+1 != mat_width) {
-                sum -= sum_from_bottom_right[row1][col2+1];
-            }
-            if (row2+1 != mat_height) {
-                sum -= sum_from_bottom_left[row2+1][col2];
-            }
-            if (col1 != 0) {
-                sum -= sum_from_top_left[row2][col1-1];
-            }
-            return sum;
         } else {
             int sum = 0;
             for (size_t row = row1; row != row2+1; ++row) {
@@ -251,7 +317,7 @@ public:
         const auto max_supergrid_length = nearest_supergrid_length_less(row_width);
         const auto first_supergridline_after_cstart = (cstart/max_supergrid_length + 1)*max_supergrid_length;
 
-        
+
         const int sum = [&]() {
             if (cstart % max_supergrid_length == 0 && row_width == max_supergrid_length) {
                 // case 0: a slice on a boundary, that is the length of that gridsize
@@ -330,7 +396,7 @@ public:
 
 
 NumMatrix* make_num_matrix(std::vector<std::vector<int>>& matrix) {
-    return new NumMatrix(matrix, true);
+    return new NumMatrix(matrix, true, true);
 }
 
 int sumRegion(NumMatrix& nm, int rstart, int cstart, int rstop, int cstop) {
