@@ -133,7 +133,9 @@ int main() {
 
 			} break;
 		case Modes::COLON_SEPARATED: {
-			const auto identifier = x3::lexeme[ +( chars::alpha | x3::lit('_') ) >> *( chars::alnum | x3::lit('_') ) ];
+			const auto identifier = x3::lexeme[ !chars::char_("0-9") >> +( chars::char_("0-9a-zA-Z_") ) ];
+			// also works:
+			// const auto identifier = x3::raw[x3::lexeme[ +( chars::alpha | x3::char_('_') ) >> *( chars::alnum | x3::char_('_') ) ]];
 
 			std::vector<std::string> objs;
 			const bool is_match = x3::phrase_parse( iter_in_line, end_of_line,

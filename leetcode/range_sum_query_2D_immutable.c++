@@ -117,8 +117,8 @@ struct VecMatrix {
     }
 };
 
-// set to ContigMatrix for speed
-using SFMatrix = VecMatrix;
+using SFMatrix = ContigMatrix; // set to ContigMatrix for speed.
+// using SFMatrix = VecMatrix; // can be alot slower if debug stdlib is used
 
 int sumUnder(const Rect& r, const VecVecInt& matrix) {
     int sum = 0;

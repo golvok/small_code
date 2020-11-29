@@ -5,6 +5,8 @@
 #include <iomanip>
 #include <iostream>
 #include <cstdint>
+#include <cmath>
+#include <numeric>
 
 #include <boost/iterator/filter_iterator.hpp>
 #include <boost/range/algorithm.hpp>

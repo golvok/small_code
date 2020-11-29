@@ -2,8 +2,9 @@
 .SUFFIXES:
 MAKEFLAGS+=" -r -j 4"
 
-
-CXXFLAGS += -Wall -Weffc++ -Wextra -Werror -pedantic -std=c++14 -ggdb -D_GLIBCXX_DEBUG
+MY_CFLAGS = -Wall -Wextra -pedantic -std=gnu99 -I ../include $(CFLAGS)
+MY_CXXFLAGS = -Wall -Weffc++ -Wextra -pedantic -std=c++2a -g -I ../include $(CXXFLAGS)
+MY_LDFLAGS = $(LDFLAGS)
 
 EXE_DIR=EXE
 OBJ_DIR=OBJ
@@ -23,13 +24,16 @@ EXES+=$(filter-out $(IGNORE_EXES),$(CSOURCES:%.c=$(EXE_DIR)/%))
 all: $(EXES)
 
 $(OBJ_DIR)/%.o: %.c++ | $(OBJ_DIR)
-	$(CXX) -c $(CXXFLAGS) $^ -o $@
+	@mkdir -p $(dir $@)
+	$(CXX) -c $< -o $@ $(MY_CXXFLAGS)
 
 $(OBJ_DIR)/%.o: %.c | $(OBJ_DIR)
-	$(CC) -c -Wall -Wextra -Werror -pedantic -std=gnu99 $< -o $@ -ggdb
+	@mkdir -p $(dir $@)
+	$(CC) -c $< -o $@ $(MY_CFLAGS)
 
 $(EXE_DIR)/%: $(OBJ_DIR)/%.o | $(EXE_DIR)
-	$(CXX) $(LDFLAGS) $^ -o $@ -ggdb
+	@mkdir -p $(dir $@)
+	$(CXX) $^ -o $@ $(MY_LDFLAGS)
 
 $(DIRS):
 	mkdir -p $@
