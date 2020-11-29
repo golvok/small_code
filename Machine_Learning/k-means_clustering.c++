@@ -92,7 +92,10 @@ std::pair<OrdinateList,OrdinateList> k_means_clustering(
 		std::vector<double> closest_sums_y(mean_xes.size(), 0);
 		std::vector<MeanCount> point_count(mean_xes.size(), 0);
 
+		// find the closest mean and update it's new x & y totals to compute the centroids
 		for (auto point_index : xrange<size_t>((size_t)0, xes.size()-1)) {
+
+			// first, find the closest mean
 			size_t closest_mean = -1;
 			double best_distance = std::numeric_limits<double>::max();
 			for (auto mean_index : xrange<size_t>((size_t)0, mean_xes.size()-1)) {
@@ -106,13 +109,19 @@ std::pair<OrdinateList,OrdinateList> k_means_clustering(
 				}
 			}
 			assert(closest_mean != (size_t)-1);
+
+			// now add this to the numerator of the mean's new x and y values
 			closest_sums_x[closest_mean] += xes[point_index];
 			closest_sums_y[closest_mean] += yes[point_index];
+
+			// keep track of the number of points assigned to this mean - this is the denominator
 			point_count[closest_mean] += 1;
 		}
 
 		double total_diff = 0;
 
+
+		// compute new centroids, and print out some stuff. Also compute convergence measure
 		std::cout << mean_xes.size() << "\n";
 		for (auto mean_index : xrange<size_t>((size_t)0, mean_xes.size()-1)) {
 			std::cout << point_count[mean_index] << ", ";
@@ -120,9 +129,14 @@ std::pair<OrdinateList,OrdinateList> k_means_clustering(
 				continue; // no divide by zero
 			}
 
+			// compute x and y centroid
 			auto new_mean_x = closest_sums_x[mean_index]/point_count[mean_index];
 			auto new_mean_y = closest_sums_y[mean_index]/point_count[mean_index];
+
+			// add to total change
 			total_diff += std::abs(mean_xes[mean_index] - new_mean_x) + std::abs(mean_yes[mean_index] - new_mean_y);
+
+			// update mean locations
 			mean_xes[mean_index] = new_mean_x;
 			mean_yes[mean_index] = new_mean_y;
 		}
@@ -131,6 +145,7 @@ std::pair<OrdinateList,OrdinateList> k_means_clustering(
 		plot_means_and_points(xes, yes, mean_xes, mean_yes);
 		getchar();
 
+		// check convergence measure
 		if (total_diff < 0.01) {
 			break;
 		}
