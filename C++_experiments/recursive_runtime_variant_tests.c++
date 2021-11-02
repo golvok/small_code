@@ -49,9 +49,23 @@ TEST_CASE("basic use", "") {
 		child["k"] = 8;
 		REQUIRE(root["j"]["k"].get<int>() == 8);
 	}
-	SECTION("assign node") {
+	SECTION("assign empty rvalue node") {
 		NodeOwning root;
 		root["j"] = NodeOwning();
 		REQUIRE(root["j"].get<rrv::Dict>().empty());
+	}
+	SECTION("move-assign nested node") {
+		NodeOwning root;
+		NodeOwning child;
+		child["k"] = 44;
+		root["j"] = std::move(child);
+		REQUIRE(root["j"]["k"].get<int>() == 44);
+	}
+	SECTION("copy-assign nested node") {
+		NodeOwning root;
+		NodeOwning child;
+		child["k"] = 44;
+		root["j"] = child;
+		REQUIRE(root["j"]["k"].get<int>() == 44);
 	}
 }

@@ -56,7 +56,7 @@ $(EXE_DIR)/%: $(OBJ_DIR)/%.o
 	$(CXX) $^ -o $@ $(MY_LDFLAGS)
 
 run__%: $(EXE_DIR)/%
-	"$<"
+	$(RUN_UNDER) "$<"
 
 clean:
 	rm -f $(EXES)

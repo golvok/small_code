@@ -68,24 +68,32 @@ using DictBase = std::map<std::string, std::unique_ptr<NodeBase>, std::less<>>;
 struct Dict : NodeBase, private DictBase {
 public:
 	Dict() {}
-	Dict(const Dict&) = delete;
-	Dict& operator=(const Dict&) = delete;
+	Dict(const Dict& src) : DictBase() { *this = src; }
+	Dict& operator=(const Dict& rhs) {
+		// if NodeOwning is the mapped_type, this can be removed (default should work)
+		clear();
+		for (const auto& [k, v] : rhs) {
+			emplace(k, v->clone());
+		}
+		return *this;
+	}
 	Dict(Dict&&) = default;
 	Dict& operator=(Dict&&) = default;
 
 	using DictBase::find;
 	using DictBase::empty;
 	using DictBase::size;
+	using DictBase::clear;
 
-	virtual Dict toDict() const override { throw std::logic_error("TODO: implement clone operation on NodeBase"); }
-	// todo: don't make a string (use transparent find)
+	virtual Dict toDict() const override { return *this; }
+	// TODO: don't make a string (use transparent find)
 	virtual const NodeBase& operator[](std::string_view sv) const override { return *at(std::string(sv)); };
 	virtual NodeBase& operator[](std::string_view sv) override;
 };
 
 template <typename T>
 Dict convertToDict(const T&) {
-	throw std::logic_error("todo: implement Dict conversion");
+	throw std::logic_error("TODO: implement Dict conversion");
 }
 
 template <typename T>
@@ -129,6 +137,14 @@ struct NodeConcrete : NodeBase {
 		return convertToDict(obj);
 	}
 
+	std::unique_ptr<NodeBase> clone() const& override {
+		return std::unique_ptr<NodeBase>(new NodeConcrete<T>(obj));
+	}
+
+	std::unique_ptr<NodeBase> clone() && override {
+		return std::unique_ptr<NodeBase>(new NodeConcrete<T>(std::move(obj)));
+	}
+
 	T& getObj() & { return obj; }
 	const T& getObj() const& { return obj; }
 
@@ -147,21 +163,11 @@ public:
 	using DictImpl = Dict;
 	// using ObjectImpl = std::unique_ptr<NodeOwning>;
 	// using DictImpl = NodeConcrete<Dict>;
+	// using Impl = std::unique_ptr<NodeOwning>;
 	using ObjectImpl = std::unique_ptr<NodeBase>;
 	using Impl = std::variant<DictImpl, ObjectImpl>;
 	Impl impl;
 
-	NodeOwning() : impl(DictImpl()) {}
-	NodeOwning(const NodeOwning&) = delete;
-	NodeOwning(NodeOwning&&) = default;
-	explicit NodeOwning(ObjectImpl ri) : impl(std::move(ri)) {}
-	explicit NodeOwning(DictImpl di) : impl(std::move(di)) {}
-	NodeOwning& operator=(const NodeOwning&) = delete;
-	NodeOwning& operator=(NodeOwning&&) = default;
-
-	template<typename T>
-	// NodeOwning(T&& t) : impl(std::any(std::forward<T>(t))) {}
-	NodeOwning(T&& t) : impl(ObjectImpl(new NodeConcrete<T>(std::forward<T>(t)))) {}
 	template<typename Self, typename DictF, typename ObjF>
 	friend decltype(auto) visitImpl(Self& self, DictF&& dict_f, ObjF&& obj_f) {
 		static_assert(std::variant_size_v<Impl> == 2);
@@ -174,8 +180,80 @@ public:
 		}
 	}
 
-	NodeOwning& assign(NodeOwning&& rhs) {
-		this->impl = std::move(rhs.impl);
+	NodeOwning() : impl(DictImpl()) {}
+	NodeOwning(const NodeOwning& src) : impl() { *this = src; }
+	NodeOwning(NodeOwning&& src) : impl() { *this = std::move(src); }
+	NodeOwning& operator=(const NodeOwning& src) {
+		visitImpl(src,
+			[this](auto& dict) { *this = dict; },
+			[this](auto& obj)  { *this = obj; }
+		);
+		return *this;
+	}
+	NodeOwning& operator=(NodeOwning&& src) {
+		visitImpl(src,
+			[this](auto& dict) { *this = std::move(dict); },
+			[this](auto& obj)  { *this = std::move(obj); }
+		);
+		return *this;
+	}
+	explicit NodeOwning(ObjectImpl ri) : impl(std::move(ri)) {}
+	explicit NodeOwning(DictImpl di) : impl(std::move(di)) {}
+
+	template<typename T>
+	NodeOwning(T&& t) : impl(ObjectImpl(new NodeConcrete<T>(std::forward<T>(t)))) {}
+
+	template<typename T>
+	NodeOwning& operator=(T&& rhs) {
+		using PlainT = std::remove_cvref_t<T>;
+		const bool is_copy_assignment = std::is_reference_v<T>;
+		using ForwardingNodeOwningNoConst = std::conditional_t<is_copy_assignment, NodeOwning&, NodeOwning&&>;
+		using ForwardingNodeOwning = std::conditional_t<std::is_const_v<T>, const ForwardingNodeOwningNoConst, ForwardingNodeOwningNoConst>;
+		using ForwardingDictNoConst = std::conditional_t<is_copy_assignment, Dict&, Dict&&>;
+		using ForwardingDict = std::conditional_t<std::is_const_v<T>, const ForwardingDictNoConst, ForwardingDictNoConst>;
+		const auto fwd_rhs = [&rhs]() -> decltype(auto) { return std::forward<T>(rhs); };
+
+		if constexpr (std::is_same_v<NodeOwning, PlainT>) {
+			if constexpr (is_copy_assignment) {
+				visitImpl(rhs,
+					[this](auto& rhs_dict) { impl = rhs_dict; }, // just copy the dict
+					[this](auto& rhs_obj)  { *this = rhs_obj; } // recurse on held object
+				);
+			} else {
+				this->impl = fwd_rhs().impl;
+			}
+		} else if constexpr (std::is_same_v<Dict, PlainT>) {
+			// want to avoid impl being a ObjctImpl(Dict*)
+			impl = fwd_rhs();
+		} else if constexpr (std::is_base_of_v<NodeBase, PlainT>) {
+			if (auto rhs_as_owning = dynamic_cast<NodeOwning*>(&rhs)) {
+				// want to avoid impl being a ObjectImpl(NodeOwning*). Recurse and use NodeOwning case
+				*this = static_cast<ForwardingNodeOwning>(*rhs_as_owning);
+			} else if (auto rhs_as_dict = dynamic_cast<Dict*>(&rhs)) {
+				// want to avoid impl being a ObjectImpl(Dict*). Recurse and use Dict case
+				*this = static_cast<ForwardingDict>(*rhs_as_dict);
+			} else {
+				// some other NodeBase... overwrite impl with it
+				impl = NodeOwning::ObjectImpl(fwd_rhs().clone());
+			}
+		} else {
+			// T is some type outside of the NodeBase hierarchy. Copy/move into a node
+			visitImpl(*this,
+				[&](auto& /*dict*/) {
+					// have a Dict; overwrite with object impl by making a new node
+					impl = NodeOwning::ObjectImpl(new NodeConcrete<PlainT>(fwd_rhs()));
+				},
+				[&, this](auto& obj) {
+					if (auto obj_impl = obj.template get_if<PlainT>()) {
+						// type matches. Do an assignment to the underlying object
+						*obj_impl = fwd_rhs();
+					} else {
+						// type does not match. Make a new node
+						std::get_if<ObjectImpl>(&impl)->reset(new NodeConcrete<PlainT>(fwd_rhs()));
+					}
+				}
+			);
+		}
 		return *this;
 	}
 
@@ -200,6 +278,9 @@ public:
 	}
 	std::unique_ptr<NodeBase> clone() && override {
 		return std::unique_ptr<NodeBase>(new NodeOwning(std::move(*this)));
+	}
+	std::unique_ptr<NodeBase> clone() const& override {
+		return std::unique_ptr<NodeBase>(new NodeOwning(*this));
 	}
 
 	// NodeOwning operator[](std::string_view sv) { return getImpl()[sv]; }
@@ -241,49 +322,17 @@ const T* NodeBase::get_if() const {
 
 template <typename T>
 NodeBase& NodeBase::operator=(T&& rhs) {
-	using PlainT = std::remove_cv_t<T>;
+	using PlainT = std::remove_cvref_t<T>;
 	constexpr auto t_derives_nodebase = std::is_base_of_v<NodeBase, PlainT>;
 
 	if constexpr (not t_derives_nodebase) {
 		if (auto downcasted = dynamic_cast<NodeConcrete<PlainT>*>(this)) {
 			downcasted->obj = std::forward<T>(rhs);
+			return *this;
 		}
 	}
 	if (auto downcasted = dynamic_cast<NodeOwning*>(this)) {
-		// TODO: move this code into NodeOwning
-		if constexpr (std::is_same_v<PlainT, Dict>) {
-			if (auto dict = std::get_if<NodeOwning::DictImpl>(&downcasted->impl)) {
-				*dict = std::forward<T>(rhs);
-			} else {
-				downcasted->impl = std::forward<T>(rhs);
-			}
-		} else {
-			if (auto obj = std::get_if<NodeOwning::ObjectImpl>(&downcasted->impl)) {
-				if constexpr (t_derives_nodebase) {
-					if (auto rhs_as_owning = dynamic_cast<NodeOwning*>(&rhs)) {
-						downcasted->assign(static_cast<std::conditional_t<std::is_reference_v<PlainT>, NodeOwning&, NodeOwning&&>>(*rhs_as_owning));
-					} else {
-						downcasted->impl = NodeOwning::ObjectImpl(std::forward<T>(rhs).clone());
-					}
-				} else {
-					if (auto downcasted_obj_impl = dynamic_cast<NodeConcrete<PlainT>*>(obj->get())) {
-						downcasted_obj_impl->obj = std::forward<T>(rhs);
-					} else {
-						downcasted->impl = NodeOwning::ObjectImpl(new NodeConcrete<T>(std::forward<T>(rhs)));
-					}
-				}
-			} else {
-				if constexpr (t_derives_nodebase) {
-					if (auto rhs_as_owning = dynamic_cast<NodeOwning*>(&rhs)) {
-						downcasted->assign(static_cast<std::conditional_t<std::is_reference_v<PlainT>, NodeOwning&, NodeOwning&&>>(*rhs_as_owning));
-					} else {
-						downcasted->impl = NodeOwning::ObjectImpl(std::forward<T>(rhs).clone());
-					}
-				} else {
-					downcasted->impl = NodeOwning::ObjectImpl(new NodeConcrete<T>(std::forward<T>(rhs)));
-				}
-			}
-		}
+		*downcasted = std::forward<T>(rhs);
 	}
 	return *this;
 }
