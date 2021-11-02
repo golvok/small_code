@@ -10,7 +10,7 @@ extern "C" {
     int sumRegion(NumMatrix* nm, int rstart, int cstart, int rstop, int cstop);
 }
 
-int sumRegion(NumMatrix& nm, int rstart, int cstart, int rstop, int cstop) {
+int sumRegion_ref(NumMatrix& nm, int rstart, int cstart, int rstop, int cstop) {
     return sumRegion(&nm, rstart, cstart, rstop, cstop);
 }
 
@@ -32,9 +32,9 @@ int main() {
 
         NumMatrix* num_matrix = NumMatrixCreate(row_ptrs, 2, 1);
 
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 0,0,0,0) ) ;
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 0,0,0,1) ) ;
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 0,1,0,1) ) ;
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 0,0,0,0) ) ;
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 0,0,0,1) ) ;
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 0,1,0,1) ) ;
 
         NumMatrixFree(num_matrix);
 
@@ -57,11 +57,11 @@ int main() {
 
         NumMatrix* num_matrix = NumMatrixCreate(row_ptrs, 4, 3);
 
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 2,1,2,1) ) ;
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 2,1,2,2) ) ;
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 2,2,2,2) ) ;
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 1,3,2,3) ) ;
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 1,3,2,3) ) ;
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 2,1,2,1) ) ;
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 2,1,2,2) ) ;
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 2,2,2,2) ) ;
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 1,3,2,3) ) ;
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 1,3,2,3) ) ;
 
         NumMatrixFree(num_matrix);
 
@@ -89,9 +89,9 @@ int main() {
         NumMatrix* num_matrix = NumMatrixCreate(row_ptrs, 5, 5);
         (void)num_matrix;
 
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 2,1,4,3) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 1,1,2,2) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 1,2,2,4) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 2,1,4,3) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 1,1,2,2) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 1,2,2,4) );
 
         NumMatrixFree(num_matrix);
 
@@ -145,36 +145,36 @@ int main() {
 
         NumMatrix* num_matrix = NumMatrixCreate(row_ptrs, 18, 19);
 
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 14,15,14,16) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 4,10,4,17) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 16,10,16,17) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 11,18,15,18) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 9,7,17,18) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 13,1,14,2) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 9,15,9,18) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 7,6,11,16) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 16,16,17,16) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 15,2,17,11) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 14,17,16,18) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 10,9,14,14) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 7,4,15,15) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 6,12,12,13) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 1,8,12,14) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 1,16,6,18) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 3,5,11,10) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 12,13,17,16) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 11,18,17,18) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 7,11,9,14) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 6,16,12,18) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 5,3,12,9) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 8,12,10,16) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 0,18,1,18) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 17,10,17,10) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 14,12,14,18) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 12,12,15,12) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 9,7,9,16) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 11,15,14,17) );
-        PRINT_WITH_NEWLINE( sumRegion(*num_matrix, 12,0,17,12) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 14,15,14,16) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 4,10,4,17) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 16,10,16,17) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 11,18,15,18) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 9,7,17,18) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 13,1,14,2) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 9,15,9,18) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 7,6,11,16) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 16,16,17,16) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 15,2,17,11) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 14,17,16,18) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 10,9,14,14) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 7,4,15,15) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 6,12,12,13) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 1,8,12,14) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 1,16,6,18) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 3,5,11,10) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 12,13,17,16) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 11,18,17,18) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 7,11,9,14) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 6,16,12,18) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 5,3,12,9) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 8,12,10,16) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 0,18,1,18) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 17,10,17,10) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 14,12,14,18) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 12,12,15,12) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 9,7,9,16) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 11,15,14,17) );
+        PRINT_WITH_NEWLINE( sumRegion_ref(*num_matrix, 12,0,17,12) );
 
         NumMatrixFree(num_matrix);
 

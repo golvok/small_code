@@ -9,8 +9,9 @@ CCC/2013/s5
 equidistant-towns/eq_towns
 
 **/EXE
-*/OBJ
-*/DEPS
+**/OBJ
+**/DEPS
+*/build
 
 *.mti
 *.wlf

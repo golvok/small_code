@@ -1,3 +1,1 @@
-# CXXFLAGS += -O3
-
-include ../default_Makefile
+include ../default.mk

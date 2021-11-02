@@ -1,2 +1,3 @@
-LDFLAGS += -lpthread
-include ../default_Makefile
+LDFLAGS+=-pthread
+
+include ../default.mk

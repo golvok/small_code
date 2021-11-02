@@ -117,7 +117,7 @@ public:
 		, y(y_)
 		{}
 
-	auto getValue() const -> decltype(MATRIX)::value_type::value_type {
+	auto getValue() const -> std::remove_const_t<decltype(MATRIX)::value_type::value_type> {
 		if (x < MATRIX[0].size() && y < MATRIX.size()) {
 			return arrayGet(MATRIX,{this->x,this->y});
 		} else {

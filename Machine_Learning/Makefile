@@ -1,3 +1,3 @@
-LDFLAGS += -larmadillo $(shell pkg-config --libs plplot-c++) -lpthread
+LDFLAGS+=-pthread $(shell pkg-config --libs armadillo) $(shell pkg-config --libs plplot-c++)
 
-include ../default_Makefile
+include ../default.mk

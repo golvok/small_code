@@ -3,8 +3,8 @@
 
 template<typename F, typename... FirstArgs>
 struct PartialApplier {
-	F func;
-	std::tuple<FirstArgs...> first_args;
+	F func = {};
+	std::tuple<FirstArgs...> first_args = {};
 	
 	template<typename... SecondArgs>
 	decltype(auto) operator()(SecondArgs&&... second_args) {

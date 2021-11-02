@@ -1,4 +1,4 @@
-#inclued <sstream>
+#include <sstream>
 
 /**
  * ex:
@@ -29,4 +29,8 @@ namespace stringstream_string_builder {
     }
 
     stringstream_string_builder sb() { return {}; }
+}
+
+int main() {
+    return 0;
 }
