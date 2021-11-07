@@ -13,6 +13,11 @@ template<typename T> class NodeConcrete;
 struct Dict;
 class NodeOwning;
 
+namespace errors {
+	constexpr auto kAssignToObjectInNodeOwningToDict = std::string_view("Trying to assign an object to a Dict from a NodeOwning");
+	constexpr auto kAccessNodeOwningAsObjectButIsDict = std::string_view("Trying to access a NodeOwning as an object, but it is a Dict");
+}
+
 class NodeBase {
 public:
 	virtual const NodeBase& operator[](std::string_view sv) const = 0;
@@ -44,6 +49,11 @@ public:
 		throw std::logic_error("can't convert or access it");
 	}
 
+	template<typename T>
+	explicit operator const T&() const {
+		return get<T>();
+	}
+
 	template <typename T>
 	NodeBase& operator=(T&& rhs);
 	virtual ~NodeBase() = default;
@@ -69,21 +79,30 @@ struct Dict : NodeBase, private DictBase {
 public:
 	Dict() {}
 	Dict(const Dict& src) : DictBase() { *this = src; }
-	Dict& operator=(const Dict& rhs) {
-		// if NodeOwning is the mapped_type, this can be removed (default should work)
+	Dict(Dict&&) = default;
+
+	Dict& operator=(const Dict& rhs) { // need this to override NodeBase's
 		clear();
 		for (const auto& [k, v] : rhs) {
 			emplace(k, v->clone());
 		}
 		return *this;
 	}
-	Dict(Dict&&) = default;
-	Dict& operator=(Dict&&) = default;
+	Dict& operator=(Dict&& rhs) { // need this to override NodeBase's
+		this->DictBase::operator=(std::move(rhs));
+		return *this;
+	}
+	Dict& operator=(const NodeOwning& rhs);
+	Dict& operator=(const NodeBase& rhs);
+	Dict& operator=(NodeOwning&& rhs);
+	Dict& operator=(NodeBase&& rhs);
 
 	using DictBase::find;
 	using DictBase::empty;
 	using DictBase::size;
 	using DictBase::clear;
+	using DictBase::insert;
+	using DictBase::emplace;
 
 	virtual Dict toDict() const override { return *this; }
 	// TODO: don't make a string (use transparent find)
@@ -314,7 +333,10 @@ const T* NodeBase::get_if() const {
 		if constexpr (std::is_same_v<PlainT, Dict>) {
 			return std::get_if<NodeOwning::DictImpl>(&downcasted->impl);
 		} else {
-			return std::get<NodeOwning::ObjectImpl>(downcasted->impl)->get_if<const T>();
+			return visitImpl(*downcasted,
+				[](auto&& /*dict*/) -> const T* { throw std::logic_error(std::string(errors::kAccessNodeOwningAsObjectButIsDict)); },
+				[](auto&& obj) -> const T* { return obj.template get_if<const T>(); }
+			);
 		}
 	}
 	return nullptr;
@@ -325,7 +347,11 @@ NodeBase& NodeBase::operator=(T&& rhs) {
 	using PlainT = std::remove_cvref_t<T>;
 	constexpr auto t_derives_nodebase = std::is_base_of_v<NodeBase, PlainT>;
 
-	if constexpr (not t_derives_nodebase) {
+	if constexpr (t_derives_nodebase) {
+		if (auto downcasted = dynamic_cast<Dict*>(this)) {
+			*downcasted = std::forward<T>(rhs);
+		}
+	} else {
 		if (auto downcasted = dynamic_cast<NodeConcrete<PlainT>*>(this)) {
 			downcasted->obj = std::forward<T>(rhs);
 			return *this;
@@ -333,8 +359,44 @@ NodeBase& NodeBase::operator=(T&& rhs) {
 	}
 	if (auto downcasted = dynamic_cast<NodeOwning*>(this)) {
 		*downcasted = std::forward<T>(rhs);
+		return *this;
 	}
-	return *this;
+	throw std::logic_error("TODO: make operator=(const NodeBase&) and operator=(NodeBase&) virtual??");
+}
+
+Dict& Dict::operator=(const NodeOwning& rhs) {
+	return visitImpl(rhs,
+		[this](auto&& dict) -> Dict& { return *this = dict; },
+		[this](auto&& /* obj */) -> Dict& {
+			throw std::logic_error(std::string(errors::kAssignToObjectInNodeOwningToDict));
+		}
+	);
+}
+Dict& Dict::operator=(const NodeBase& rhs) {
+	if (auto* rhs_as_dict = dynamic_cast<const Dict*>(&rhs)) {
+		return *this = *rhs_as_dict;
+	} else if (auto* rhs_as_owning = dynamic_cast<const NodeOwning*>(&rhs)) {
+		return *this = *rhs_as_owning;
+	} else {
+		throw std::logic_error("Trying to assign an object to a Dict");
+	}
+}
+Dict& Dict::operator=(NodeOwning&& rhs) {
+	return visitImpl(rhs,
+		[this](auto&& dict) -> Dict& { return *this = std::move(dict); },
+		[this](auto&& /* obj */) -> Dict& {
+			throw std::logic_error(std::string(errors::kAssignToObjectInNodeOwningToDict));
+		}
+	);
+}
+Dict& Dict::operator=(NodeBase&& rhs) {
+	if (auto* rhs_as_dict = dynamic_cast<Dict*>(&rhs)) {
+		return *this = std::move(*rhs_as_dict);
+	} else if (auto* rhs_as_owning = dynamic_cast<NodeOwning*>(&rhs)) {
+		return *this = std::move(*rhs_as_owning);
+	} else {
+		throw std::logic_error("Trying to assign an object to a Dict");
+	}
 }
 
 NodeBase& Dict::operator[](std::string_view sv) {
