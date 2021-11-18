@@ -73,10 +73,25 @@ TEST_CASE("basic use") {
 	}
 }
 
+
 TEST_CASE("error paths") {
 	SECTION("access NodeOwning that is a Dict as object") {
 		NodeOwning no;
 		CHECK_THROWS_WITH(no.get<int>(), std::string(rrv::errors::kAccessNodeOwningAsObjectButIsDict));
+	}
+	SECTION("access member of an object in a NodeOwning") {
+		NodeOwning no = 4;
+		CHECK_THROWS_WITH(no["k"], std::string(rrv::errors::kAccessMemberOfConcreteType));
+	}
+	SECTION("non-copyable") {
+		// struct NoCopy {
+		// 	NoCopy() {}
+		// 	NoCopy(NoCopy&&) = default;
+		// 	NoCopy& operator=(NoCopy&&) = default;
+		// 	NoCopy(const NoCopy&) = delete;
+		// 	NoCopy& operator=(const NoCopy&) = delete;
+		// };
+		// auto no = NodeOwning(NoCopy{}); (void)no;
 	}
 }
 
@@ -157,4 +172,39 @@ TEST_CASE("NodeOwning <- Dict interactions") {
 		no = Dict{};
 		CHECK(no.get<Dict>().size() == 0);
 	}
+}
+
+TEST_CASE("small test program") {
+	struct Data {
+		int i, j, k;
+	};
+	const auto producer = [](int a, int b) {
+		NodeOwning data;
+		data["alpha"] = Data{a, a+b, b};
+		data["beta"] = std::vector<Data>{Data{1,2,3}, Data{a,5,b}};
+		return data;
+	};
+	const auto modifyer = [](NodeBase& data) {
+		data["alpha"].get<Data>().i = 44;
+		data["beta"].get<std::vector<Data>>().at(1).k += 6;
+		data["gamma"] = 4;
+	};
+	const auto consumer = [](const NodeBase& data) {
+		const Data& alpha = data["alpha"].get<Data>();
+		const std::vector<Data>& beta = data["beta"].get<std::vector<Data>>();
+		CHECK(alpha.i == 44);
+		CHECK(alpha.j == 11+22);
+		CHECK(alpha.k == 22);
+		CHECK(beta.at(0).i == 1);
+		CHECK(beta.at(0).j == 2);
+		CHECK(beta.at(0).k == 3);
+		CHECK(beta.at(1).i == 11);
+		CHECK(beta.at(1).j == 5);
+		CHECK(beta.at(1).k == 22+6);
+		CHECK(data["gamma"].get<int>() == 4);
+	};
+	auto data = producer(11, 22);
+	modifyer(data);
+	const auto& data_const = data;
+	consumer(data_const);
 }
