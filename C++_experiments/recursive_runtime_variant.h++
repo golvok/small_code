@@ -16,6 +16,12 @@ class NodeOwning;
 namespace errors {
 	constexpr auto kAssignToObjectInNodeOwningToDict = std::string_view("Trying to assign an object to a Dict from a NodeOwning");
 	constexpr auto kAccessNodeOwningAsObjectButIsDict = std::string_view("Trying to access a NodeOwning as an object, but it is a Dict");
+	constexpr auto kAccessWithWrongType = std::string_view("Accessing with wrong type");
+	constexpr auto kAsCannotAccessOrConvert = std::string_view(".as is unable to access as or convert to the type requested");
+	constexpr auto kCloneNotImplemented_ConstRef = std::string_view("clone const& not implemented");
+	constexpr auto kCloneNotImplemented_RvalRef = std::string_view("clone && not implemented");
+	constexpr auto kAccessMemberOfConcreteType = std::string_view("can't get member of concrete type");
+	constexpr auto kAssignObjectToDict = std::string_view("Trying to assign an object to a Dict");
 }
 
 class NodeBase {
@@ -28,7 +34,7 @@ public:
 		if (auto ptr = get_if<T>()) {
 			return *ptr;
 		} else {
-			throw std::logic_error("Accessing with wrong type");
+			throw std::logic_error(std::string(errors::kAccessWithWrongType));
 		}
 	}
 	template<typename T>
@@ -46,7 +52,7 @@ public:
 		// 		return DictConversion<T>::convert(toDict());
 		// 	}
 		// }
-		throw std::logic_error("can't convert or access it");
+		throw std::logic_error(std::string(errors::kAsCannotAccessOrConvert));
 	}
 
 	template<typename T>
@@ -61,11 +67,11 @@ public:
 	virtual Dict toDict() const = 0;
 
 	virtual std::unique_ptr<NodeBase> clone() const& {
-		throw std::logic_error("clone const& not implemented");
+		throw std::logic_error(std::string(errors::kCloneNotImplemented_ConstRef));
 	}
 
 	virtual std::unique_ptr<NodeBase> clone() && {
-		throw std::logic_error("clone && not implemented");
+		throw std::logic_error(std::string(errors::kCloneNotImplemented_RvalRef));
 	}
 
 	template<typename T>
@@ -147,10 +153,10 @@ struct NodeConcrete : NodeBase {
 		// } else {
 		// 	static_asert(!sizeof(T), "no known member access method");
 		// }
-		throw std::logic_error("can't get member of concrete type (const)");
+		throw std::logic_error(std::string(errors::kAccessMemberOfConcreteType));
 	}
 	NodeBase& operator[](std::string_view) override {
-		throw std::logic_error("can't get member of concrete type");
+		throw std::logic_error(std::string(errors::kAccessMemberOfConcreteType));
 	}
 
 	Dict toDict() const override {
@@ -379,7 +385,7 @@ Dict& Dict::operator=(const NodeBase& rhs) {
 	} else if (auto* rhs_as_owning = dynamic_cast<const NodeOwning*>(&rhs)) {
 		return *this = *rhs_as_owning;
 	} else {
-		throw std::logic_error("Trying to assign an object to a Dict");
+		throw std::logic_error(std::string(errors::kAssignObjectToDict));
 	}
 }
 Dict& Dict::operator=(NodeOwning&& rhs) {
@@ -396,7 +402,7 @@ Dict& Dict::operator=(NodeBase&& rhs) {
 	} else if (auto* rhs_as_owning = dynamic_cast<NodeOwning*>(&rhs)) {
 		return *this = std::move(*rhs_as_owning);
 	} else {
-		throw std::logic_error("Trying to assign an object to a Dict");
+		throw std::logic_error(std::string(errors::kAssignObjectToDict));
 	}
 }
 
