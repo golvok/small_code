@@ -9,7 +9,7 @@
 namespace rrv {
 
 class NodeBase;
-template<typename T> class NodeConcrete;
+template<typename T, typename> class NodeConcrete;
 struct Dict;
 class NodeOwning;
 
@@ -129,8 +129,9 @@ public:
 	}
 };
 
-template <typename T>
+template <typename T, typename = void>
 struct NodeConcrete : NodeBase {
+	static_assert(std::is_copy_constructible_v<T>, "Require copy-constructible types so cloning will generally work");
 	NodeConcrete() = default;
 	NodeConcrete(const NodeConcrete&) = default;
 	NodeConcrete(NodeConcrete&&) = default;
