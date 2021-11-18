@@ -227,7 +227,7 @@ public:
 	explicit NodeOwning(DictImpl di) : impl(std::move(di)) {}
 
 	template<typename T>
-	NodeOwning(T&& t) : impl(ObjectImpl(new NodeConcrete<T>(std::forward<T>(t)))) {}
+	NodeOwning(T&& t) : impl(ObjectImpl(new NodeConcrete<std::remove_cvref_t<T>>(std::forward<T>(t)))) {}
 
 	template<typename T>
 	NodeOwning& operator=(T&& rhs) {
