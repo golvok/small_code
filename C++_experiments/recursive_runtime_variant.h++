@@ -14,7 +14,7 @@ struct Dict;
 class NodeOwning;
 
 namespace errors {
-	constexpr auto kAssignToObjectInNodeOwningToDict = std::string_view("Trying to assign an object to a Dict from a NodeOwning");
+	constexpr auto kAssignObjectInNodeOwningToDict = std::string_view("Trying to assign an object to a Dict (via a NodeOwning)");
 	constexpr auto kAccessNodeOwningAsObjectButIsDict = std::string_view("Trying to access a NodeOwning as an object, but it is a Dict");
 	constexpr auto kAccessWithWrongType = std::string_view("Accessing with wrong type");
 	constexpr auto kAsCannotAccessOrConvert = std::string_view(".as is unable to access as or convert to the type requested");
@@ -375,7 +375,7 @@ Dict& Dict::operator=(const NodeOwning& rhs) {
 	return visitImpl(rhs,
 		[this](auto&& dict) -> Dict& { return *this = dict; },
 		[this](auto&& /* obj */) -> Dict& {
-			throw std::logic_error(std::string(errors::kAssignToObjectInNodeOwningToDict));
+			throw std::logic_error(std::string(errors::kAssignObjectInNodeOwningToDict));
 		}
 	);
 }
@@ -384,7 +384,7 @@ Dict& Dict::operator=(const NodeBase& rhs) {
 		return *this = *rhs_as_dict;
 	} else if (auto* rhs_as_owning = dynamic_cast<const NodeOwning*>(&rhs)) {
 		return *this = *rhs_as_owning;
-	} else {
+	} else { // must be a NodeConcrete
 		throw std::logic_error(std::string(errors::kAssignObjectToDict));
 	}
 }
@@ -392,7 +392,7 @@ Dict& Dict::operator=(NodeOwning&& rhs) {
 	return visitImpl(rhs,
 		[this](auto&& dict) -> Dict& { return *this = std::move(dict); },
 		[this](auto&& /* obj */) -> Dict& {
-			throw std::logic_error(std::string(errors::kAssignToObjectInNodeOwningToDict));
+			throw std::logic_error(std::string(errors::kAssignObjectInNodeOwningToDict));
 		}
 	);
 }

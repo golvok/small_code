@@ -83,6 +83,23 @@ TEST_CASE("error paths") {
 		NodeOwning no = 4;
 		CHECK_THROWS_WITH(no["k"], std::string(rrv::errors::kAccessMemberOfConcreteType));
 	}
+	SECTION("assign object to Dict from a NodeOwning") {
+		Dict d;
+		CHECK_THROWS_WITH(d = NodeOwning{4}, std::string(rrv::errors::kAssignObjectInNodeOwningToDict));
+	}
+	SECTION("assign object to Dict from a NodeBase") {
+		Dict d;
+		auto nc = NodeConcrete<int>{4}; // constructing a NodeOwning doesn't wark -- it tries that downcast
+		CHECK_THROWS_WITH(d = nc, std::string(rrv::errors::kAssignObjectToDict));
+	}
+	SECTION("access with wrong type") {
+		NodeOwning no = 4;
+		CHECK_THROWS_WITH(no.get<float>(), std::string(rrv::errors::kAccessWithWrongType));
+	}
+	SECTION("access as wrong type") {
+		NodeOwning no = 4;
+		CHECK_THROWS_WITH(no.as<float>(), std::string(rrv::errors::kAsCannotAccessOrConvert));
+	}
 	SECTION("non-copyable") {
 		// struct NoCopy {
 		// 	NoCopy() {}
@@ -145,7 +162,7 @@ TEST_CASE("Dict <- NodeOwning interactions") {
 	}
 	SECTION("Dict = NodeOwning that is object") {
 		NodeOwning no = 1;
-		CHECK_THROWS_WITH(d = no, std::string(rrv::errors::kAssignToObjectInNodeOwningToDict));
+		CHECK_THROWS_WITH(d = no, std::string(rrv::errors::kAssignObjectInNodeOwningToDict));
 	}
 	SECTION("Dict = NodeOwning that is Dict via NodeBase") {
 		NodeOwning no;
@@ -156,7 +173,7 @@ TEST_CASE("Dict <- NodeOwning interactions") {
 	}
 	SECTION("Dict = NodeOwning that is object via NodeBase") {
 		NodeOwning no = 1;
-		CHECK_THROWS_WITH(d = *(NodeBase*)&no, std::string(rrv::errors::kAssignToObjectInNodeOwningToDict));
+		CHECK_THROWS_WITH(d = *(NodeBase*)&no, std::string(rrv::errors::kAssignObjectInNodeOwningToDict));
 	}
 }
 
