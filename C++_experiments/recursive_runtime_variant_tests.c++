@@ -73,6 +73,16 @@ TEST_CASE("basic use") {
 	}
 }
 
+TEST_CASE("iteration") {
+	SECTION("basic") {
+		Dict no;
+		no["k"] = 4;
+		for (const auto& [k, v] : no) {
+			REQUIRE(k == "k");
+			REQUIRE(v->get<int>() == 4);
+		}
+	}
+}
 
 TEST_CASE("error paths") {
 	SECTION("access NodeOwning that is a Dict as object") {

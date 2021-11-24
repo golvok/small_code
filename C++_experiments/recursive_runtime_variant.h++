@@ -12,6 +12,10 @@ class NodeBase;
 template<typename T, typename> class NodeConcrete;
 struct Dict;
 class NodeOwning;
+template<bool>
+class MemberIterator;
+template<bool>
+class MemberIteratorImplBase;
 
 namespace errors {
 	constexpr auto kAssignObjectInNodeOwningToDict = std::string_view("Trying to assign an object to a Dict (via a NodeOwning)");
@@ -24,10 +28,61 @@ namespace errors {
 	constexpr auto kAssignObjectToDict = std::string_view("Trying to assign an object to a Dict");
 }
 
+using DictBase = std::map<std::string, std::unique_ptr<NodeBase>, std::less<>>;
+
+template<bool const_iter>
+struct MemberIteratorImplBase {
+	using OwningPtr = std::unique_ptr<MemberIteratorImplBase>;
+	using reference = std::conditional_t<const_iter, const DictBase::reference, DictBase::reference>;
+	using value_type = std::conditional_t<const_iter, const DictBase::value_type, DictBase::value_type>;
+
+	virtual ~MemberIteratorImplBase() = default;
+	virtual value_type* deref() = 0;
+	virtual void advance() = 0;
+	virtual OwningPtr clone() const& = 0;
+};
+
+template<bool const_iter>
+class MemberIterator {
+	MemberIteratorImplBase<const_iter>::OwningPtr _impl;
+	MemberIteratorImplBase<const_iter>::OwningPtr clone_impl() const {
+		// _impl ? _impl->clone() : nullptr;
+		return _impl->clone();
+	}
+public:
+	using value_type = MemberIteratorImplBase<const_iter>::value_type;
+	using reference = MemberIteratorImplBase<const_iter>::reference;
+
+	MemberIterator(MemberIteratorImplBase<const_iter>::OwningPtr impl) : _impl(std::move(impl)) { }
+	MemberIterator(const MemberIterator& src) : _impl(src.clone_impl()) {}
+	MemberIterator(MemberIterator&& src) = default;
+	MemberIterator& operator=(const MemberIterator& src) { _impl = src.clone_impl(); }
+	MemberIterator& operator=(MemberIterator&& src) = default;
+
+	// void check_done() { if (_impl && _impl->done()) impl.reset(); }
+	reference operator*() { return *_impl->deref(); }
+	const reference operator*() const { return *_impl->deref(); }
+	MemberIterator& operator++() { return _impl->advance(), *this; }
+	template<bool const_iter_>
+	bool operator==(const MemberIterator<const_iter_>& rhs) const {
+		// if (not _impl && not rhs._impl) return true;
+		// if (not _impl || not rhs._impl) return false;
+		return _impl->deref() == rhs._impl->deref();
+	}
+	template<bool const_iter_>
+	bool operator!=(const MemberIterator<const_iter_>& rhs) const { return !(*this == rhs); }
+};
+
 class NodeBase {
 public:
-	virtual const NodeBase& operator[](std::string_view sv) const = 0;
-	virtual NodeBase& operator[](std::string_view sv) = 0;
+	template <typename T>
+	NodeBase& operator=(T&& rhs);
+	virtual ~NodeBase() = default;
+
+	template<typename T>
+	const T* get_if() const;
+	template<typename T>
+	T* get_if() { return const_cast<T*>(static_cast<const NodeBase*>(this)->get_if<T>()); }
 
 	template<typename T>
 	const T& get() const {
@@ -60,11 +115,15 @@ public:
 		return get<T>();
 	}
 
-	template <typename T>
-	NodeBase& operator=(T&& rhs);
-	virtual ~NodeBase() = default;
+	virtual const NodeBase& operator[](std::string_view sv) const = 0;
+	virtual NodeBase& operator[](std::string_view sv) = 0;
 
 	virtual Dict toDict() const = 0;
+
+	virtual MemberIterator<false> begin() = 0;
+	virtual MemberIterator<true> begin() const = 0;
+	virtual MemberIterator<false> end() = 0;
+	virtual MemberIterator<true> end() const = 0;
 
 	virtual std::unique_ptr<NodeBase> clone() const& {
 		throw std::logic_error(std::string(errors::kCloneNotImplemented_ConstRef));
@@ -73,14 +132,9 @@ public:
 	virtual std::unique_ptr<NodeBase> clone() && {
 		throw std::logic_error(std::string(errors::kCloneNotImplemented_RvalRef));
 	}
-
-	template<typename T>
-	const T* get_if() const;
-	template<typename T>
-	T* get_if() { return const_cast<T*>(static_cast<const NodeBase*>(this)->get_if<T>()); }
 };
 
-using DictBase = std::map<std::string, std::unique_ptr<NodeBase>, std::less<>>;
+// TODO: use composition instead....
 struct Dict : NodeBase, private DictBase {
 public:
 	Dict() {}
@@ -89,7 +143,7 @@ public:
 
 	Dict& operator=(const Dict& rhs) { // need this to override NodeBase's
 		clear();
-		for (const auto& [k, v] : rhs) {
+		for (const auto& [k, v] : static_cast<const DictBase&>(rhs)) {
 			emplace(k, v->clone());
 		}
 		return *this;
@@ -114,6 +168,33 @@ public:
 	// TODO: don't make a string (use transparent find)
 	virtual const NodeBase& operator[](std::string_view sv) const override { return *at(std::string(sv)); };
 	virtual NodeBase& operator[](std::string_view sv) override;
+
+	template<bool const_iter>
+	struct Iter : MemberIteratorImplBase<const_iter> {
+		using OwningPtr = MemberIteratorImplBase<const_iter>::OwningPtr;
+		using value_type = MemberIteratorImplBase<const_iter>::value_type;
+		using Impl = std::conditional_t<const_iter, DictBase::const_iterator, DictBase::iterator>;
+		Impl impl;
+		Iter(Impl impl_) : impl(impl_) {}
+		Iter(const Iter&) = default;
+		Iter(Iter&&) = default;
+		value_type* deref() override { return &*impl; }
+		void advance() override { ++impl; }
+		OwningPtr clone() const& override { return OwningPtr{new Iter(*this)}; }
+	};
+
+	MemberIterator<false> begin() override {
+		return MemberIteratorImplBase<false>::OwningPtr{new Iter<false>{this->DictBase::begin()}};
+	}
+	MemberIterator<true> begin() const override {
+		return MemberIteratorImplBase<true>::OwningPtr{new Iter<true>{this->DictBase::begin()}};
+	}
+	MemberIterator<false> end() override {
+		return MemberIteratorImplBase<false>::OwningPtr{new Iter<false>{this->DictBase::end()}};
+	}
+	MemberIterator<true> end() const override {
+		return MemberIteratorImplBase<true>::OwningPtr{new Iter<true>{this->DictBase::end()}};
+	}
 };
 
 template <typename T>
@@ -170,6 +251,11 @@ struct NodeConcrete : NodeBase {
 	std::unique_ptr<NodeBase> clone() && override {
 		return std::unique_ptr<NodeBase>(new NodeConcrete<T>(std::move(obj)));
 	}
+
+	MemberIterator<false> begin() override { throw "atata"; }
+	MemberIterator<true> begin() const override { throw "atata"; }
+	MemberIterator<false> end() override { throw "atata"; }
+	MemberIterator<true> end() const override { throw "atata"; }
 
 	T& getObj() & { return obj; }
 	const T& getObj() const& { return obj; }
@@ -309,6 +395,11 @@ public:
 		return std::unique_ptr<NodeBase>(new NodeOwning(*this));
 	}
 
+	MemberIterator<false> begin() override { throw "atata"; }
+	MemberIterator<true> begin() const override { throw "atata"; }
+	MemberIterator<false> end() override { throw "atata"; }
+	MemberIterator<true> end() const override { throw "atata"; }
+
 	// NodeOwning operator[](std::string_view sv) { return getImpl()[sv]; }
 	// template<typename T>       T& get()       { return getImpl().get<T>(); }
 	// template<typename T> const T& get() const { return getImpl().get<T>(); }
@@ -408,7 +499,7 @@ Dict& Dict::operator=(NodeBase&& rhs) {
 
 NodeBase& Dict::operator[](std::string_view sv) {
 	auto lookup = find(sv);
-	if (lookup == end()) {
+	if (lookup == this->DictBase::end()) {
 		auto storage = mapped_type{new NodeOwning()};
 		auto& ref = *storage;
 		emplace_hint(lookup, std::string(sv), std::move(storage));
