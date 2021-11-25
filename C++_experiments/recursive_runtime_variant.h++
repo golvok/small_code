@@ -287,8 +287,9 @@ public:
 		if (dict_impl) {
 			return std::forward<DictF>(dict_f)(*dict_impl);
 		} else {
-			auto* obj_impl = std::get_if<ObjectImpl>(&self.impl);
-			return std::forward<ObjF>(obj_f)(**obj_impl);
+			using ObjectPtr = std::conditional_t<std::is_const_v<Self>, const NodeBase*, NodeBase*>;
+			ObjectPtr obj_impl = std::get_if<ObjectImpl>(&self.impl)->get();
+			return std::forward<ObjF>(obj_f)(*obj_impl);
 		}
 	}
 
@@ -319,10 +320,11 @@ public:
 	NodeOwning& operator=(T&& rhs) {
 		using PlainT = std::remove_cvref_t<T>;
 		const bool is_copy_assignment = std::is_reference_v<T>;
-		using ForwardingNodeOwningNoConst = std::conditional_t<is_copy_assignment, NodeOwning&, NodeOwning&&>;
-		using ForwardingNodeOwning = std::conditional_t<std::is_const_v<T>, const ForwardingNodeOwningNoConst, ForwardingNodeOwningNoConst>;
-		using ForwardingDictNoConst = std::conditional_t<is_copy_assignment, Dict&, Dict&&>;
-		using ForwardingDict = std::conditional_t<std::is_const_v<T>, const ForwardingDictNoConst, ForwardingDictNoConst>;
+		const bool rhs_is_const = std::is_const_v<std::remove_reference_t<T>>;
+		using RhsNodeOwning = std::conditional_t<rhs_is_const, const NodeOwning, NodeOwning>;
+		using RhsDict = std::conditional_t<rhs_is_const, const Dict, Dict>;
+		using ForwardingRhsNodeOwning = std::conditional_t<is_copy_assignment, RhsNodeOwning&, RhsNodeOwning&&>;
+		using ForwardingRhsDict = std::conditional_t<is_copy_assignment, RhsDict&, RhsDict&&>;
 		const auto fwd_rhs = [&rhs]() -> decltype(auto) { return std::forward<T>(rhs); };
 
 		if constexpr (std::is_same_v<NodeOwning, PlainT>) {
@@ -338,12 +340,12 @@ public:
 			// want to avoid impl being a ObjctImpl(Dict*)
 			impl = fwd_rhs();
 		} else if constexpr (std::is_base_of_v<NodeBase, PlainT>) {
-			if (auto rhs_as_owning = dynamic_cast<NodeOwning*>(&rhs)) {
+			if (auto rhs_as_owning = dynamic_cast<RhsNodeOwning*>(&rhs)) {
 				// want to avoid impl being a ObjectImpl(NodeOwning*). Recurse and use NodeOwning case
-				*this = static_cast<ForwardingNodeOwning>(*rhs_as_owning);
-			} else if (auto rhs_as_dict = dynamic_cast<Dict*>(&rhs)) {
+				*this = static_cast<ForwardingRhsNodeOwning>(*rhs_as_owning);
+			} else if (auto rhs_as_dict = dynamic_cast<RhsDict*>(&rhs)) {
 				// want to avoid impl being a ObjectImpl(Dict*). Recurse and use Dict case
-				*this = static_cast<ForwardingDict>(*rhs_as_dict);
+				*this = static_cast<ForwardingRhsDict>(*rhs_as_dict);
 			} else {
 				// some other NodeBase... overwrite impl with it
 				impl = NodeOwning::ObjectImpl(fwd_rhs().clone());
