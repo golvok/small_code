@@ -74,8 +74,16 @@ TEST_CASE("basic use") {
 }
 
 TEST_CASE("iteration") {
-	SECTION("basic") {
-		Dict no;
+	SECTION("basic on Dict") {
+		Dict d;
+		d["k"] = 4;
+		for (const auto& [k, v] : d) {
+			REQUIRE(k == "k");
+			REQUIRE(v->get<int>() == 4);
+		}
+	}
+	SECTION("basic on NodeOwning") {
+		NodeOwning no;
 		no["k"] = 4;
 		for (const auto& [k, v] : no) {
 			REQUIRE(k == "k");
@@ -99,8 +107,18 @@ TEST_CASE("error paths") {
 	}
 	SECTION("assign object to Dict from a NodeBase") {
 		Dict d;
-		auto nc = NodeConcrete<int>{4}; // constructing a NodeOwning doesn't wark -- it tries that downcast
+		auto nc = NodeConcrete<int>{4}; // constructing a NodeOwning doesn't work -- it tries that downcast
 		CHECK_THROWS_WITH(d = nc, std::string(rrv::errors::kAssignObjectToDict));
+	}
+	SECTION("iterate object") {
+		NodeOwning no = 4;
+		const NodeOwning& const_no = no;
+		CHECK_THROWS_WITH(no.begin(), std::string(rrv::errors::kAccessMemberOfConcreteType));
+		CHECK_THROWS_WITH(no.end(), std::string(rrv::errors::kAccessMemberOfConcreteType));
+		CHECK_THROWS_WITH(no.cbegin(), std::string(rrv::errors::kAccessMemberOfConcreteType));
+		CHECK_THROWS_WITH(no.cend(), std::string(rrv::errors::kAccessMemberOfConcreteType));
+		CHECK_THROWS_WITH(const_no.begin(), std::string(rrv::errors::kAccessMemberOfConcreteType));
+		CHECK_THROWS_WITH(const_no.end(), std::string(rrv::errors::kAccessMemberOfConcreteType));
 	}
 	SECTION("access with wrong type") {
 		NodeOwning no = 4;

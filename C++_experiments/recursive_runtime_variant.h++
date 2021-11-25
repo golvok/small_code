@@ -122,8 +122,10 @@ public:
 
 	virtual MemberIterator<false> begin() = 0;
 	virtual MemberIterator<true> begin() const = 0;
+	MemberIterator<true> cbegin() const { return begin(); }
 	virtual MemberIterator<false> end() = 0;
 	virtual MemberIterator<true> end() const = 0;
+	MemberIterator<true> cend() const { return end(); }
 
 	virtual std::unique_ptr<NodeBase> clone() const& {
 		throw std::logic_error(std::string(errors::kCloneNotImplemented_ConstRef));
@@ -252,10 +254,18 @@ struct NodeConcrete : NodeBase {
 		return std::unique_ptr<NodeBase>(new NodeConcrete<T>(std::move(obj)));
 	}
 
-	MemberIterator<false> begin() override { throw "atata"; }
-	MemberIterator<true> begin() const override { throw "atata"; }
-	MemberIterator<false> end() override { throw "atata"; }
-	MemberIterator<true> end() const override { throw "atata"; }
+	MemberIterator<false> begin() override {
+		throw std::logic_error(std::string(errors::kAccessMemberOfConcreteType));
+	}
+	MemberIterator<true> begin() const override {
+		throw std::logic_error(std::string(errors::kAccessMemberOfConcreteType));
+	}
+	MemberIterator<false> end() override {
+		throw std::logic_error(std::string(errors::kAccessMemberOfConcreteType));
+	}
+	MemberIterator<true> end() const override {
+		throw std::logic_error(std::string(errors::kAccessMemberOfConcreteType));
+	}
 
 	T& getObj() & { return obj; }
 	const T& getObj() const& { return obj; }
@@ -397,10 +407,30 @@ public:
 		return std::unique_ptr<NodeBase>(new NodeOwning(*this));
 	}
 
-	MemberIterator<false> begin() override { throw "atata"; }
-	MemberIterator<true> begin() const override { throw "atata"; }
-	MemberIterator<false> end() override { throw "atata"; }
-	MemberIterator<true> end() const override { throw "atata"; }
+	MemberIterator<false> begin() override {
+		return visitImpl(*this,
+			[&](auto& dict) { return dict.begin(); },
+			[&](auto& obj) { return obj.begin(); }
+		);
+	}
+	MemberIterator<true> begin() const override {
+		return visitImpl(*this,
+			[&](auto& dict) { return dict.begin(); },
+			[&](auto& obj) { return obj.begin(); }
+		);
+	}
+	MemberIterator<false> end() override {
+		return visitImpl(*this,
+			[&](auto& dict) { return dict.end(); },
+			[&](auto& obj) { return obj.end(); }
+		);
+	}
+	MemberIterator<true> end() const override {
+		return visitImpl(*this,
+			[&](auto& dict) { return dict.end(); },
+			[&](auto& obj) { return obj.end(); }
+		);
+	}
 
 	// NodeOwning operator[](std::string_view sv) { return getImpl()[sv]; }
 	// template<typename T>       T& get()       { return getImpl().get<T>(); }
