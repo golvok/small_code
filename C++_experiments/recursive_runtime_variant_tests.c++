@@ -4,22 +4,10 @@
 #include "recursive_runtime_variant.h++"
 
 /*
- 	need string-based member access, but don't want to require hanafication
- 		dot is special char?
- 		Object case:
- 			don't use std::any, use a class with virtual accessor that throws if not hanafied.
- 				ie. member is variant<Dict, unique_ptr<Node>>
- 					Or, Dict inherits from Node too?
- 					hmm... copying... clone pattern I guess
- 						std::any requires all types to be copyable!
- 							I guess so there are no runtime surprises...
- 				or have a std::function member that does the cast & get or throws if not hanafied -- worse: has heap alloc
- 		this needs to be able to return a string/scalar (or long, or bool)?
- 			something similar to as? (pass in the type)
- 		"dictify" -- recursively (or not) convert to a dict type
- 			can use virtual func method again
- 			note: YAML's .as is the reverse of this
- 		handle references? return them? -- std::reference_wrapper special handling?
+	need string-based member access, but don't want to require hanafication
+		this needs to be able to return a string/scalar (or long, or bool)?
+			something similar to as? (pass in the type)
+		handle references? return them? -- std::reference_wrapper special handling?
 	Want to be able to consturct a Node{}... but this is the base class...
 		different use base for parameters, and NodeConcrete for local vars?
 			that is weird, but makes it very obvious what is going on
@@ -89,6 +77,49 @@ TEST_CASE("iteration") {
 			REQUIRE(k == "k");
 			REQUIRE(v->get<int>() == 4);
 		}
+	}
+}
+
+TEST_CASE("pathSubscript") {
+	NodeOwning root;
+	root["a"]["aa"]["aaa"] = 4;
+	SECTION("access 1 level") {
+		const auto rv = pathSubscript(root, "a");
+		CHECK(rv != nullptr);
+	}
+	SECTION("access 2 levels") {
+		const auto rv = pathSubscript(root, "a.aa");
+		CHECK(rv != nullptr);
+	}
+	SECTION("access 3 levels") {
+		const auto rv = pathSubscript(root, "a.aa.aaa");
+		CHECK(rv != nullptr);
+		CHECK(rv->get<int>() == 4);
+	}
+	SECTION("access 3 levels, sep=/") {
+		const auto rv = pathSubscript(root, "a/aa/aaa", '/');
+		CHECK(rv != nullptr);
+		CHECK(rv->get<int>() == 4);
+	}
+	SECTION("access wrong level 1") {
+		const auto& rv = pathSubscript(root, "b");
+		CHECK(rv != nullptr);
+		CHECK(rv->get<Dict>().size() == 0);
+	}
+	SECTION("access wrong level 2") {
+		const auto& rv = pathSubscript(root, "a.bb");
+		CHECK(rv != nullptr);
+		CHECK(rv->get<Dict>().size() == 0);
+	}
+	SECTION("access wrong level 3") {
+		const auto& rv = pathSubscript(root, "a.aa.bbb");
+		CHECK(rv != nullptr);
+		CHECK(rv->get<Dict>().size() == 0);
+	}
+	SECTION("access wrong sep") {
+		const auto& rv = pathSubscript(root, "a.aa.aaa", '/');
+		CHECK(rv != nullptr);
+		CHECK(rv->get<Dict>().size() == 0);
 	}
 }
 

@@ -2,9 +2,10 @@
 
 #include <map>
 #include <memory>
-#include <variant>
-#include <string>
+#include <optional>
 #include <stdexcept>
+#include <string>
+#include <variant>
 
 namespace rrv {
 
@@ -558,5 +559,24 @@ NodeBase& Dict::operator[](std::string_view sv) {
 // 	using Impl std::variant<std::unique_ptr<SimpleNode>, std::any>;
 // 	Impl impl;
 // };
+
+NodeBase* pathSubscript(NodeBase& n, std::string_view path, char sep = '.') {
+	std::size_t spos = 0;
+	NodeBase* curr = &n;
+	for (;;) {
+		const std::size_t epos_maybe_npos = path.find_first_of(sep, spos);
+		const auto epos = epos_maybe_npos == path.npos ? path.size() : epos_maybe_npos;
+		const auto path_elem = path.substr(spos, epos - spos);
+		if (path_elem.size() < 1) {
+			throw std::logic_error(std::string("Empty path element in path with sep='") + sep + "': " + std::string(path));
+		}
+		// version that returns nullptr if this fails? rn, this creates a new node, if it's a NodeOwning underneath.
+		curr = &(*curr)[path_elem];
+		if (epos_maybe_npos == path.npos) {
+			return curr;
+		}
+		spos = epos + 1;
+	}
+}
 
 }  // namespace rrv
