@@ -118,6 +118,7 @@ public:
 
 	virtual const NodeBase& operator[](std::string_view sv) const = 0;
 	virtual NodeBase& operator[](std::string_view sv) = 0;
+	const NodeBase& at(std::string_view sv) const { return (*this)[sv]; }
 
 	virtual Dict toDict() const = 0;
 
@@ -169,7 +170,7 @@ public:
 
 	virtual Dict toDict() const override { return *this; }
 	// TODO: don't make a string (use transparent find)
-	virtual const NodeBase& operator[](std::string_view sv) const override { return *at(std::string(sv)); };
+	virtual const NodeBase& operator[](std::string_view sv) const override { return *DictBase::at(std::string(sv)); };
 	virtual NodeBase& operator[](std::string_view sv) override;
 
 	template<bool const_iter>
@@ -560,9 +561,10 @@ NodeBase& Dict::operator[](std::string_view sv) {
 // 	Impl impl;
 // };
 
-NodeBase* pathSubscript(NodeBase& n, std::string_view path, char sep = '.') {
+template <typename Nb>
+Nb* pathSubscript_impl(Nb& n, std::string_view path, char sep) {
 	std::size_t spos = 0;
-	NodeBase* curr = &n;
+	Nb* curr = &n;
 	for (;;) {
 		const std::size_t epos_maybe_npos = path.find_first_of(sep, spos);
 		const auto epos = epos_maybe_npos == path.npos ? path.size() : epos_maybe_npos;
@@ -578,5 +580,9 @@ NodeBase* pathSubscript(NodeBase& n, std::string_view path, char sep = '.') {
 		spos = epos + 1;
 	}
 }
+
+NodeBase* pathSubscript(NodeBase& n, std::string_view path, char sep = '.') { return pathSubscript_impl(n, path, sep); }
+const NodeBase* pathSubscript(const NodeBase& n, std::string_view path, char sep = '.') { return pathSubscript_impl(n, path, sep); }
+
 
 }  // namespace rrv

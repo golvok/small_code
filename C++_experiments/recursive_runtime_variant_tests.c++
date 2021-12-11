@@ -123,6 +123,45 @@ TEST_CASE("pathSubscript") {
 	}
 }
 
+TEST_CASE("pathSubscript const") {
+	const NodeOwning root = []() {
+		NodeOwning root;
+		root["a"]["aa"]["aaa"] = 4;
+		return root;
+	}();
+
+	SECTION("access 1 level") {
+		const auto rv = pathSubscript(root, "a");
+		CHECK(rv != nullptr);
+	}
+	SECTION("access 2 levels") {
+		const auto rv = pathSubscript(root, "a.aa");
+		CHECK(rv != nullptr);
+	}
+	SECTION("access 3 levels") {
+		const auto rv = pathSubscript(root, "a.aa.aaa");
+		CHECK(rv != nullptr);
+		CHECK(rv->get<int>() == 4);
+	}
+	SECTION("access 3 levels, sep=/") {
+		const auto rv = pathSubscript(root, "a/aa/aaa", '/');
+		CHECK(rv != nullptr);
+		CHECK(rv->get<int>() == 4);
+	}
+	SECTION("access wrong level 1") {
+		CHECK_THROWS(pathSubscript(root, "b"));
+	}
+	SECTION("access wrong level 2") {
+		CHECK_THROWS(pathSubscript(root, "a.bb"));
+	}
+	SECTION("access wrong level 3") {
+		CHECK_THROWS(pathSubscript(root, "a.aa.bbb"));
+	}
+	SECTION("access wrong sep") {
+		CHECK_THROWS(pathSubscript(root, "a.aa.aaa", '/'));
+	}
+}
+
 TEST_CASE("error paths") {
 	SECTION("access NodeOwning that is a Dict as object") {
 		NodeOwning no;
