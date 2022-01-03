@@ -12,6 +12,12 @@
 		different use base for parameters, and NodeConcrete for local vars?
 			that is weird, but makes it very obvious what is going on
 		Make common class that is uninitialized, and deterlmined upon assignment?
+	Integer arguments for operator[]?
+		maybe take a variant of a couple stdlib types
+		YAML does it by taking a Node as as argument... don't want the overhead of conversion
+	Tag type on class that tells NodeConcrete to use customization points?
+		Including the header in other headers my not be wanted
+		traits classes etc. are easy ODR violations
 */
 
 using rrv::NodeOwning;
@@ -76,6 +82,59 @@ TEST_CASE("iteration") {
 		for (const auto& [k, v] : no) {
 			REQUIRE(k == "k");
 			REQUIRE(v->get<int>() == 4);
+		}
+	}
+}
+
+namespace {
+struct StructWithFriendConversions {
+	int i;
+	friend NodeOwning rrvScalarize(const StructWithFriendConversions& s) {
+		NodeOwning r; r["i"] = s.i; return r;
+	}
+};
+}
+
+TEST_CASE("conversion to Scalars") {
+	NodeOwning root;
+	SECTION("convert 1-level NodeOwning Dict to Scalars") {
+		root["a"] = 4;
+		root["b"] = 5;
+		const auto scalared = root.toScalars();
+		CHECK(scalared.at("a").get<int>() == 4);
+		CHECK(scalared.at("b").get<int>() == 5);
+	}
+	SECTION("convert NodeOwning Dict to Scalars") {
+		root["a"]["aa"] = 4;
+		root["b"]["bb"] = 5;
+		const auto scalared = root.toScalars();
+		CHECK(scalared.at("a").at("aa").get<int>() == 4);
+		CHECK(scalared.at("b").at("bb").get<int>() == 5);
+	}
+	SECTION("convert a simple struct -- friend conversion function") {
+		root = StructWithFriendConversions{3};
+		const auto scalared = root.toScalars();
+		CHECK(scalared.at("i").get<int>() == 3);
+	}
+	SECTION("convert a simple struct -- member conversion function") {
+		struct M {
+			int i;
+			using rrvUseMember [[maybe_unused]] = std::true_type; // but it is used...
+			NodeOwning rrvScalarize() const {
+				NodeOwning r; r["i"] = i; return r;
+			}
+		};
+		SECTION("just one") {
+			root = M{44};
+			const auto scalared = root.toScalars();
+			CHECK(scalared.at("i").get<int>() == 44);
+		}
+		SECTION("a vector") {
+			root = std::vector{M{55}, M{66}, M{77}};
+			const auto scalared = root.toScalars();
+			CHECK(scalared.at("0").at("i").get<int>() == 55);
+			CHECK(scalared.at("1").at("i").get<int>() == 66);
+			CHECK(scalared.at("2").at("i").get<int>() == 77);
 		}
 	}
 }
@@ -289,10 +348,24 @@ TEST_CASE("NodeOwning <- Dict interactions") {
 	}
 }
 
+namespace {
+struct SmallTestProgramData {
+	int i, j, k;
+	friend NodeOwning rrvScalarize(const SmallTestProgramData& d) {
+		// return Dict({
+		// 	{"i", d.i}, {"j",d.j}, {"k",d.k}
+		// });
+		NodeOwning r;
+		r["i"] = d.i;
+		r["j"] = d.j;
+		r["k"] = d.k;
+		return r;
+	}
+};
+}
+
 TEST_CASE("small test program") {
-	struct Data {
-		int i, j, k;
-	};
+	using Data = SmallTestProgramData;
 	const auto producer = [](int a, int b) {
 		NodeOwning data;
 		data["alpha"] = Data{a, a+b, b};

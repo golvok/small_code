@@ -17,6 +17,7 @@ template<bool>
 class MemberIterator;
 template<bool>
 class MemberIteratorImplBase;
+// struct IsSclarar {};
 
 namespace errors {
 	constexpr auto kAssignObjectInNodeOwningToDict = std::string_view("Trying to assign an object to a Dict (via a NodeOwning)");
@@ -122,7 +123,7 @@ public:
 	virtual NodeBase& operator[](std::string_view sv) = 0;
 	const NodeBase& at(std::string_view sv) const { return (*this)[sv]; }
 
-	virtual Dict toDict() const = 0;
+	virtual NodeOwning toScalars() const = 0;
 
 	virtual MemberIterator<false> begin() = 0;
 	virtual MemberIterator<true> begin() const = 0;
@@ -174,8 +175,9 @@ public:
 	using DictBase::clear;
 	using DictBase::insert;
 	using DictBase::emplace;
+	using NodeBase::at;
 
-	virtual Dict toDict() const override { return *this; }
+	virtual NodeOwning toScalars() const override;
 	// TODO: don't make a string (use transparent find)
 	virtual const NodeBase& operator[](std::string_view sv) const override { return *DictBase::at(std::string(sv)); };
 	virtual NodeBase& operator[](std::string_view sv) override;
@@ -210,16 +212,14 @@ public:
 };
 
 template <typename T>
-Dict convertToDict(const T&) {
-	throw std::logic_error("TODO: implement Dict conversion");
-}
+NodeOwning scalarizeImpl(const T& t);
 
 template <typename T>
 class NodeMemberRef : public NodeBase {
 public:
 	T* member;
 
-	virtual Dict toDict() const override { return convertToDict(*member); }
+	// virtual NodeOwning toScalars() const override { return scalarizeImpl(*member); }
 	virtual const NodeBase& operator[](std::string_view sv) const override {
 		throw std::logic_error("can't get member of member (const)");
 	};
@@ -252,9 +252,7 @@ struct NodeConcrete : NodeBase {
 		throw std::logic_error(std::string(errors::kAccessMemberOfConcreteType));
 	}
 
-	Dict toDict() const override {
-		return convertToDict(obj);
-	}
+	NodeOwning toScalars() const override;
 
 	std::unique_ptr<NodeBase> clone() const& override {
 		return std::unique_ptr<NodeBase>(new NodeConcrete<T>(obj));
@@ -404,11 +402,9 @@ public:
 			[&](auto& obj) -> NodeBase& { return obj[sv]; }
 		);
 	}
-	Dict toDict() const override {
-		return visitImpl(*this,
-			[](auto& dict) { return dict.toDict(); },
-			[](auto& obj) { return convertToDict(obj); }
-		);
+	NodeOwning toScalars() const override {
+		auto l = [](auto& obj_or_dict) { return obj_or_dict.toScalars(); };
+		return visitImpl(*this, l, l);
 	}
 	std::unique_ptr<NodeBase> clone() && override {
 		return std::unique_ptr<NodeBase>(new NodeOwning(std::move(*this)));
@@ -446,7 +442,7 @@ public:
 	// template<typename T>       T& get()       { return getImpl().get<T>(); }
 	// template<typename T> const T& get() const { return getImpl().get<T>(); }
 	// template<typename T> T as() const { return getImpl().as<T>(); }
-	// Dict toDict() const { return getImpl().toDict(); }
+	// NodeOwning toScalars() const { return getImpl().toScalars(); }
 private:
 	// template<typename Self>
 	// friend NodeOwning& getImpl_(Self& self) {
@@ -539,6 +535,8 @@ Dict& Dict::operator=(NodeBase&& rhs) {
 	}
 }
 
+NodeOwning Dict::toScalars() const { return NodeOwning(*this); }
+
 NodeBase& Dict::operator[](std::string_view sv) {
 	auto lookup = find(sv);
 	if (lookup == this->DictBase::end()) {
@@ -550,6 +548,12 @@ NodeBase& Dict::operator[](std::string_view sv) {
 		return *lookup->second;
 	}
 }
+
+template<typename T, typename U>
+NodeOwning NodeConcrete<T,U>::toScalars() const {
+	return scalarizeImpl(obj);
+}
+
 
 
 
@@ -568,6 +572,57 @@ NodeBase& Dict::operator[](std::string_view sv) {
 // 	using Impl std::variant<std::unique_ptr<SimpleNode>, std::any>;
 // 	Impl impl;
 // };
+
+template<typename T> std::enable_if_t<std::is_arithmetic_v<T>, NodeOwning> rrvScalarize(const T& t) { return t; }
+template<typename T> std::enable_if_t<T::rrvUseMember::value, NodeOwning> rrvScalarize(const T& t) { return t.rrvScalarize(); }
+
+template<typename T>
+NodeOwning rrvScalarize(const std::vector<T>& arg) {
+	NodeOwning n;
+	for (int i = 0; i < (int)arg.size(); ++i) {
+		// TODO: don't want to convert the index to string here?
+		using ::std::to_string;
+		using ::rrv::rrvScalarize;
+		n[to_string(i)] = rrvScalarize(arg[i]);
+	}
+	return n;
+}
+
+template <typename T>
+NodeOwning scalarizeImpl(const T& t) {
+	using ::rrv::rrvScalarize;
+	return rrvScalarize(t);
+// 	auto scalarized = rrvScalarize(t);
+// 	using Scalarized = std::remove_cvref_t<decltype(scalarized)>;
+// 	if constexpr (std::is_same_v<Scalarized, IsSclarar>) {
+// 		return NodeOwning(t);
+// 	} else {
+// 		return scalarized;
+// 	}
+}
+
+	// returns variant<Dict,is_terminal> ?
+	// use case: printing it? Could just have a toStringOrDict function instead
+	// related: iterating members of structs
+	// 	just want to implement a member range, then?
+	// related; lookup of member of structs
+	//  want fast way to determine if member is present in type
+	//  convert to member ref Dict?
+	//  how to combine all of these into one
+	// two separate uses:
+	//   "interface"
+	//     - tagging arbitrary, nested, type-erased data onto things
+	//       - debug info, metadata
+	//   "configuration"
+	//     - nested, type-erased configuration
+	//       - input to binarizer, config files/params
+	// Dict d;
+	// d["value"] = i;
+	// return d;
+	// return std::array{
+	// 	rrv::Member("value", i),
+	// };
+// }
 
 template <typename Nb>
 Nb* pathSubscript_impl(Nb& n, std::string_view path, char sep) {
