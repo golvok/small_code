@@ -45,16 +45,18 @@ struct MemberIteratorImplBase {
 
 template<bool const_iter>
 class MemberIterator {
-	MemberIteratorImplBase<const_iter>::OwningPtr _impl;
-	MemberIteratorImplBase<const_iter>::OwningPtr clone_impl() const {
+	using ImplBase = MemberIteratorImplBase<const_iter>;
+	using OwningPtr = typename ImplBase::OwningPtr;
+	OwningPtr _impl;
+	OwningPtr clone_impl() const {
 		// _impl ? _impl->clone() : nullptr;
 		return _impl->clone();
 	}
 public:
-	using value_type = MemberIteratorImplBase<const_iter>::value_type;
-	using reference = MemberIteratorImplBase<const_iter>::reference;
+	using value_type = typename ImplBase::value_type;
+	using reference = typename ImplBase::reference;
 
-	MemberIterator(MemberIteratorImplBase<const_iter>::OwningPtr impl) : _impl(std::move(impl)) { }
+	MemberIterator(OwningPtr impl) : _impl(std::move(impl)) { }
 	MemberIterator(const MemberIterator& src) : _impl(src.clone_impl()) {}
 	MemberIterator(MemberIterator&& src) = default;
 	MemberIterator& operator=(const MemberIterator& src) { _impl = src.clone_impl(); }
@@ -175,8 +177,9 @@ public:
 
 	template<bool const_iter>
 	struct Iter : MemberIteratorImplBase<const_iter> {
-		using OwningPtr = MemberIteratorImplBase<const_iter>::OwningPtr;
-		using value_type = MemberIteratorImplBase<const_iter>::value_type;
+		using ImplBase = MemberIteratorImplBase<const_iter>;
+		using OwningPtr = typename ImplBase::OwningPtr;
+		using value_type = typename ImplBase::value_type;
 		using Impl = std::conditional_t<const_iter, DictBase::const_iterator, DictBase::iterator>;
 		Impl impl;
 		Iter(Impl impl_) : impl(impl_) {}
