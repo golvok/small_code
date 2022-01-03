@@ -146,13 +146,18 @@ public:
 	Dict() {}
 	Dict(const Dict& src) : DictBase() { *this = src; }
 	Dict(Dict&&) = default;
+	Dict(const DictBase& src) : DictBase() { *this = src; }
+	Dict(DictBase&& src) : DictBase(std::move(src)) {}
 
-	Dict& operator=(const Dict& rhs) { // need this to override NodeBase's
+	Dict& operator=(const DictBase& rhs) {
 		clear();
-		for (const auto& [k, v] : static_cast<const DictBase&>(rhs)) {
+		for (const auto& [k, v] : rhs) {
 			emplace(k, v->clone());
 		}
 		return *this;
+	}
+	Dict& operator=(const Dict& rhs) { // need this to override NodeBase's
+		return *this = static_cast<const DictBase&>(rhs);
 	}
 	Dict& operator=(Dict&& rhs) { // need this to override NodeBase's
 		this->DictBase::operator=(std::move(rhs));
