@@ -1,5 +1,8 @@
 #pragma once
 
+#include <boost/hana/for_each.hpp>
+#include <boost/hana/ext/std/tuple.hpp>
+
 #include <map>
 #include <memory>
 #include <optional>
@@ -132,13 +135,8 @@ public:
 	virtual MemberIterator<true> end() const = 0;
 	MemberIterator<true> cend() const { return end(); }
 
-	virtual std::unique_ptr<NodeBase> clone() const& {
-		throw std::logic_error(std::string(errors::kCloneNotImplemented_ConstRef));
-	}
-
-	virtual std::unique_ptr<NodeBase> clone() && {
-		throw std::logic_error(std::string(errors::kCloneNotImplemented_RvalRef));
-	}
+	virtual std::unique_ptr<NodeBase> clone() const& = 0;
+	virtual std::unique_ptr<NodeBase> clone() && = 0;
 };
 
 // TODO: use composition instead....
@@ -192,40 +190,53 @@ public:
 		Iter(Impl impl_) : impl(impl_) {}
 		Iter(const Iter&) = default;
 		Iter(Iter&&) = default;
+		// static auto create(Impl impl) { return MemberIterator<const_iter>{OwningPtr{new Iter{impl}}}; }
 		value_type* deref() override { return &*impl; }
 		void advance() override { ++impl; }
 		OwningPtr clone() const& override { return OwningPtr{new Iter(*this)}; }
 	};
 
-	MemberIterator<false> begin() override {
-		return MemberIteratorImplBase<false>::OwningPtr{new Iter<false>{this->DictBase::begin()}};
-	}
-	MemberIterator<true> begin() const override {
-		return MemberIteratorImplBase<true>::OwningPtr{new Iter<true>{this->DictBase::begin()}};
-	}
-	MemberIterator<false> end() override {
-		return MemberIteratorImplBase<false>::OwningPtr{new Iter<false>{this->DictBase::end()}};
-	}
-	MemberIterator<true> end() const override {
-		return MemberIteratorImplBase<true>::OwningPtr{new Iter<true>{this->DictBase::end()}};
-	}
+	MemberIterator<false> begin()       override { return MemberIteratorImplBase<false>::OwningPtr{new Iter<false>{this->DictBase::begin()}}; }
+	MemberIterator<true>  begin() const override { return MemberIteratorImplBase<true>:: OwningPtr{new Iter<true> {this->DictBase::begin()}}; }
+	MemberIterator<false> end()         override { return MemberIteratorImplBase<false>::OwningPtr{new Iter<false>{this->DictBase::end()}}; }
+	MemberIterator<true>  end()   const override { return MemberIteratorImplBase<true>:: OwningPtr{new Iter<true> {this->DictBase::end()}}; }
+
+	std::unique_ptr<NodeBase> clone() const& override { return std::unique_ptr<NodeBase>(new Dict(*this)); }
+	std::unique_ptr<NodeBase> clone() &&     override { return std::unique_ptr<NodeBase>(new Dict(std::move(*this))); }
 };
 
 template <typename T>
 NodeOwning scalarizeImpl(const T& t);
 
 template <typename T>
-class NodeMemberRef : public NodeBase {
+class NodeReference : public NodeBase {
 public:
-	T* member;
+	T* obj;
 
-	// virtual NodeOwning toScalars() const override { return scalarizeImpl(*member); }
-	virtual const NodeBase& operator[](std::string_view sv) const override {
-		throw std::logic_error("can't get member of member (const)");
+	NodeReference(T* member_) : obj(member_) {}
+	NodeReference(const NodeReference&) = default;
+	NodeReference(NodeReference&&) = default;
+	NodeReference& operator=(const NodeReference&) = default;
+	NodeReference& operator=(NodeReference&&) = default;
+
+	const NodeBase& operator[](std::string_view sv) const override {
+		(void)sv;
+		throw std::logic_error("nodref: unimplemented index operator (const)");
 	};
-	virtual NodeBase& operator[](std::string_view sv) override {
-		throw std::logic_error("can't get member of member");
+	NodeBase& operator[](std::string_view sv) override {
+		(void)sv;
+		throw std::logic_error("nodref: unimplemented index operator");
 	}
+
+	NodeOwning toScalars() const override;
+
+	MemberIterator<false> begin()       override { throw std::logic_error("noderef: unimplemented begin const"); }
+	MemberIterator<true>  begin() const override { throw std::logic_error("noderef: unimplemented begin"); }
+	MemberIterator<false> end()         override { throw std::logic_error("noderef: unimplemented end const"); }
+	MemberIterator<true>  end()   const override { throw std::logic_error("noderef: unimplemented end"); }
+
+	std::unique_ptr<NodeBase> clone() const& override { return std::unique_ptr<NodeBase>(new NodeReference(*this)); }
+	std::unique_ptr<NodeBase> clone() &&     override { return std::unique_ptr<NodeBase>(new NodeReference(std::move(*this))); }
 };
 
 template <typename T, typename = void>
@@ -239,14 +250,13 @@ struct NodeConcrete : NodeBase {
 	explicit NodeConcrete(const T& obj_) : obj(obj_) {}
 	explicit NodeConcrete(T&& obj_) : obj(std::move(obj_)) {}
 
-	const NodeBase& operator[](std::string_view) const override {
-		// if constexpr (boost::hana::is_struct<T>::value) {
-		// 	search members
-		// 	what to return here, though? No NodeBase to return by referenece!
-		// } else {
-		// 	static_asert(!sizeof(T), "no known member access method");
-		// }
-		throw std::logic_error(std::string(errors::kAccessMemberOfConcreteType));
+	const NodeBase& operator[](std::string_view key) const override {
+		initMemberCache();
+		auto lookup = member_cache.find(key);
+		if (lookup == member_cache.end()) {
+			throw std::logic_error(std::string("Member not found"));
+		}
+		return *lookup->second.node;
 	}
 	NodeBase& operator[](std::string_view) override {
 		throw std::logic_error(std::string(errors::kAccessMemberOfConcreteType));
@@ -285,6 +295,15 @@ struct NodeConcrete : NodeBase {
 private:
 	friend NodeBase;
 	T obj;
+
+	struct MemberInfo {
+		std::unique_ptr<NodeBase> node;
+		using InitFunc = std::unique_ptr<NodeBase>(const T&);
+		InitFunc* init;
+	};
+	mutable std::map<std::string, MemberInfo, std::less<void>> member_cache = {};
+
+	void initMemberCache() const;
 };
 
 // rename to Root?
@@ -465,6 +484,12 @@ const T* NodeBase::get_if() const {
 	if (auto downcasted = dynamic_cast<const NodeConcrete<PlainT>*>(this)) {
 		return &downcasted->obj;
 	}
+	if (auto downcasted = dynamic_cast<const NodeReference<PlainT>*>(this)) {
+		return downcasted->obj;
+	}
+	if (auto downcasted = dynamic_cast<const NodeReference<const PlainT>*>(this)) {
+		return downcasted->obj;
+	}
 	if (auto downcasted = dynamic_cast<const NodeOwning*>(this)) {
 		if constexpr (std::is_same_v<PlainT, Dict>) {
 			return std::get_if<NodeOwning::DictImpl>(&downcasted->impl);
@@ -554,24 +579,31 @@ NodeOwning NodeConcrete<T,U>::toScalars() const {
 	return scalarizeImpl(obj);
 }
 
+struct HasNoMembers {};
 
+template<typename T> std::enable_if_t<std::is_arithmetic_v<T>, HasNoMembers> rrvMembers(const T&) { return {}; }
+template<typename T> auto rrvMembers(const T& t) -> decltype(T::rrvUseMemberMembers::value, t.rrvMembers()) { return t.rrvMembers(); }
 
+template<typename T> HasNoMembers rrvMembers(const std::vector<T>&) { return {}; }
 
+template<typename T, typename U>
+void NodeConcrete<T,U>::initMemberCache() const {
+	if (not member_cache.empty()) return;
+	auto members = rrvMembers(obj);
+	using Members = decltype(members);
+	if constexpr (std::is_same_v<Members, HasNoMembers>) {
+		return;
+	} else {
+		using boost::hana::for_each;
+		for_each(members, [&](auto&& elem) {
+			using MemberType = std::remove_reference_t<decltype(*elem.second)>;
+			member_cache.emplace(elem.first, std::unique_ptr<NodeBase>(new NodeReference<MemberType>(elem.second)));
+		});
+	}
+}
 
-// // only needed if NodeOwning doesn't inherit from NodeBase
-// class NodeRef {
-// public:
-// 	using Impl = std::variant<NodeOwning::DictImpl*, NodeBase*>;
-// 	// using Impl = NodeBase*;
-// 	Impl impl;
-
-// 	explicit NodeRef(Impl impl_) : impl(std::move(impl_)) {}
-// };
-
-// struct SimpleNode {
-// 	using Impl std::variant<std::unique_ptr<SimpleNode>, std::any>;
-// 	Impl impl;
-// };
+template<typename T>
+NodeOwning NodeReference<T>::toScalars() const { return scalarizeImpl(*obj); }
 
 template<typename T> std::enable_if_t<std::is_arithmetic_v<T>, NodeOwning> rrvScalarize(const T& t) { return t; }
 template<typename T> std::enable_if_t<T::rrvUseMember::value, NodeOwning> rrvScalarize(const T& t) { return t.rrvScalarize(); }

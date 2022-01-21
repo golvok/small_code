@@ -92,6 +92,11 @@ struct StructWithFriendConversions {
 	friend NodeOwning rrvScalarize(const StructWithFriendConversions& s) {
 		NodeOwning r; r["i"] = s.i; return r;
 	}
+	friend auto rrvMembers(const StructWithFriendConversions& s) {
+		return std::make_tuple(
+			std::make_pair("i", &s.i)
+		);
+	}
 };
 }
 
@@ -123,18 +128,28 @@ TEST_CASE("conversion to Scalars") {
 			NodeOwning rrvScalarize() const {
 				NodeOwning r; r["i"] = i; return r;
 			}
+			using rrvUseMemberMembers [[maybe_unused]] = std::true_type; // but it is used...
+			auto rrvMembers() const {
+				return std::make_tuple(
+					std::make_pair("i", &i)
+				);
+			}
 		};
-		SECTION("just one") {
-			root = M{44};
-			const auto scalared = root.toScalars();
+		SECTION("just one - scalarize") {
+			NodeOwning n = M{44};
+			const auto scalared = n.toScalars();
 			CHECK(scalared.at("i").get<int>() == 44);
 		}
-		SECTION("a vector") {
-			root = std::vector{M{55}, M{66}, M{77}};
-			const auto scalared = root.toScalars();
+		SECTION("a vector - scalarize") {
+			NodeOwning n = std::vector{M{55}, M{66}, M{77}};
+			const auto scalared = n.toScalars();
 			CHECK(scalared.at("0").at("i").get<int>() == 55);
 			CHECK(scalared.at("1").at("i").get<int>() == 66);
 			CHECK(scalared.at("2").at("i").get<int>() == 77);
+		}
+		SECTION("just one - member access") {
+			NodeOwning n = M{44};
+			CHECK(n.at("i").get<int>() == 44);
 		}
 	}
 }
@@ -360,6 +375,13 @@ struct SmallTestProgramData {
 		r["j"] = d.j;
 		r["k"] = d.k;
 		return r;
+	}
+	friend auto rrvMembers(const SmallTestProgramData& s) {
+		return std::make_tuple(
+			std::make_pair("i", &s.i),
+			std::make_pair("j", &s.j),
+			std::make_pair("k", &s.k)
+		);
 	}
 };
 }
