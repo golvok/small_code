@@ -509,23 +509,23 @@ const T* NodeBase::get_if() const {
 	return nullptr;
 }
 
-template <typename T>
-NodeBase& NodeBase::operator=(T&& rhs) {
-	using PlainT = std::remove_cvref_t<T>;
-	constexpr auto t_derives_nodebase = std::is_base_of_v<NodeBase, PlainT>;
+template <typename Rhs>
+NodeBase& NodeBase::operator=(Rhs&& rhs) {
+	using PlainRhs = std::remove_cvref_t<Rhs>;
+	constexpr auto t_derives_nodebase = std::is_base_of_v<NodeBase, PlainRhs>;
 
 	if constexpr (t_derives_nodebase) {
 		if (auto downcasted = dynamic_cast<Dict*>(this)) {
-			*downcasted = std::forward<T>(rhs);
+			*downcasted = std::forward<Rhs>(rhs);
 		}
 	} else {
-		if (auto downcasted = dynamic_cast<NodeConcrete<PlainT>*>(this)) {
-			downcasted->obj = std::forward<T>(rhs);
+		if (auto downcasted = dynamic_cast<NodeConcrete<PlainRhs>*>(this)) {
+			downcasted->obj = std::forward<Rhs>(rhs);
 			return *this;
 		}
 	}
 	if (auto downcasted = dynamic_cast<NodeOwning*>(this)) {
-		*downcasted = std::forward<T>(rhs);
+		*downcasted = std::forward<Rhs>(rhs);
 		return *this;
 	}
 	throw std::logic_error("TODO: make operator=(const NodeBase&) and operator=(NodeBase&) virtual??");
