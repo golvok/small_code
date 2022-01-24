@@ -210,6 +210,8 @@ NodeOwning scalarizeImpl(const T& t);
 
 template <typename T>
 class NodeReference : public NodeBase {
+	static_assert(not std::is_reference_v<T>, "Use with a value type instead of a reference");
+	using TNoConst = std::remove_const_t<T>;
 public:
 	T* obj;
 
@@ -235,13 +237,15 @@ public:
 	MemberIterator<false> end()         override { throw std::logic_error("noderef: unimplemented end const"); }
 	MemberIterator<true>  end()   const override { throw std::logic_error("noderef: unimplemented end"); }
 
-	std::unique_ptr<NodeBase> clone() const& override { return std::unique_ptr<NodeBase>(new NodeReference(*this)); }
-	std::unique_ptr<NodeBase> clone() &&     override { return std::unique_ptr<NodeBase>(new NodeReference(std::move(*this))); }
+	std::unique_ptr<NodeBase> clone() const& override { return std::unique_ptr<NodeBase>(new NodeConcrete<TNoConst, void>(*obj)); }
+	std::unique_ptr<NodeBase> clone() &&     override { return std::unique_ptr<NodeBase>(new NodeConcrete<TNoConst, void>(std::move(*obj))); }
 };
 
 template <typename T, typename = void>
 struct NodeConcrete : NodeBase {
 	static_assert(std::is_copy_constructible_v<T>, "Require copy-constructible types so cloning will generally work");
+	static_assert(not std::is_reference_v<T>, "NodeConcrete is a value type wrapper");
+	static_assert(not std::is_const_v<T>, "NodeConcrete enforces constness itself");
 	NodeConcrete() = default;
 	NodeConcrete(const NodeConcrete&) = default;
 	NodeConcrete(NodeConcrete&&) = default;
@@ -349,6 +353,8 @@ public:
 	}
 	explicit NodeOwning(ObjectImpl ri) : impl(std::move(ri)) {}
 	explicit NodeOwning(DictImpl di) : impl(std::move(di)) {}
+	NodeOwning(NodeBase&& nb) : NodeOwning(std::move(nb).clone()) {}
+	NodeOwning(const NodeBase& nb) : NodeOwning(nb.clone()) {}
 
 	template<typename T>
 	NodeOwning(T&& t) : impl(ObjectImpl(new NodeConcrete<std::remove_cvref_t<T>>(std::forward<T>(t)))) {}

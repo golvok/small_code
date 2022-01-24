@@ -34,22 +34,26 @@ TEST_CASE("basic use") {
 	SECTION("init with int") {
 		NodeOwning l = 4;
 		REQUIRE(l.get<int>() == 4);
+		REQUIRE(l.get<const int>() == 4);
 	}
 	SECTION("set and get int") {
 		NodeOwning d;
 		d["k"] = 7;
 		REQUIRE(d["k"].get<int>() == 7);
+		REQUIRE(d["k"].get<const int>() == 7);
 	}
 	SECTION("dict with dict with int") {
 		NodeOwning root;
 		auto& child = root["j"];
 		child["k"] = 8;
 		REQUIRE(root["j"]["k"].get<int>() == 8);
+		REQUIRE(root["j"]["k"].get<const int>() == 8);
 	}
 	SECTION("assign empty rvalue node") {
 		NodeOwning root;
 		root["j"] = NodeOwning();
 		REQUIRE(root["j"].get<Dict>().empty());
+		REQUIRE(root["j"].get<const Dict>().empty());
 	}
 	SECTION("move-assign nested node") {
 		NodeOwning root;
@@ -57,6 +61,7 @@ TEST_CASE("basic use") {
 		child["k"] = 44;
 		root["j"] = std::move(child);
 		REQUIRE(root["j"]["k"].get<int>() == 44);
+		REQUIRE(root["j"]["k"].get<const int>() == 44);
 	}
 	SECTION("copy-assign nested node") {
 		NodeOwning root;
@@ -64,6 +69,7 @@ TEST_CASE("basic use") {
 		child["k"] = 44;
 		root["j"] = child;
 		REQUIRE(root["j"]["k"].get<int>() == 44);
+		REQUIRE(root["j"]["k"].get<const int>() == 44);
 	}
 }
 
@@ -150,6 +156,12 @@ TEST_CASE("conversion to Scalars") {
 		SECTION("just one - member access") {
 			NodeOwning n = M{44};
 			CHECK(n.at("i").get<int>() == 44);
+		}
+		SECTION("assign NodeOwning = member") {
+			NodeOwning n = M{44};
+			NodeOwning n2 = n.at("i");
+			n.get<M>().i = 55;
+			CHECK(n2.get<int>() == 44);
 		}
 	}
 }
