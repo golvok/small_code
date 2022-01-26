@@ -42,6 +42,12 @@ TEST_CASE("basic use") {
 		REQUIRE(d["k"].get<int>() == 7);
 		REQUIRE(d["k"].get<const int>() == 7);
 	}
+	SECTION("check const access") {
+		const NodeOwning d = 7;
+		auto& non_const_get = d.get<int>();
+		static_assert(std::is_same_v<decltype(non_const_get), const int&>, "const access should return const");
+		REQUIRE(d.get<const int>() == 7);
+	}
 	SECTION("dict with dict with int") {
 		NodeOwning root;
 		auto& child = root["j"];

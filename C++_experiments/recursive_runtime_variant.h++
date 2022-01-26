@@ -87,9 +87,9 @@ public:
 	virtual ~NodeBase() = default;
 
 	template<typename T>
-	const T* get_if() const;
+	const T* get_if() const { return get_if_impl<const T>(*this); }
 	template<typename T>
-	T* get_if() { return const_cast<T*>(static_cast<const NodeBase*>(this)->get_if<T>()); }
+	T* get_if() { return get_if_impl<T>(*this); }
 
 	template<typename T>
 	const T& get() const {
@@ -137,6 +137,10 @@ public:
 
 	virtual std::unique_ptr<NodeBase> clone() const& = 0;
 	virtual std::unique_ptr<NodeBase> clone() && = 0;
+
+private:
+	template<typename T, typename Self>
+	static T* get_if_impl(Self&);
 };
 
 // TODO: use composition instead....
@@ -484,25 +488,32 @@ private:
 	// NodeOwning& getImpl() const { return getImpl_(*this); }
 };
 
-template<typename T>
-const T* NodeBase::get_if() const {
+template<typename T, typename Self>
+T* NodeBase::get_if_impl(Self& self) {
+	constexpr auto self_is_const = std::is_const_v<Self>;
 	using PlainT = std::remove_cv_t<T>;
-	if (auto downcasted = dynamic_cast<const NodeConcrete<PlainT>*>(this)) {
+	using NodeConcreteSameConst = std::conditional_t<self_is_const, const NodeConcrete<PlainT>, NodeConcrete<PlainT>>;
+	if (auto downcasted = dynamic_cast<NodeConcreteSameConst*>(&self)) {
 		return &downcasted->obj;
 	}
-	if (auto downcasted = dynamic_cast<const NodeReference<PlainT>*>(this)) {
+	using NodeReferenceSameConst = std::conditional_t<self_is_const, const NodeReference<PlainT>, NodeReference<PlainT>>;
+	if (auto downcasted = dynamic_cast<NodeReferenceSameConst*>(&self)) {
 		return downcasted->obj;
+	};
+	if constexpr (self_is_const) {
+		using NodeReferenceToConstSameConst = std::conditional_t<self_is_const, const NodeReference<const PlainT>, NodeReference<const PlainT>>;
+		if (auto downcasted = dynamic_cast<NodeReferenceToConstSameConst*>(&self)) {
+			return downcasted->obj;
+		}
 	}
-	if (auto downcasted = dynamic_cast<const NodeReference<const PlainT>*>(this)) {
-		return downcasted->obj;
-	}
-	if (auto downcasted = dynamic_cast<const NodeOwning*>(this)) {
+	using NodeOwningSameConst = std::conditional_t<self_is_const, const NodeOwning, NodeOwning>;
+	if (auto downcasted = dynamic_cast<NodeOwningSameConst*>(&self)) {
 		if constexpr (std::is_same_v<PlainT, Dict>) {
 			return std::get_if<NodeOwning::DictImpl>(&downcasted->impl);
 		} else {
 			return visitImpl(*downcasted,
-				[](auto&& /*dict*/) -> const T* { throw std::logic_error(std::string(errors::kAccessNodeOwningAsObjectButIsDict)); },
-				[](auto&& obj) -> const T* { return obj.template get_if<const T>(); }
+				[](auto&& /*dict*/) -> T* { throw std::logic_error(std::string(errors::kAccessNodeOwningAsObjectButIsDict)); },
+				[](auto&& obj) -> T* { return obj.template get_if<T>(); }
 			);
 		}
 	}
