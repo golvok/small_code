@@ -92,15 +92,9 @@ public:
 	T* get_if() { return get_if_impl<T>(*this); }
 
 	template<typename T>
-	const T& get() const {
-		if (auto ptr = get_if<T>()) {
-			return *ptr;
-		} else {
-			throw std::logic_error(std::string(errors::kAccessWithWrongType));
-		}
-	}
+	const T& get() const { return getImpl<const T>(*this); }
 	template<typename T>
-	T& get() { return const_cast<T&>(static_cast<const NodeBase*>(this)->get<T>()); }
+	T& get() { return getImpl<T>(*this); }
 
 	template<typename T>
 	T as() const {
@@ -141,6 +135,15 @@ public:
 private:
 	template<typename T, typename Self>
 	static T* get_if_impl(Self&);
+
+	template<typename T, typename Self>
+	static T& getImpl(Self& self) {
+		if (auto ptr = self.template get_if<T>()) {
+			return *ptr;
+		} else {
+			throw std::logic_error(std::string(errors::kAccessWithWrongType));
+		}
+	}
 };
 
 // TODO: use composition instead....
