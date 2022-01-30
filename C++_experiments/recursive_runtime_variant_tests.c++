@@ -1,7 +1,6 @@
-#define CATCH_CONFIG_MAIN  // Tell catch to provide main()
-#include <catch2/catch.hpp>
-
 #include "recursive_runtime_variant.h++"
+
+#include <catch2/catch.hpp>
 
 /*
 	need string-based member access, but don't want to require hanafication
