@@ -1,7 +1,5 @@
 #pragma once
 
-#include <boost/hana/for_each.hpp>
-#include <boost/hana/ext/std/tuple.hpp>
 
 #include <map>
 #include <memory>
@@ -614,11 +612,16 @@ void NodeConcrete<T,U>::initMemberCache() const {
 	if constexpr (std::is_same_v<Members, HasNoMembers>) {
 		return;
 	} else {
-		using boost::hana::for_each;
-		for_each(members, [&](auto&& elem) {
+		const auto add_elem = [this](auto&& elem) {
 			using MemberType = std::remove_reference_t<decltype(*elem.second)>;
-			member_cache.emplace(elem.first, std::unique_ptr<NodeBase>(new NodeReference<MemberType>(elem.second)));
-		});
+			this->member_cache.emplace(elem.first, std::unique_ptr<NodeBase>(new NodeReference<MemberType>(elem.second)));
+		};
+
+		const auto add_all = [&add_elem](auto&&... elems) {
+			(add_elem(std::forward<decltype(elems)>(elems)), ...);
+		};
+
+		std::apply(add_all, members);
 	}
 }
 
