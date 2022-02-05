@@ -260,7 +260,7 @@ TEST_CASE("error paths") {
 	}
 	SECTION("access member of an object in a NodeOwning") {
 		NodeOwning no = 4;
-		CHECK_THROWS_WITH(no["k"], std::string(rrv::errors::kAccessMemberOfConcreteType));
+		CHECK_THROWS_WITH(no["k"], std::string(rrv::errors::kAccessMemberOfScalarType));
 	}
 	SECTION("assign object to Dict from a NodeOwning") {
 		Dict d;

@@ -24,6 +24,7 @@ class MemberIteratorImplBase;
 namespace errors {
 	using namespace std::literals::string_view_literals;
 	constexpr auto kAssignObjectInNodeOwningToDict = "Trying to assign an object to a Dict (via a NodeOwning)"sv;
+	constexpr auto kAccessMemberOfScalarType = "Accessing member of a scalar type"sv;
 	constexpr auto kAccessNodeOwningAsObjectButIsDict = "Trying to access a NodeOwning as an object, but it is a Dict"sv;
 	constexpr auto kAccessWithWrongType = "Accessing with wrong type"sv;
 	constexpr auto kAsCannotAccessOrConvert = ".as is unable to access as or convert to the type requested"sv;
@@ -262,15 +263,10 @@ struct NodeConcrete : NodeBase {
 	explicit NodeConcrete(T&& obj_) : obj(std::move(obj_)) {}
 
 	const NodeBase& operator[](std::string_view key) const override {
-		initMemberCache();
-		auto lookup = member_cache.find(key);
-		if (lookup == member_cache.end()) {
-			throw std::logic_error(std::string("Member not found"));
-		}
-		return *lookup->second.node;
+		return *getMember(key).node;
 	}
-	NodeBase& operator[](std::string_view) override {
-		throw std::logic_error(std::string(errors::kAccessMemberOfConcreteType));
+	NodeBase& operator[](std::string_view key) override {
+		return *getMember(key).node;
 	}
 
 	NodeOwning toScalars() const override;
@@ -309,12 +305,10 @@ private:
 
 	struct MemberInfo {
 		std::unique_ptr<NodeBase> node;
-		using InitFunc = std::unique_ptr<NodeBase>(const T&);
-		InitFunc* init;
 	};
 	mutable std::map<std::string, MemberInfo, std::less<void>> member_cache = {};
 
-	void initMemberCache() const;
+	MemberInfo& getMember(std::string_view key) const;
 };
 
 // rename to Root?
@@ -600,30 +594,49 @@ NodeOwning NodeConcrete<T>::toScalars() const {
 }
 
 struct HasNoMembers {};
+struct DynamicMembers {};
 
 template<typename T> std::enable_if_t<std::is_arithmetic_v<T>, HasNoMembers> rrvMembers(const T&) { return {}; }
 template<typename T> auto rrvMembers(const T& t) -> decltype(T::rrvUseMemberMembers::value, t.rrvMembers()) { return t.rrvMembers(); }
 
-template<typename T> HasNoMembers rrvMembers(const std::vector<T>&) { return {}; }
+template<typename T> DynamicMembers rrvMembers(const std::vector<T>&) { return {}; }
 
 template<typename T>
-void NodeConcrete<T>::initMemberCache() const {
-	if (not member_cache.empty()) return;
-	auto members = rrvMembers(obj);
-	using Members = decltype(members);
+auto NodeConcrete<T>::getMember(std::string_view key) const -> MemberInfo& {
+	auto get_members = [&]() -> decltype(auto) {
+		using ::rrv::rrvMembers;
+		return rrvMembers(obj);
+	};
+	using Members = decltype(get_members());
 	if constexpr (std::is_same_v<Members, HasNoMembers>) {
-		return;
+		throw std::logic_error(std::string(errors::kAccessMemberOfScalarType));
+	} else if constexpr (std::is_same_v<Members, DynamicMembers>) {
+		auto [lookup, is_new] = member_cache.emplace(key, MemberInfo{});
+		auto& member_info = lookup->second;
+		if (is_new) {
+			// member_info = MemberInfo{...};
+			throw std::logic_error("getting members of DynamicMembers types not implemented");
+		}
+		return member_info;
 	} else {
-		const auto add_elem = [this](auto&& elem) {
-			using MemberType = std::remove_reference_t<decltype(*elem.second)>;
-			this->member_cache.emplace(elem.first, std::unique_ptr<NodeBase>(new NodeReference<MemberType>(elem.second)));
-		};
+		if (member_cache.empty()) {
+			const auto add_elem = [this](auto&& elem) {
+				using MemberType = std::remove_reference_t<decltype(*elem.second)>;
+				this->member_cache.emplace(elem.first, std::unique_ptr<NodeBase>(new NodeReference<MemberType>(elem.second)));
+			};
 
-		const auto add_all = [&add_elem](auto&&... elems) {
-			(add_elem(std::forward<decltype(elems)>(elems)), ...);
-		};
+			const auto add_all = [&add_elem](auto&&... elems) {
+				(add_elem(std::forward<decltype(elems)>(elems)), ...);
+			};
 
-		std::apply(add_all, members);
+			std::apply(add_all, get_members());
+		}
+
+		auto lookup = member_cache.find(key);
+		if (lookup == member_cache.end()) {
+			throw std::logic_error("Member not found");
+		}
+		return lookup->second;
 	}
 }
 
