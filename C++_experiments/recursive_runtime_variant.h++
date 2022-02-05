@@ -12,7 +12,7 @@
 namespace rrv {
 
 class NodeBase;
-template<typename T, typename> class NodeConcrete;
+template<typename T> class NodeConcrete;
 struct Dict;
 class NodeOwning;
 template<bool>
@@ -243,11 +243,11 @@ public:
 	MemberIterator<false> end()         override { throw std::logic_error("noderef: unimplemented end const"); }
 	MemberIterator<true>  end()   const override { throw std::logic_error("noderef: unimplemented end"); }
 
-	std::unique_ptr<NodeBase> clone() const& override { return std::unique_ptr<NodeBase>(new NodeConcrete<TNoConst, void>(*obj)); }
-	std::unique_ptr<NodeBase> clone() &&     override { return std::unique_ptr<NodeBase>(new NodeConcrete<TNoConst, void>(std::move(*obj))); }
+	std::unique_ptr<NodeBase> clone() const& override { return std::unique_ptr<NodeBase>(new NodeConcrete<TNoConst>(*obj)); }
+	std::unique_ptr<NodeBase> clone() &&     override { return std::unique_ptr<NodeBase>(new NodeConcrete<TNoConst>(std::move(*obj))); }
 };
 
-template <typename T, typename = void>
+template <typename T>
 struct NodeConcrete : NodeBase {
 	static_assert(std::is_copy_constructible_v<T>, "Require copy-constructible types so cloning will generally work");
 	static_assert(not std::is_reference_v<T>, "NodeConcrete is a value type wrapper");
@@ -593,8 +593,8 @@ NodeBase& Dict::operator[](std::string_view sv) {
 	}
 }
 
-template<typename T, typename U>
-NodeOwning NodeConcrete<T,U>::toScalars() const {
+template<typename T>
+NodeOwning NodeConcrete<T>::toScalars() const {
 	return scalarizeImpl(obj);
 }
 
@@ -605,8 +605,8 @@ template<typename T> auto rrvMembers(const T& t) -> decltype(T::rrvUseMemberMemb
 
 template<typename T> HasNoMembers rrvMembers(const std::vector<T>&) { return {}; }
 
-template<typename T, typename U>
-void NodeConcrete<T,U>::initMemberCache() const {
+template<typename T>
+void NodeConcrete<T>::initMemberCache() const {
 	if (not member_cache.empty()) return;
 	auto members = rrvMembers(obj);
 	using Members = decltype(members);
