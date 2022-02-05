@@ -22,14 +22,15 @@ class MemberIteratorImplBase;
 // struct IsSclarar {};
 
 namespace errors {
-	constexpr auto kAssignObjectInNodeOwningToDict = std::string_view("Trying to assign an object to a Dict (via a NodeOwning)");
-	constexpr auto kAccessNodeOwningAsObjectButIsDict = std::string_view("Trying to access a NodeOwning as an object, but it is a Dict");
-	constexpr auto kAccessWithWrongType = std::string_view("Accessing with wrong type");
-	constexpr auto kAsCannotAccessOrConvert = std::string_view(".as is unable to access as or convert to the type requested");
-	constexpr auto kCloneNotImplemented_ConstRef = std::string_view("clone const& not implemented");
-	constexpr auto kCloneNotImplemented_RvalRef = std::string_view("clone && not implemented");
-	constexpr auto kAccessMemberOfConcreteType = std::string_view("can't get member of concrete type");
-	constexpr auto kAssignObjectToDict = std::string_view("Trying to assign an object to a Dict");
+	using namespace std::literals::string_view_literals;
+	constexpr auto kAssignObjectInNodeOwningToDict = "Trying to assign an object to a Dict (via a NodeOwning)"sv;
+	constexpr auto kAccessNodeOwningAsObjectButIsDict = "Trying to access a NodeOwning as an object, but it is a Dict"sv;
+	constexpr auto kAccessWithWrongType = "Accessing with wrong type"sv;
+	constexpr auto kAsCannotAccessOrConvert = ".as is unable to access as or convert to the type requested"sv;
+	constexpr auto kCloneNotImplemented_ConstRef = "clone const& not implemented"sv;
+	constexpr auto kCloneNotImplemented_RvalRef = "clone && not implemented"sv;
+	constexpr auto kAccessMemberOfConcreteType = "can't get member of concrete type"sv;
+	constexpr auto kAssignObjectToDict = "Trying to assign an object to a Dict"sv;
 }
 
 using DictBase = std::map<std::string, std::unique_ptr<NodeBase>, std::less<>>;
