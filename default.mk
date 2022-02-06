@@ -2,8 +2,8 @@
 .SUFFIXES:
 MAKEFLAGS+=" -r -j 4"
 
-MY_CFLAGS = -Wall -Wextra -pedantic -Werror -std=gnu99 -I ../include $(CFLAGS)
-MY_CXXFLAGS = -Wall -Weffc++ -Wextra -pedantic -std=c++20 -g -I ../include $(CXXFLAGS)
+MY_CFLAGS = -Wall -Wextra -pedantic -Werror -std=gnu99 -ftabstop=1 -I ../include $(CFLAGS)
+MY_CXXFLAGS = -Wall -Weffc++ -Wextra -pedantic -std=c++20 -ftabstop=1 -g -I ../include $(CXXFLAGS)
 MY_LDFLAGS = $(LDFLAGS)
 
 BUILD_DIR=build
