@@ -22,6 +22,8 @@
 using rrv::NodeOwning;
 using rrv::NodeBase;
 using rrv::NodeConcrete;
+using rrv::NodeReference;
+using rrv::NodeValue;
 using rrv::Dict;
 
 TEST_CASE("basic use") {
@@ -133,37 +135,59 @@ TEST_CASE("conversion to Scalars") {
 		CHECK(scalared.at("i").get<int>() == 3);
 	}
 	SECTION("convert a simple struct -- member conversion function") {
-		struct M {
-			int i;
+		struct Mm {
+			int ii;
+
 			using rrvUseMember [[maybe_unused]] = std::true_type; // but it is used...
 			NodeOwning rrvScalarize() const {
-				NodeOwning r; r["i"] = i; return r;
+				NodeOwning r; r["ii"] = ii; return r;
 			}
 			using rrvUseMemberMembers [[maybe_unused]] = std::true_type; // but it is used...
 			auto rrvMembers() const {
 				return std::make_tuple(
-					std::make_pair("i", &i)
+					std::make_pair("ii", &ii)
+				);
+			}
+		};
+		struct M {
+			int i;
+			Mm m;
+
+			using rrvUseMember [[maybe_unused]] = std::true_type; // but it is used...
+			NodeOwning rrvScalarize() const {
+				NodeOwning r; r["i"] = i; r["m"] = m; return r;
+			}
+			using rrvUseMemberMembers [[maybe_unused]] = std::true_type; // but it is used...
+			auto rrvMembers() const {
+				return std::make_tuple(
+					std::make_pair("i", &i),
+					std::make_pair("m", &m)
 				);
 			}
 		};
 		SECTION("just one - scalarize") {
-			NodeOwning n = M{44};
+			NodeOwning n = M{44, {444}};
 			const auto scalared = n.toScalars();
 			CHECK(scalared.at("i").get<int>() == 44);
+			CHECK(scalared.at("m").at("ii").get<int>() == 444);
 		}
 		SECTION("a vector - scalarize") {
-			NodeOwning n = std::vector{M{55}, M{66}, M{77}};
+			NodeOwning n = std::vector{M{55, {555}}, M{66, {666}}, M{77, {777}}};
 			const auto scalared = n.toScalars();
 			CHECK(scalared.at("0").at("i").get<int>() == 55);
+			CHECK(scalared.at("0").at("m").at("ii").get<int>() == 555);
 			CHECK(scalared.at("1").at("i").get<int>() == 66);
+			CHECK(scalared.at("1").at("m").at("ii").get<int>() == 666);
 			CHECK(scalared.at("2").at("i").get<int>() == 77);
+			CHECK(scalared.at("2").at("m").at("ii").get<int>() == 777);
 		}
 		SECTION("just one - member access") {
-			NodeOwning n = M{44};
+			NodeOwning n = M{44, {444}};
 			CHECK(n.at("i").get<int>() == 44);
+			CHECK(n.at("m").at("ii").get<int>() == 444);
 		}
 		SECTION("assign NodeOwning = member") {
-			NodeOwning n = M{44};
+			NodeOwning n = M{44, {444}};
 			NodeOwning n2 = n.at("i");
 			n.get<M>().i = 55;
 			CHECK(n2.get<int>() == 44);
@@ -268,7 +292,7 @@ TEST_CASE("error paths") {
 	}
 	SECTION("assign object to Dict from a NodeBase") {
 		Dict d;
-		auto nc = NodeConcrete<int>{4}; // constructing a NodeOwning doesn't work -- it tries that downcast
+		auto nc = NodeValue<int>{4}; // constructing a NodeOwning doesn't work -- it tries that downcast
 		CHECK_THROWS_WITH(d = nc, std::string(rrv::errors::kAssignObjectToDict));
 	}
 	SECTION("iterate object") {

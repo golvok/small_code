@@ -13,6 +13,8 @@ namespace rrv {
 
 class NodeBase;
 template<typename T> class NodeConcrete;
+template<typename T> class NodeReference;
+template<typename T> class NodeValue;
 struct Dict;
 class NodeOwning;
 template<bool>
@@ -217,50 +219,17 @@ template <typename T>
 NodeOwning scalarizeImpl(const T& t);
 
 template <typename T>
-class NodeReference : public NodeBase {
-	static_assert(not std::is_reference_v<T>, "Use with a value type instead of a reference");
-	using TNoConst = std::remove_const_t<T>;
-public:
-	T* obj;
-
-	NodeReference(T* member_) : obj(member_) {}
-	NodeReference(const NodeReference&) = default;
-	NodeReference(NodeReference&&) = default;
-	NodeReference& operator=(const NodeReference&) = default;
-	NodeReference& operator=(NodeReference&&) = default;
-
-	const NodeBase& operator[](std::string_view sv) const override {
-		(void)sv;
-		throw std::logic_error("nodref: unimplemented index operator (const)");
-	};
-	NodeBase& operator[](std::string_view sv) override {
-		(void)sv;
-		throw std::logic_error("nodref: unimplemented index operator");
-	}
-
-	NodeOwning toScalars() const override;
-
-	MemberIterator<false> begin()       override { throw std::logic_error("noderef: unimplemented begin const"); }
-	MemberIterator<true>  begin() const override { throw std::logic_error("noderef: unimplemented begin"); }
-	MemberIterator<false> end()         override { throw std::logic_error("noderef: unimplemented end const"); }
-	MemberIterator<true>  end()   const override { throw std::logic_error("noderef: unimplemented end"); }
-
-	std::unique_ptr<NodeBase> clone() const& override { return std::unique_ptr<NodeBase>(new NodeConcrete<TNoConst>(*obj)); }
-	std::unique_ptr<NodeBase> clone() &&     override { return std::unique_ptr<NodeBase>(new NodeConcrete<TNoConst>(std::move(*obj))); }
-};
-
-template <typename T>
 struct NodeConcrete : NodeBase {
+	static_assert(not std::is_reference_v<T>, "Use with a value type instead of a reference");
 	static_assert(std::is_copy_constructible_v<T>, "Require copy-constructible types so cloning will generally work");
-	static_assert(not std::is_reference_v<T>, "NodeConcrete is a value type wrapper");
-	static_assert(not std::is_const_v<T>, "NodeConcrete enforces constness itself");
+
+	using TNoConst = std::remove_const_t<T>;
+
 	NodeConcrete() = default;
 	NodeConcrete(const NodeConcrete&) = default;
 	NodeConcrete(NodeConcrete&&) = default;
 	NodeConcrete& operator=(const NodeConcrete&) = default;
 	NodeConcrete& operator=(NodeConcrete&&) = default;
-	explicit NodeConcrete(const T& obj_) : obj(obj_) {}
-	explicit NodeConcrete(T&& obj_) : obj(std::move(obj_)) {}
 
 	const NodeBase& operator[](std::string_view key) const override {
 		return *getMember(key).node;
@@ -271,38 +240,18 @@ struct NodeConcrete : NodeBase {
 
 	NodeOwning toScalars() const override;
 
-	std::unique_ptr<NodeBase> clone() const& override {
-		return std::unique_ptr<NodeBase>(new NodeConcrete<T>(obj));
-	}
+	MemberIterator<false> begin()       override { throw std::logic_error(std::string(rrv::errors::kAccessMemberOfConcreteType)); }
+	MemberIterator<true>  begin() const override { throw std::logic_error(std::string(rrv::errors::kAccessMemberOfConcreteType)); }
+	MemberIterator<false> end()         override { throw std::logic_error(std::string(rrv::errors::kAccessMemberOfConcreteType)); }
+	MemberIterator<true>  end()   const override { throw std::logic_error(std::string(rrv::errors::kAccessMemberOfConcreteType)); }
 
-	std::unique_ptr<NodeBase> clone() && override {
-		return std::unique_ptr<NodeBase>(new NodeConcrete<T>(std::move(obj)));
-	}
+	std::unique_ptr<NodeBase> clone() const& override { return std::unique_ptr<NodeBase>(new NodeValue<TNoConst>(getObj())); }
+	std::unique_ptr<NodeBase> clone() &&     override { return std::unique_ptr<NodeBase>(new NodeValue<TNoConst>(std::move(getObj()))); }
 
-	MemberIterator<false> begin() override {
-		throw std::logic_error(std::string(errors::kAccessMemberOfConcreteType));
-	}
-	MemberIterator<true> begin() const override {
-		throw std::logic_error(std::string(errors::kAccessMemberOfConcreteType));
-	}
-	MemberIterator<false> end() override {
-		throw std::logic_error(std::string(errors::kAccessMemberOfConcreteType));
-	}
-	MemberIterator<true> end() const override {
-		throw std::logic_error(std::string(errors::kAccessMemberOfConcreteType));
-	}
+	virtual T& getObj() & = 0;
+	virtual const T& getObj() const& = 0;
 
-	T& getObj() & { return obj; }
-	const T& getObj() const& { return obj; }
-
-	// maybe?
-	// operator T&() { return obj; }
-	// operator const T&() const { return obj; }
-	// operator T() && { return obj; }
-private:
-	friend NodeBase;
-	T obj;
-
+protected:
 	struct MemberInfo {
 		std::unique_ptr<NodeBase> node;
 	};
@@ -311,12 +260,43 @@ private:
 	MemberInfo& getMember(std::string_view key) const;
 };
 
+template <typename T>
+struct NodeValue : NodeConcrete<T> {
+	static_assert(not std::is_const_v<T>, "NodeConcrete enforces constness itself");
+
+	NodeValue(const NodeValue&) = default;
+	NodeValue(NodeValue&&) = default;
+	NodeValue& operator=(const NodeValue&) = default;
+	NodeValue& operator=(NodeValue&&) = default;
+	explicit NodeValue(const T& obj_) : obj(obj_) {}
+	explicit NodeValue(T&& obj_) : obj(std::move(obj_)) {}
+
+	T& getObj() & override { return obj; }
+	const T& getObj() const& override { return obj; }
+private:
+	T obj;
+};
+
+template <typename T>
+struct NodeReference : NodeConcrete<T> {
+	NodeReference(const NodeReference&) = default;
+	NodeReference(NodeReference&&) = default;
+	NodeReference& operator=(const NodeReference&) = default;
+	NodeReference& operator=(NodeReference&&) = default;
+	explicit NodeReference(T* obj_) : obj(obj_) {}
+
+	T& getObj() & override { return *obj; }
+	const T& getObj() const& override { return *obj; }
+private:
+	T* obj;
+};
+
 // rename to Root?
 class NodeOwning : public NodeBase {
 public:
 	using DictImpl = Dict;
 	// using ObjectImpl = std::unique_ptr<NodeOwning>;
-	// using DictImpl = NodeConcrete<Dict>;
+	// using DictImpl = NodeValue<Dict>;
 	// using Impl = std::unique_ptr<NodeOwning>;
 	using ObjectImpl = std::unique_ptr<NodeBase>;
 	using Impl = std::variant<DictImpl, ObjectImpl>;
@@ -358,7 +338,7 @@ public:
 	NodeOwning(const NodeBase& nb) : NodeOwning(nb.clone()) {}
 
 	template<typename T>
-	NodeOwning(T&& t) : impl(ObjectImpl(new NodeConcrete<std::remove_cvref_t<T>>(std::forward<T>(t)))) {}
+	NodeOwning(T&& t) : impl(ObjectImpl(new NodeValue<std::remove_cvref_t<T>>(std::forward<T>(t)))) {}
 
 	template<typename T>
 	NodeOwning& operator=(T&& rhs) {
@@ -399,7 +379,7 @@ public:
 			visitImpl(*this,
 				[&](auto& /*dict*/) {
 					// have a Dict; overwrite with object impl by making a new node
-					impl = NodeOwning::ObjectImpl(new NodeConcrete<PlainT>(fwd_rhs()));
+					impl = NodeOwning::ObjectImpl(new NodeValue<PlainT>(fwd_rhs()));
 				},
 				[&, this](auto& obj) {
 					if (auto obj_impl = obj.template get_if<PlainT>()) {
@@ -407,7 +387,7 @@ public:
 						*obj_impl = fwd_rhs();
 					} else {
 						// type does not match. Make a new node
-						std::get_if<ObjectImpl>(&impl)->reset(new NodeConcrete<PlainT>(fwd_rhs()));
+						std::get_if<ObjectImpl>(&impl)->reset(new NodeValue<PlainT>(fwd_rhs()));
 					}
 				}
 			);
@@ -488,19 +468,16 @@ private:
 template<typename T, typename Self>
 T* NodeBase::get_if_impl(Self& self) {
 	constexpr auto self_is_const = std::is_const_v<Self>;
+	constexpr auto t_is_const = std::is_const_v<T>;
 	using PlainT = std::remove_cv_t<T>;
 	using NodeConcreteSameConst = std::conditional_t<self_is_const, const NodeConcrete<PlainT>, NodeConcrete<PlainT>>;
 	if (auto downcasted = dynamic_cast<NodeConcreteSameConst*>(&self)) {
-		return &downcasted->obj;
+		return &downcasted->getObj();
 	}
-	using NodeReferenceSameConst = std::conditional_t<self_is_const, const NodeReference<PlainT>, NodeReference<PlainT>>;
-	if (auto downcasted = dynamic_cast<NodeReferenceSameConst*>(&self)) {
-		return downcasted->obj;
-	};
-	if constexpr (self_is_const) {
-		using NodeReferenceToConstSameConst = std::conditional_t<self_is_const, const NodeReference<const PlainT>, NodeReference<const PlainT>>;
-		if (auto downcasted = dynamic_cast<NodeReferenceToConstSameConst*>(&self)) {
-			return downcasted->obj;
+	if constexpr (self_is_const && t_is_const) {
+		using NodeConcreteToConstSameConst = std::conditional_t<self_is_const, const NodeConcrete<const PlainT>, NodeConcrete<const PlainT>>;
+		if (auto downcasted = dynamic_cast<NodeConcreteToConstSameConst*>(&self)) {
+			return &downcasted->getObj();
 		}
 	}
 	using NodeOwningSameConst = std::conditional_t<self_is_const, const NodeOwning, NodeOwning>;
@@ -528,7 +505,7 @@ NodeBase& NodeBase::operator=(Rhs&& rhs) {
 		}
 	} else {
 		if (auto downcasted = dynamic_cast<NodeConcrete<PlainRhs>*>(this)) {
-			downcasted->obj = std::forward<Rhs>(rhs);
+			downcasted->getObj() = std::forward<Rhs>(rhs);
 			return *this;
 		}
 	}
@@ -590,7 +567,7 @@ NodeBase& Dict::operator[](std::string_view sv) {
 
 template<typename T>
 NodeOwning NodeConcrete<T>::toScalars() const {
-	return scalarizeImpl(obj);
+	return scalarizeImpl(getObj());
 }
 
 struct HasNoMembers {};
@@ -603,9 +580,9 @@ template<typename T> DynamicMembers rrvMembers(const std::vector<T>&) { return {
 
 template<typename T>
 auto NodeConcrete<T>::getMember(std::string_view key) const -> MemberInfo& {
-	auto get_members = [&]() -> decltype(auto) {
+	auto get_members = [this]() -> decltype(auto) {
 		using ::rrv::rrvMembers;
-		return rrvMembers(obj);
+		return rrvMembers(this->getObj());
 	};
 	using Members = decltype(get_members());
 	if constexpr (std::is_same_v<Members, HasNoMembers>) {
@@ -639,9 +616,6 @@ auto NodeConcrete<T>::getMember(std::string_view key) const -> MemberInfo& {
 		return lookup->second;
 	}
 }
-
-template<typename T>
-NodeOwning NodeReference<T>::toScalars() const { return scalarizeImpl(*obj); }
 
 template<typename T> std::enable_if_t<std::is_arithmetic_v<T>, NodeOwning> rrvScalarize(const T& t) { return t; }
 template<typename T> std::enable_if_t<T::rrvUseMember::value, NodeOwning> rrvScalarize(const T& t) { return t.rrvScalarize(); }
