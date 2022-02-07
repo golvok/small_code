@@ -578,21 +578,60 @@ template<typename T> auto rrvMembers(const T& t) -> decltype(T::rrvUseMemberMemb
 
 template<typename T> DynamicMembers rrvMembers(const std::vector<T>&) { return {}; }
 
+template<typename T> constexpr static bool kIsDynamicMemberType = std::is_same_v<decltype(rrvMembers(std::declval<T>())), DynamicMembers>;
+
+template<typename Obj, typename = void>
+decltype(auto) rrvMember(const Obj& obj, std::string_view key);
+template<typename Obj, typename = std::enable_if_t<kIsDynamicMemberType<Obj>>>
+decltype(auto) rrvMember(const Obj& obj, std::string_view key) { return obj.rrvMember(key); }
+template<typename T>
+decltype(auto) rrvMember(const std::vector<T>& obj, std::string_view key) { return obj.at(std::stoi(std::string(key))); }
+
+template <typename Container, typename T>
+struct NodeIndirectAcess : NodeConcrete<T> {
+	NodeIndirectAcess(const NodeIndirectAcess&) = default;
+	NodeIndirectAcess(NodeIndirectAcess&&) = default;
+	NodeIndirectAcess& operator=(const NodeIndirectAcess&) = default;
+	NodeIndirectAcess& operator=(NodeIndirectAcess&&) = default;
+	explicit NodeIndirectAcess(Container* container_, std::string_view key_) : container(container_), key(key_) {}
+
+	T& getObj() & override { return getObjImpl(*this); }
+	const T& getObj() const& override { return getObjImpl(*this); }
+private:
+	template<typename Self>
+	static std::conditional_t<std::is_const_v<Self>, const T&, T&> getObjImpl(Self& self) {
+		using ::rrv::rrvMember;
+		return rrvMember(*self.container, self.key);
+	}
+
+	Container* container;
+	std::string key;
+};
+
 template<typename T>
 auto NodeConcrete<T>::getMember(std::string_view key) const -> MemberInfo& {
 	auto get_members = [this]() -> decltype(auto) {
 		using ::rrv::rrvMembers;
 		return rrvMembers(this->getObj());
 	};
-	using Members = decltype(get_members());
+	using Members = std::remove_reference_t<decltype(get_members())>;
 	if constexpr (std::is_same_v<Members, HasNoMembers>) {
 		throw std::logic_error(std::string(errors::kAccessMemberOfScalarType));
-	} else if constexpr (std::is_same_v<Members, DynamicMembers>) {
+	} else if constexpr (kIsDynamicMemberType<T>) {
+		auto get_member = [this, &key]() -> decltype(auto) {
+			using ::rrv::rrvMember;
+			return rrvMember(this->getObj(), key);
+		};
+		using Member = std::remove_reference_t<decltype(get_member())>;
 		auto [lookup, is_new] = member_cache.emplace(key, MemberInfo{});
 		auto& member_info = lookup->second;
 		if (is_new) {
-			// member_info = MemberInfo{...};
-			throw std::logic_error("getting members of DynamicMembers types not implemented");
+			member_info = MemberInfo{
+				.node = std::unique_ptr<NodeBase>(new NodeIndirectAcess<T, Member>(
+					const_cast<T*>(&getObj()), // TODO: change getMember to 'deduce this'
+					key
+				)),
+			};
 		}
 		return member_info;
 	} else {

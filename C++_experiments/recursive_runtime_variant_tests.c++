@@ -181,6 +181,15 @@ TEST_CASE("conversion to Scalars") {
 			CHECK(scalared.at("2").at("i").get<int>() == 77);
 			CHECK(scalared.at("2").at("m").at("ii").get<int>() == 777);
 		}
+		SECTION("a vector - member access") {
+			NodeOwning n = std::vector{M{55, {555}}, M{66, {666}}, M{77, {777}}};
+			CHECK(n.at("0").at("i").get<int>() == 55);
+			CHECK(n.at("0").at("m").at("ii").get<int>() == 555);
+			CHECK(n.at("1").at("i").get<int>() == 66);
+			CHECK(n.at("1").at("m").at("ii").get<int>() == 666);
+			CHECK(n.at("2").at("i").get<int>() == 77);
+			CHECK(n.at("2").at("m").at("ii").get<int>() == 777);
+		}
 		SECTION("just one - member access") {
 			NodeOwning n = M{44, {444}};
 			CHECK(n.at("i").get<int>() == 44);
