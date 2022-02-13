@@ -110,6 +110,11 @@ struct StructWithFriendConversions {
 			std::make_pair("i", &s.i)
 		);
 	}
+	friend auto rrvMembers(StructWithFriendConversions& s) {
+		return std::make_tuple(
+			std::make_pair("i", &s.i)
+		);
+	}
 };
 }
 
@@ -148,6 +153,11 @@ TEST_CASE("conversion to Scalars") {
 					std::make_pair("ii", &ii)
 				);
 			}
+			auto rrvMembers() {
+				return std::make_tuple(
+					std::make_pair("ii", &ii)
+				);
+			}
 		};
 		struct M {
 			int i;
@@ -159,6 +169,12 @@ TEST_CASE("conversion to Scalars") {
 			}
 			using rrvUseMemberMembers [[maybe_unused]] = std::true_type; // but it is used...
 			auto rrvMembers() const {
+				return std::make_tuple(
+					std::make_pair("i", &i),
+					std::make_pair("m", &m)
+				);
+			}
+			auto rrvMembers() {
 				return std::make_tuple(
 					std::make_pair("i", &i),
 					std::make_pair("m", &m)
@@ -189,6 +205,13 @@ TEST_CASE("conversion to Scalars") {
 			CHECK(n.at("1").at("m").at("ii").get<int>() == 666);
 			CHECK(n.at("2").at("i").get<int>() == 77);
 			CHECK(n.at("2").at("m").at("ii").get<int>() == 777);
+
+			auto& vec = n.get<std::vector<M>>();
+			CHECK(n.at("0").at("i").get<int>() == 55);
+			vec.at(0).i = 111;
+			CHECK(n.at("0").at("i").get<int>() == 111);
+			n.at("0").at("i").get<int>() = 222;
+			CHECK(vec.at(0).i == 222);
 		}
 		SECTION("just one - member access") {
 			NodeOwning n = M{44, {444}};

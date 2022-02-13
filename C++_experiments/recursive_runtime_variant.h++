@@ -36,6 +36,9 @@ namespace errors {
 	constexpr auto kAssignObjectToDict = "Trying to assign an object to a Dict"sv;
 }
 
+template<typename Source, typename Target>
+using SameConstAs = std::conditional_t<std::is_const_v<Source>, const Target, Target>;
+
 using DictBase = std::map<std::string, std::unique_ptr<NodeBase>, std::less<>>;
 
 template<bool const_iter>
@@ -122,6 +125,7 @@ public:
 	virtual const NodeBase& operator[](std::string_view sv) const = 0;
 	virtual NodeBase& operator[](std::string_view sv) = 0;
 	const NodeBase& at(std::string_view sv) const { return (*this)[sv]; }
+	NodeBase& at(std::string_view sv) { return (*this)[sv]; }
 
 	virtual NodeOwning toScalars() const = 0;
 
@@ -248,10 +252,12 @@ struct NodeConcrete : NodeBase {
 	std::unique_ptr<NodeBase> clone() const& override { return std::unique_ptr<NodeBase>(new NodeValue<TNoConst>(getObj())); }
 	std::unique_ptr<NodeBase> clone() &&     override { return std::unique_ptr<NodeBase>(new NodeValue<TNoConst>(std::move(getObj()))); }
 
-	virtual T& getObj() & = 0;
-	virtual const T& getObj() const& = 0;
+	T& getObject() const& { return getObj(); }
+	T&& getObject() && { return std::move(getObj()); }
 
 protected:
+	virtual T& getObj() const = 0;
+
 	struct MemberInfo {
 		std::unique_ptr<NodeBase> node;
 	};
@@ -271,10 +277,11 @@ struct NodeValue : NodeConcrete<T> {
 	explicit NodeValue(const T& obj_) : obj(obj_) {}
 	explicit NodeValue(T&& obj_) : obj(std::move(obj_)) {}
 
-	T& getObj() & override { return obj; }
-	const T& getObj() const& override { return obj; }
+protected:
+	T& getObj() const override { return obj; }
+
 private:
-	T obj;
+	mutable T obj;
 };
 
 template <typename T>
@@ -285,8 +292,9 @@ struct NodeReference : NodeConcrete<T> {
 	NodeReference& operator=(NodeReference&&) = default;
 	explicit NodeReference(T* obj_) : obj(obj_) {}
 
-	T& getObj() & override { return *obj; }
-	const T& getObj() const& override { return *obj; }
+protected:
+	T& getObj() const override { return *obj; }
+
 private:
 	T* obj;
 };
@@ -334,6 +342,7 @@ public:
 	}
 	explicit NodeOwning(ObjectImpl ri) : impl(std::move(ri)) {}
 	explicit NodeOwning(DictImpl di) : impl(std::move(di)) {}
+	NodeOwning(NodeBase& nb) : NodeOwning(std::move(nb).clone()) {}
 	NodeOwning(NodeBase&& nb) : NodeOwning(std::move(nb).clone()) {}
 	NodeOwning(const NodeBase& nb) : NodeOwning(nb.clone()) {}
 
@@ -472,12 +481,12 @@ T* NodeBase::get_if_impl(Self& self) {
 	using PlainT = std::remove_cv_t<T>;
 	using NodeConcreteSameConst = std::conditional_t<self_is_const, const NodeConcrete<PlainT>, NodeConcrete<PlainT>>;
 	if (auto downcasted = dynamic_cast<NodeConcreteSameConst*>(&self)) {
-		return &downcasted->getObj();
+		return &downcasted->getObject();
 	}
 	if constexpr (self_is_const && t_is_const) {
 		using NodeConcreteToConstSameConst = std::conditional_t<self_is_const, const NodeConcrete<const PlainT>, NodeConcrete<const PlainT>>;
 		if (auto downcasted = dynamic_cast<NodeConcreteToConstSameConst*>(&self)) {
-			return &downcasted->getObj();
+			return &downcasted->getObject();
 		}
 	}
 	using NodeOwningSameConst = std::conditional_t<self_is_const, const NodeOwning, NodeOwning>;
@@ -505,7 +514,7 @@ NodeBase& NodeBase::operator=(Rhs&& rhs) {
 		}
 	} else {
 		if (auto downcasted = dynamic_cast<NodeConcrete<PlainRhs>*>(this)) {
-			downcasted->getObj() = std::forward<Rhs>(rhs);
+			downcasted->getObject() = std::forward<Rhs>(rhs);
 			return *this;
 		}
 	}
@@ -573,19 +582,22 @@ NodeOwning NodeConcrete<T>::toScalars() const {
 struct HasNoMembers {};
 struct DynamicMembers {};
 
-template<typename T> std::enable_if_t<std::is_arithmetic_v<T>, HasNoMembers> rrvMembers(const T&) { return {}; }
-template<typename T> auto rrvMembers(const T& t) -> decltype(T::rrvUseMemberMembers::value, t.rrvMembers()) { return t.rrvMembers(); }
+template<typename T> std::enable_if_t<std::is_arithmetic_v<std::remove_reference_t<T>>, HasNoMembers> rrvMembers(T&&) { return {}; }
+template<typename T> auto rrvMembers(T&& t) -> decltype(std::remove_reference_t<T>::rrvUseMemberMembers::value, t.rrvMembers()) { return t.rrvMembers(); }
 
 template<typename T> DynamicMembers rrvMembers(const std::vector<T>&) { return {}; }
+template<typename T> DynamicMembers rrvMembers(std::vector<T>&) { return {}; }
 
 template<typename T> constexpr static bool kIsDynamicMemberType = std::is_same_v<decltype(rrvMembers(std::declval<T>())), DynamicMembers>;
 
 template<typename Obj, typename = void>
-decltype(auto) rrvMember(const Obj& obj, std::string_view key);
+decltype(auto) rrvMember(Obj& obj, std::string_view key);
 template<typename Obj, typename = std::enable_if_t<kIsDynamicMemberType<Obj>>>
-decltype(auto) rrvMember(const Obj& obj, std::string_view key) { return obj.rrvMember(key); }
+decltype(auto) rrvMember(Obj& obj, std::string_view key) { return obj.rrvMember(key); }
 template<typename T>
 decltype(auto) rrvMember(const std::vector<T>& obj, std::string_view key) { return obj.at(std::stoi(std::string(key))); }
+template<typename T>
+decltype(auto) rrvMember(std::vector<T>& obj, std::string_view key) { return obj.at(std::stoi(std::string(key))); }
 
 template <typename Container, typename T>
 struct NodeIndirectAcess : NodeConcrete<T> {
@@ -595,15 +607,13 @@ struct NodeIndirectAcess : NodeConcrete<T> {
 	NodeIndirectAcess& operator=(NodeIndirectAcess&&) = default;
 	explicit NodeIndirectAcess(Container* container_, std::string_view key_) : container(container_), key(key_) {}
 
-	T& getObj() & override { return getObjImpl(*this); }
-	const T& getObj() const& override { return getObjImpl(*this); }
-private:
-	template<typename Self>
-	static std::conditional_t<std::is_const_v<Self>, const T&, T&> getObjImpl(Self& self) {
+protected:
+	T& getObj() const override {
 		using ::rrv::rrvMember;
-		return rrvMember(*self.container, self.key);
+		return rrvMember(*container, key);
 	}
 
+private:
 	Container* container;
 	std::string key;
 };
@@ -627,10 +637,9 @@ auto NodeConcrete<T>::getMember(std::string_view key) const -> MemberInfo& {
 		auto& member_info = lookup->second;
 		if (is_new) {
 			member_info = MemberInfo{
-				.node = std::unique_ptr<NodeBase>(new NodeIndirectAcess<T, Member>(
-					const_cast<T*>(&getObj()), // TODO: change getMember to 'deduce this'
-					key
-				)),
+				.node = std::unique_ptr<NodeBase>(
+					new NodeIndirectAcess<T, Member>(&getObj(), key)
+				),
 			};
 		}
 		return member_info;
