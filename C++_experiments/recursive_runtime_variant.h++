@@ -565,23 +565,29 @@ NodeOwning NodeConcrete<T>::toScalars() const {
 	return scalarizeImpl(getObj());
 }
 
-struct HasNoMembers {};
-struct DynamicMembers {};
+template<typename Obj> std::enable_if_t<std::is_arithmetic_v<Obj>, std::tuple<>> rrvMembers(Obj&) { return {}; }
+template<typename Obj> auto rrvMembers(Obj& t) -> decltype(t.rrvMembers()) { return t.rrvMembers(); }
 
-template<typename T> std::enable_if_t<std::is_arithmetic_v<std::remove_reference_t<T>>, HasNoMembers> rrvMembers(T&) { return {}; }
-template<typename T> auto rrvMembers(T& t) -> decltype(t.rrvMembers()) { return t.rrvMembers(); }
+template<typename Obj> auto rrvMember(Obj& obj, std::string_view key) -> std::enable_if_t<false, Obj*>;
+template<typename Obj> auto rrvMember(Obj& obj, std::string_view key) -> decltype(obj.rrvMember(key)) { return obj.rrvMember(key); }
 
-template<typename T> DynamicMembers rrvMembers(std::vector<T>&) { return {}; }
+// stdlib specializations
+template<typename T> decltype(auto) rrvMember(std::vector<T>& obj, std::string_view key) { return obj.at(std::stoi(std::string(key))); }
 
-template<typename T> constexpr static bool kIsDynamicMemberType = std::is_same_v<decltype(rrvMembers(std::declval<T&>())), DynamicMembers>;
+// Dynamic member test
+template<typename Obj> auto rrvMemberTest() -> decltype(rrvMember(std::declval<Obj&>(), std::declval<std::string_view>()), void()) {}
+template<typename Obj, typename = void> struct RrvMemberTest : std::false_type {};
+template<typename Obj> struct RrvMemberTest<Obj, decltype(rrvMemberTest<Obj>())> : std::true_type {};
+template<typename Obj> constexpr static bool kIsDynamicMemberType = RrvMemberTest<Obj>::value;
 
-template<typename Obj, typename = void>
-decltype(auto) rrvMember(Obj& obj, std::string_view key);
-template<typename Obj, typename = std::enable_if_t<kIsDynamicMemberType<Obj>>>
-decltype(auto) rrvMember(Obj& obj, std::string_view key) { return obj.rrvMember(key); }
+// Static member test
+template<typename Obj> auto rrvMembersTest() -> decltype(rrvMembers(std::declval<Obj&>()), void()) {}
+template<typename Obj, typename = void> struct RrvMembersTest : std::false_type {};
+template<typename Obj> struct RrvMembersTest<Obj, decltype(rrvMembersTest<Obj>())> : std::true_type {};
+template<typename Obj> constexpr static bool kIsStaticMemberType = RrvMembersTest<Obj>::value;
 
-template<typename T>
-decltype(auto) rrvMember(std::vector<T>& obj, std::string_view key) { return obj.at(std::stoi(std::string(key))); }
+// need this so all branches of NodeConcrete::getMember are well-formed...
+template<typename Obj> std::enable_if_t<kIsDynamicMemberType<Obj>, std::tuple<>> rrvMembers(Obj&) { return {}; }
 
 template <typename Container, typename T>
 struct NodeIndirectAcess : NodeConcrete<T> {
@@ -601,19 +607,9 @@ private:
 
 template<typename T>
 auto NodeConcrete<T>::getMember(std::string_view key) const -> MemberInfo& {
-	auto get_members = [this]() -> decltype(auto) {
-		using ::rrv::rrvMembers;
-		return rrvMembers(this->getObj());
-	};
-	using Members = std::remove_reference_t<decltype(get_members())>;
-	if constexpr (std::is_same_v<Members, HasNoMembers>) {
-		throw std::logic_error(std::string(errors::kAccessMemberOfScalarType));
-	} else if constexpr (kIsDynamicMemberType<T>) {
-		auto get_member = [this, &key]() -> decltype(auto) {
-			using ::rrv::rrvMember;
-			return rrvMember(this->getObj(), key);
-		};
-		using Member = std::remove_reference_t<decltype(get_member())>;
+	static_assert(kIsDynamicMemberType<T> != kIsStaticMemberType<T>, "types should only define one of getMember and getMembers");
+	if constexpr (kIsDynamicMemberType<T>) {
+		using Member = std::remove_reference_t<decltype(rrvMember(getObj(), key))>;
 		auto [lookup, is_new] = member_cache.emplace(key, MemberInfo{});
 		auto& member_info = lookup->second;
 		if (is_new) {
@@ -639,7 +635,11 @@ auto NodeConcrete<T>::getMember(std::string_view key) const -> MemberInfo& {
 				(add_elem(std::forward<decltype(elems)>(elems)), ...);
 			};
 
-			std::apply(add_all, get_members());
+			std::apply(add_all, rrvMembers(this->getObj()));
+
+			if (member_cache.empty()) {
+				throw std::logic_error(std::string(errors::kAccessMemberOfScalarType));
+			}
 		}
 
 		auto lookup = member_cache.find(key);

@@ -112,17 +112,24 @@ struct StructWithFriendConversions {
 	}
 };
 
-struct CustomDynamicMembers {
+struct StructWithDynamicMembersViaMember {
 	int i, j;
 	NodeOwning rrvScalarize() const {
 		NodeOwning n; n["i"] = i; n["j"] = j; return n;
 	}
-	::rrv::DynamicMembers rrvMembers() { return {}; }
 	auto& rrvMember(std::string_view key) {
 		if (key == "i") return i; else return j;
 	}
 };
-
+struct StructWithDynamicMembersViaFriend {
+	int i, j;
+	NodeOwning rrvScalarize() const {
+		NodeOwning n; n["i"] = i; n["j"] = j; return n;
+	}
+	friend auto& rrvMember(StructWithDynamicMembersViaFriend& s, std::string_view key) {
+		if (key == "i") return s.i; else return s.j;
+	}
+};
 }
 
 TEST_CASE("conversion to Scalars") {
@@ -216,8 +223,14 @@ TEST_CASE("conversion to Scalars") {
 			n.get<M>().i = 55;
 			CHECK(n2.get<int>() == 44);
 		}
-		SECTION("custom dynamic type") {
-			NodeOwning n = CustomDynamicMembers{11,22};
+		SECTION("custom dynamic type - via member") {
+			NodeOwning n = StructWithDynamicMembersViaMember{11,22};
+			CHECK(n.at("i").get<int>() == 11);
+			CHECK(n.at("j").get<int>() == 22);
+			CHECK(n.at("e").get<int>() == 22);
+		}
+		SECTION("custom dynamic type - via friend") {
+			NodeOwning n = StructWithDynamicMembersViaFriend{11,22};
 			CHECK(n.at("i").get<int>() == 11);
 			CHECK(n.at("j").get<int>() == 22);
 			CHECK(n.at("e").get<int>() == 22);
