@@ -105,11 +105,6 @@ struct StructWithFriendConversions {
 	friend NodeOwning rrvScalarize(const StructWithFriendConversions& s) {
 		NodeOwning r; r["i"] = s.i; return r;
 	}
-	friend auto rrvMembers(const StructWithFriendConversions& s) {
-		return std::make_tuple(
-			std::make_pair("i", &s.i)
-		);
-	}
 	friend auto rrvMembers(StructWithFriendConversions& s) {
 		return std::make_tuple(
 			std::make_pair("i", &s.i)
@@ -148,11 +143,6 @@ TEST_CASE("conversion to Scalars") {
 				NodeOwning r; r["ii"] = ii; return r;
 			}
 			using rrvUseMemberMembers [[maybe_unused]] = std::true_type; // but it is used...
-			auto rrvMembers() const {
-				return std::make_tuple(
-					std::make_pair("ii", &ii)
-				);
-			}
 			auto rrvMembers() {
 				return std::make_tuple(
 					std::make_pair("ii", &ii)
@@ -168,12 +158,6 @@ TEST_CASE("conversion to Scalars") {
 				NodeOwning r; r["i"] = i; r["m"] = m; return r;
 			}
 			using rrvUseMemberMembers [[maybe_unused]] = std::true_type; // but it is used...
-			auto rrvMembers() const {
-				return std::make_tuple(
-					std::make_pair("i", &i),
-					std::make_pair("m", &m)
-				);
-			}
 			auto rrvMembers() {
 				return std::make_tuple(
 					std::make_pair("i", &i),
@@ -449,7 +433,7 @@ struct SmallTestProgramData {
 		r["k"] = d.k;
 		return r;
 	}
-	friend auto rrvMembers(const SmallTestProgramData& s) {
+	friend auto rrvMembers(SmallTestProgramData& s) {
 		return std::make_tuple(
 			std::make_pair("i", &s.i),
 			std::make_pair("j", &s.j),

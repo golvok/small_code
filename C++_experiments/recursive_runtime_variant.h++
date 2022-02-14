@@ -226,8 +226,7 @@ template <typename T>
 struct NodeConcrete : NodeBase {
 	static_assert(not std::is_reference_v<T>, "Use with a value type instead of a reference");
 	static_assert(std::is_copy_constructible_v<T>, "Require copy-constructible types so cloning will generally work");
-
-	using TNoConst = std::remove_const_t<T>;
+	static_assert(not std::is_const_v<T>, "NodeConcrete enforces constness itself");
 
 	NodeConcrete() = default;
 	NodeConcrete(const NodeConcrete&) = default;
@@ -235,12 +234,8 @@ struct NodeConcrete : NodeBase {
 	NodeConcrete& operator=(const NodeConcrete&) = default;
 	NodeConcrete& operator=(NodeConcrete&&) = default;
 
-	const NodeBase& operator[](std::string_view key) const override {
-		return *getMember(key).node;
-	}
-	NodeBase& operator[](std::string_view key) override {
-		return *getMember(key).node;
-	}
+	const NodeBase& operator[](std::string_view key) const override { return *getMember(key).node; }
+	NodeBase& operator[](std::string_view key) override { return  *getMember(key).node; }
 
 	NodeOwning toScalars() const override;
 
@@ -249,8 +244,8 @@ struct NodeConcrete : NodeBase {
 	MemberIterator<false> end()         override { throw std::logic_error(std::string(rrv::errors::kAccessMemberOfConcreteType)); }
 	MemberIterator<true>  end()   const override { throw std::logic_error(std::string(rrv::errors::kAccessMemberOfConcreteType)); }
 
-	std::unique_ptr<NodeBase> clone() const& override { return std::unique_ptr<NodeBase>(new NodeValue<TNoConst>(getObj())); }
-	std::unique_ptr<NodeBase> clone() &&     override { return std::unique_ptr<NodeBase>(new NodeValue<TNoConst>(std::move(getObj()))); }
+	std::unique_ptr<NodeBase> clone() const& override { return std::unique_ptr<NodeBase>(new NodeValue<T>(getObj())); }
+	std::unique_ptr<NodeBase> clone() &&     override { return std::unique_ptr<NodeBase>(new NodeValue<T>(std::move(getObj()))); }
 
 	T& getObject() const& { return getObj(); }
 	T&& getObject() && { return std::move(getObj()); }
@@ -268,8 +263,6 @@ protected:
 
 template <typename T>
 struct NodeValue : NodeConcrete<T> {
-	static_assert(not std::is_const_v<T>, "NodeConcrete enforces constness itself");
-
 	NodeValue(const NodeValue&) = default;
 	NodeValue(NodeValue&&) = default;
 	NodeValue& operator=(const NodeValue&) = default;
@@ -477,17 +470,10 @@ private:
 template<typename T, typename Self>
 T* NodeBase::get_if_impl(Self& self) {
 	constexpr auto self_is_const = std::is_const_v<Self>;
-	constexpr auto t_is_const = std::is_const_v<T>;
 	using PlainT = std::remove_cv_t<T>;
 	using NodeConcreteSameConst = std::conditional_t<self_is_const, const NodeConcrete<PlainT>, NodeConcrete<PlainT>>;
 	if (auto downcasted = dynamic_cast<NodeConcreteSameConst*>(&self)) {
 		return &downcasted->getObject();
-	}
-	if constexpr (self_is_const && t_is_const) {
-		using NodeConcreteToConstSameConst = std::conditional_t<self_is_const, const NodeConcrete<const PlainT>, NodeConcrete<const PlainT>>;
-		if (auto downcasted = dynamic_cast<NodeConcreteToConstSameConst*>(&self)) {
-			return &downcasted->getObject();
-		}
 	}
 	using NodeOwningSameConst = std::conditional_t<self_is_const, const NodeOwning, NodeOwning>;
 	if (auto downcasted = dynamic_cast<NodeOwningSameConst*>(&self)) {
@@ -582,20 +568,18 @@ NodeOwning NodeConcrete<T>::toScalars() const {
 struct HasNoMembers {};
 struct DynamicMembers {};
 
-template<typename T> std::enable_if_t<std::is_arithmetic_v<std::remove_reference_t<T>>, HasNoMembers> rrvMembers(T&&) { return {}; }
-template<typename T> auto rrvMembers(T&& t) -> decltype(std::remove_reference_t<T>::rrvUseMemberMembers::value, t.rrvMembers()) { return t.rrvMembers(); }
+template<typename T> std::enable_if_t<std::is_arithmetic_v<std::remove_reference_t<T>>, HasNoMembers> rrvMembers(T&) { return {}; }
+template<typename T> auto rrvMembers(T& t) -> decltype(std::remove_reference_t<T>::rrvUseMemberMembers::value, t.rrvMembers()) { return t.rrvMembers(); }
 
-template<typename T> DynamicMembers rrvMembers(const std::vector<T>&) { return {}; }
 template<typename T> DynamicMembers rrvMembers(std::vector<T>&) { return {}; }
 
-template<typename T> constexpr static bool kIsDynamicMemberType = std::is_same_v<decltype(rrvMembers(std::declval<T>())), DynamicMembers>;
+template<typename T> constexpr static bool kIsDynamicMemberType = std::is_same_v<decltype(rrvMembers(std::declval<T&>())), DynamicMembers>;
 
 template<typename Obj, typename = void>
 decltype(auto) rrvMember(Obj& obj, std::string_view key);
 template<typename Obj, typename = std::enable_if_t<kIsDynamicMemberType<Obj>>>
 decltype(auto) rrvMember(Obj& obj, std::string_view key) { return obj.rrvMember(key); }
-template<typename T>
-decltype(auto) rrvMember(const std::vector<T>& obj, std::string_view key) { return obj.at(std::stoi(std::string(key))); }
+
 template<typename T>
 decltype(auto) rrvMember(std::vector<T>& obj, std::string_view key) { return obj.at(std::stoi(std::string(key))); }
 
@@ -608,10 +592,7 @@ struct NodeIndirectAcess : NodeConcrete<T> {
 	explicit NodeIndirectAcess(Container* container_, std::string_view key_) : container(container_), key(key_) {}
 
 protected:
-	T& getObj() const override {
-		using ::rrv::rrvMember;
-		return rrvMember(*container, key);
-	}
+	T& getObj() const override { return rrvMember(*container, key); }
 
 private:
 	Container* container;
@@ -647,7 +628,11 @@ auto NodeConcrete<T>::getMember(std::string_view key) const -> MemberInfo& {
 		if (member_cache.empty()) {
 			const auto add_elem = [this](auto&& elem) {
 				using MemberType = std::remove_reference_t<decltype(*elem.second)>;
-				this->member_cache.emplace(elem.first, std::unique_ptr<NodeBase>(new NodeReference<MemberType>(elem.second)));
+				if constexpr (not std::is_const_v<MemberType>) {
+					this->member_cache.emplace(elem.first, std::unique_ptr<NodeBase>(new NodeReference<MemberType>(elem.second)));
+				} else {
+					static_assert(not sizeof(T*), "rrvMembers should not return pointers to const. Perhaps 'this' is const in the implementation of rrvMembers.");
+				}
 			};
 
 			const auto add_all = [&add_elem](auto&&... elems) {
