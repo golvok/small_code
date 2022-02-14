@@ -111,6 +111,18 @@ struct StructWithFriendConversions {
 		);
 	}
 };
+
+struct CustomDynamicMembers {
+	int i, j;
+	NodeOwning rrvScalarize() const {
+		NodeOwning n; n["i"] = i; n["j"] = j; return n;
+	}
+	::rrv::DynamicMembers rrvMembers() { return {}; }
+	auto& rrvMember(std::string_view key) {
+		if (key == "i") return i; else return j;
+	}
+};
+
 }
 
 TEST_CASE("conversion to Scalars") {
@@ -138,11 +150,9 @@ TEST_CASE("conversion to Scalars") {
 		struct Mm {
 			int ii;
 
-			using rrvUseMember [[maybe_unused]] = std::true_type; // but it is used...
 			NodeOwning rrvScalarize() const {
 				NodeOwning r; r["ii"] = ii; return r;
 			}
-			using rrvUseMemberMembers [[maybe_unused]] = std::true_type; // but it is used...
 			auto rrvMembers() {
 				return std::make_tuple(
 					std::make_pair("ii", &ii)
@@ -153,11 +163,9 @@ TEST_CASE("conversion to Scalars") {
 			int i;
 			Mm m;
 
-			using rrvUseMember [[maybe_unused]] = std::true_type; // but it is used...
 			NodeOwning rrvScalarize() const {
 				NodeOwning r; r["i"] = i; r["m"] = m; return r;
 			}
-			using rrvUseMemberMembers [[maybe_unused]] = std::true_type; // but it is used...
 			auto rrvMembers() {
 				return std::make_tuple(
 					std::make_pair("i", &i),
@@ -207,6 +215,12 @@ TEST_CASE("conversion to Scalars") {
 			NodeOwning n2 = n.at("i");
 			n.get<M>().i = 55;
 			CHECK(n2.get<int>() == 44);
+		}
+		SECTION("custom dynamic type") {
+			NodeOwning n = CustomDynamicMembers{11,22};
+			CHECK(n.at("i").get<int>() == 11);
+			CHECK(n.at("j").get<int>() == 22);
+			CHECK(n.at("e").get<int>() == 22);
 		}
 	}
 }

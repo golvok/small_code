@@ -569,7 +569,7 @@ struct HasNoMembers {};
 struct DynamicMembers {};
 
 template<typename T> std::enable_if_t<std::is_arithmetic_v<std::remove_reference_t<T>>, HasNoMembers> rrvMembers(T&) { return {}; }
-template<typename T> auto rrvMembers(T& t) -> decltype(std::remove_reference_t<T>::rrvUseMemberMembers::value, t.rrvMembers()) { return t.rrvMembers(); }
+template<typename T> auto rrvMembers(T& t) -> decltype(t.rrvMembers()) { return t.rrvMembers(); }
 
 template<typename T> DynamicMembers rrvMembers(std::vector<T>&) { return {}; }
 
@@ -651,7 +651,7 @@ auto NodeConcrete<T>::getMember(std::string_view key) const -> MemberInfo& {
 }
 
 template<typename T> std::enable_if_t<std::is_arithmetic_v<T>, NodeOwning> rrvScalarize(const T& t) { return t; }
-template<typename T> std::enable_if_t<T::rrvUseMember::value, NodeOwning> rrvScalarize(const T& t) { return t.rrvScalarize(); }
+template<typename T> auto rrvScalarize(const T& t) -> decltype(t.rrvScalarize()) { return t.rrvScalarize(); }
 
 template<typename T>
 NodeOwning rrvScalarize(const std::vector<T>& arg) {
