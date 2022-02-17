@@ -3,20 +3,41 @@
 #include <catch2/catch.hpp>
 
 /*
-	need string-based member access, but don't want to require hanafication
-		this needs to be able to return a string/scalar (or long, or bool)?
-			something similar to as? (pass in the type)
-		handle references? return them? -- std::reference_wrapper special handling?
 	Want to be able to consturct a Node{}... but this is the base class...
-		different use base for parameters, and NodeConcrete for local vars?
+		use different base for parameters, and NodeConcrete for local vars?
 			that is weird, but makes it very obvious what is going on
 		Make common class that is uninitialized, and deterlmined upon assignment?
 	Integer arguments for operator[]?
-		maybe take a variant of a couple stdlib types
-		YAML does it by taking a Node as as argument... don't want the overhead of conversion
-	Tag type on class that tells NodeConcrete to use customization points?
-		Including the header in other headers my not be wanted
-		traits classes etc. are easy ODR violations
+		maybe take a variant of a couple stdlib types - long long, string_view
+		YAML does it by taking a Node as as argument... could do this too
+			getMember will have to convert -- make sure to catch exceptions from it to add context
+	Scalarize notes
+		returns variant<Dict,is_terminal> ?
+		use case: printing it? Could just have a toStringOrDict function instead
+		related: iterating members of structs
+			just want to implement a member range, then?
+		related; lookup of member of structs
+		 want fast way to determine if member is present in type
+		 convert to member ref Dict?
+		 how to combine all of these into one
+		two separate uses:
+		  "interface"
+		    - tagging arbitrary, nested, type-erased data onto things
+		      - debug info, metadata
+		  "configuration"
+		    - nested, type-erased configuration
+		      - config files, function params
+		Dict d;
+		d["value"] = i;
+		return d;
+		return std::array{
+			rrv::Member("value", i),
+		};
+	Next:
+		- iteration for NodeConcrete and derived classes
+		- scalarize via getMembers instead of separate function
+		   - dynamic types will need to provide some list of members...
+		- setMember. Allows returning const& from getMember(s)?
 */
 
 using rrv::NodeOwning;

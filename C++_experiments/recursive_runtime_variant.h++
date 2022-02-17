@@ -678,29 +678,6 @@ NodeOwning scalarizeImpl(const T& t) {
 // 	}
 }
 
-	// returns variant<Dict,is_terminal> ?
-	// use case: printing it? Could just have a toStringOrDict function instead
-	// related: iterating members of structs
-	// 	just want to implement a member range, then?
-	// related; lookup of member of structs
-	//  want fast way to determine if member is present in type
-	//  convert to member ref Dict?
-	//  how to combine all of these into one
-	// two separate uses:
-	//   "interface"
-	//     - tagging arbitrary, nested, type-erased data onto things
-	//       - debug info, metadata
-	//   "configuration"
-	//     - nested, type-erased configuration
-	//       - input to binarizer, config files/params
-	// Dict d;
-	// d["value"] = i;
-	// return d;
-	// return std::array{
-	// 	rrv::Member("value", i),
-	// };
-// }
-
 template <typename Nb>
 Nb* pathSubscript_impl(Nb& n, std::string_view path, char sep) {
 	std::size_t spos = 0;
