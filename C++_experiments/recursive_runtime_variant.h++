@@ -49,6 +49,7 @@ struct MemberIteratorImplBase {
 
 	virtual ~MemberIteratorImplBase() = default;
 	virtual value_type* deref() = 0;
+	virtual bool equalTo(const MemberIteratorImplBase&) const = 0;
 	virtual void advance() = 0;
 	virtual OwningPtr clone() const& = 0;
 };
@@ -76,7 +77,7 @@ public:
 	MemberIterator& operator++() { return _impl->advance(), *this; }
 
 	template<bool const_iter_>
-	bool operator==(const MemberIterator<const_iter_>& rhs) const { return _impl->deref() == rhs._impl->deref(); }
+	bool operator==(const MemberIterator<const_iter_>& rhs) const { return _impl->equalTo(*rhs._impl); }
 	template<bool const_iter_>
 	bool operator!=(const MemberIterator<const_iter_>& rhs) const { return !(*this == rhs); }
 };
@@ -195,6 +196,7 @@ public:
 		value_type* deref() override { return &*impl; }
 		void advance() override { ++impl; }
 		OwningPtr clone() const& override { return OwningPtr{new Iter(*this)}; }
+		bool equalTo(const ImplBase& rhs) const override { auto* downcasted = dynamic_cast<const Iter*>(&rhs); return downcasted && (this->impl == downcasted->impl); }
 	};
 
 	MemberIterator<false> begin()       override { return MemberIteratorImplBase<false>::OwningPtr{new Iter<false>{this->DictBase::begin()}}; }
@@ -209,11 +211,15 @@ public:
 template <typename T>
 NodeOwning scalarizeImpl(const T& t);
 
+using NodeConcreteMemberInfo = std::unique_ptr<NodeBase>;
+using NodeConcreteMemberCache = std::map<std::string, NodeConcreteMemberInfo, std::less<void>>;
+
 template <typename T>
 struct NodeConcrete : NodeBase {
 	static_assert(not std::is_reference_v<T>, "Use with a value type instead of a reference");
 	static_assert(std::is_copy_constructible_v<T>, "Require copy-constructible types so cloning will generally work");
 	static_assert(not std::is_const_v<T>, "NodeConcrete enforces constness itself");
+	using ContainedType = T;
 
 	NodeConcrete() = default;
 	NodeConcrete(const NodeConcrete&) = default;
@@ -221,15 +227,15 @@ struct NodeConcrete : NodeBase {
 	NodeConcrete& operator=(const NodeConcrete&) = default;
 	NodeConcrete& operator=(NodeConcrete&&) = default;
 
-	const NodeBase& operator[](std::string_view key) const override { return *getMember(key).node; }
-	NodeBase& operator[](std::string_view key) override { return  *getMember(key).node; }
+	const NodeBase& operator[](std::string_view key) const override { return *getMember(key).second; }
+	      NodeBase& operator[](std::string_view key)       override { return *getMember(key).second; }
 
 	NodeOwning toScalars() const override;
 
-	MemberIterator<false> begin()       override { throw std::logic_error(std::string(rrv::errors::kAccessMemberOfConcreteType)); }
-	MemberIterator<true>  begin() const override { throw std::logic_error(std::string(rrv::errors::kAccessMemberOfConcreteType)); }
-	MemberIterator<false> end()         override { throw std::logic_error(std::string(rrv::errors::kAccessMemberOfConcreteType)); }
-	MemberIterator<true>  end()   const override { throw std::logic_error(std::string(rrv::errors::kAccessMemberOfConcreteType)); }
+	MemberIterator<false> begin()       override { return nodeConcreteGetIterators(*this).first; }
+	MemberIterator<true>  begin() const override { return nodeConcreteGetIterators(*this).first; }
+	MemberIterator<false> end()         override { return nodeConcreteGetIterators(*this).second; }
+	MemberIterator<true>  end()   const override { return nodeConcreteGetIterators(*this).second; }
 
 	std::unique_ptr<NodeBase> clone() const& override { return std::unique_ptr<NodeBase>(new NodeValue<T>(getObj())); }
 	std::unique_ptr<NodeBase> clone() &&     override { return std::unique_ptr<NodeBase>(new NodeValue<T>(std::move(getObj()))); }
@@ -239,13 +245,15 @@ struct NodeConcrete : NodeBase {
 
 protected:
 	virtual T& getObj() const = 0;
+	template<bool const_iter, typename Impl, typename Self>
+	friend struct NodeConcreteDynamicMemberIter;
 
-	struct MemberInfo {
-		std::unique_ptr<NodeBase> node;
-	};
-	mutable std::map<std::string, MemberInfo, std::less<void>> member_cache = {};
+	mutable NodeConcreteMemberCache member_cache = {};
 
-	MemberInfo& getMember(std::string_view key) const;
+	NodeConcreteMemberCache::reference getMember(std::string_view key) const;
+	void initMemberCacheForStaticMembers() const;
+	template<typename Self>
+	std::pair<MemberIterator<std::is_const_v<Self>>, MemberIterator<std::is_const_v<Self>>> friend nodeConcreteGetIterators(Self& self);
 };
 
 template <typename T>
@@ -523,47 +531,139 @@ private:
 };
 
 template<typename T>
-auto NodeConcrete<T>::getMember(std::string_view key) const -> MemberInfo& {
+NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(std::string_view key) const {
 	static_assert(kIsDynamicMemberType<T> != kIsStaticMemberType<T>, "types should only define one of getMember and getMembers");
 	if constexpr (kIsDynamicMemberType<T>) {
 		using Member = std::remove_reference_t<decltype(rrvMember(getObj(), key))>;
-		auto [lookup, is_new] = member_cache.emplace(key, MemberInfo{});
+		auto [lookup, is_new] = member_cache.emplace(key, NodeConcreteMemberInfo{});
 		auto& member_info = lookup->second;
 		if (is_new) {
-			member_info = MemberInfo{
+			member_info = NodeConcreteMemberInfo{
 				.node = std::unique_ptr<NodeBase>(
 					new NodeIndirectAcess<T, Member>(&getObj(), key)
 				),
 			};
 		}
-		return member_info;
+		return *lookup;
 	} else {
-		if (member_cache.empty()) {
-			const auto add_elem = [this](auto&& elem) {
-				using MemberType = std::remove_reference_t<decltype(*elem.second)>;
-				if constexpr (not std::is_const_v<MemberType>) {
-					this->member_cache.emplace(elem.first, std::unique_ptr<NodeBase>(new NodeReference<MemberType>(elem.second)));
-				} else {
-					static_assert(not sizeof(T*), "rrvMembers should not return pointers to const. Perhaps 'this' is const in the implementation of rrvMembers.");
-				}
-			};
-
-			const auto add_all = [&add_elem](auto&&... elems) {
-				(add_elem(std::forward<decltype(elems)>(elems)), ...);
-			};
-
-			std::apply(add_all, rrvMembers(this->getObj()));
-
-			if (member_cache.empty()) {
-				throw std::logic_error(std::string(errors::kAccessMemberOfScalarType));
-			}
-		}
-
+		initMemberCacheForStaticMembers();
 		auto lookup = member_cache.find(key);
 		if (lookup == member_cache.end()) {
 			throw std::logic_error("Member not found");
 		}
-		return lookup->second;
+		return *lookup;
+	}
+}
+
+template<typename T>
+void NodeConcrete<T>::initMemberCacheForStaticMembers() const {
+	if (not member_cache.empty()) return;
+
+	const auto add_elem = [this](auto&& elem) {
+		using MemberType = std::remove_reference_t<decltype(*elem.second)>;
+		if constexpr (not std::is_const_v<MemberType>) {
+			this->member_cache.emplace(elem.first, std::unique_ptr<NodeBase>(new NodeReference<MemberType>(elem.second)));
+		} else {
+			static_assert(not sizeof(T*), "rrvMembers should not return pointers to const. Perhaps 'this' is const in the implementation of rrvMembers.");
+		}
+	};
+
+	const auto add_all = [&add_elem](auto&&... elems) {
+		(add_elem(std::forward<decltype(elems)>(elems)), ...);
+	};
+
+	std::apply(add_all, rrvMembers(this->getObj()));
+
+	if (member_cache.empty()) {
+		throw std::logic_error(std::string(errors::kAccessMemberOfScalarType));
+	}
+}
+
+template<bool const_iter>
+struct NodeConcreteStaticMemberIter : MemberIteratorImplBase<const_iter> {
+	using BaseClass = MemberIteratorImplBase<const_iter>;
+	using OwningPtr = typename BaseClass::OwningPtr;
+	using value_type = typename BaseClass::value_type;
+	using Impl = std::conditional_t<const_iter, NodeConcreteMemberCache::const_iterator, NodeConcreteMemberCache::iterator>;
+	Impl impl;
+	NodeConcreteStaticMemberIter(Impl impl_) : impl(impl_) {}
+	NodeConcreteStaticMemberIter(const NodeConcreteStaticMemberIter&) = default;
+	NodeConcreteStaticMemberIter(NodeConcreteStaticMemberIter&&) = default;
+	value_type* deref() override { return &*impl; }
+	void advance() override { ++impl; }
+	OwningPtr clone() const& override { return OwningPtr{new NodeConcreteStaticMemberIter(*this)}; }
+	bool equalTo(const BaseClass& rhs) const override { auto* downcasted = dynamic_cast<const NodeConcreteStaticMemberIter*>(&rhs); return downcasted && (this->impl == downcasted->impl); }
+};
+
+template<bool const_iter, typename Impl, typename Self>
+struct NodeConcreteDynamicMemberIter : MemberIteratorImplBase<const_iter> {
+	using BaseClass = MemberIteratorImplBase<const_iter>;
+	using OwningPtr = typename BaseClass::OwningPtr;
+	using value_type = typename BaseClass::value_type;
+	Impl impl;
+	Self* self;
+	NodeConcreteDynamicMemberIter(Impl impl_, Self* self_) : impl(impl_), self(self_) {}
+	NodeConcreteDynamicMemberIter(const NodeConcreteDynamicMemberIter&) = default;
+	NodeConcreteDynamicMemberIter(NodeConcreteDynamicMemberIter&&) = default;
+	NodeConcreteDynamicMemberIter& operator=(const NodeConcreteDynamicMemberIter&) = default;
+	NodeConcreteDynamicMemberIter& operator=(NodeConcreteDynamicMemberIter&&) = default;
+
+	value_type* deref() override { return &self->getMember(derefImpl<Impl>()); }
+	void advance() override { incrementImpl<Impl>(); }
+	OwningPtr clone() const& override { return OwningPtr{new NodeConcreteDynamicMemberIter(*this)}; }
+	bool equalTo(const BaseClass& rhs) const override { auto* downcasted = dynamic_cast<const NodeConcreteDynamicMemberIter*>(&rhs); return downcasted && equalImpl(downcasted->impl); }
+
+	// These have to be templates to allow SFINAE to work
+	template<typename TImpl> auto incrementImpl() -> decltype(std::declval<TImpl&>().increment(self->getObject())) { return impl.increment(self->getObject()); }
+	template<typename TImpl> auto incrementImpl() -> decltype(++std::declval<TImpl&>()) { return ++impl; }
+	template<typename TImpl> auto derefImpl() -> decltype(std::declval<TImpl&>().dereference(self->getObject())) { return impl.dereference(self->getObject()); }
+	template<typename TImpl> auto derefImpl() -> decltype(*std::declval<TImpl&>()) { return *impl; }
+	template<typename TImpl> auto equalImpl(const TImpl& rhs) const -> decltype(std::declval<TImpl&>().equals(rhs, *self)) { return impl.equals(rhs, *self); }
+	template<typename TImpl> auto equalImpl(const TImpl& rhs) const -> decltype(std::declval<TImpl&>() == rhs) { return impl == rhs; }
+};
+
+
+template<typename Obj> std::enable_if_t<std::is_arithmetic_v<Obj>, int> rrvBegin(Obj&) { throw std::logic_error(std::string(errors::kAccessMemberOfScalarType)); }
+template<typename Obj> std::enable_if_t<std::is_arithmetic_v<Obj>, int> rrvEnd(Obj&) { throw std::logic_error(std::string(errors::kAccessMemberOfScalarType)); }
+template<typename Obj> auto rrvBegin(Obj& t) -> decltype(t.rrvBegin()) { return t.rrvBegin(); }
+template<typename Obj> auto rrvEnd(Obj& t) -> decltype(t.rrvEnd()) { return t.rrvEnd(); }
+
+struct IntIter {
+	int i;
+	IntIter& operator++() { ++i; return *this; }
+	auto operator*() { return std::to_string(i); }
+	int operator<=>(const IntIter&) const = default;
+};
+
+template<typename T>
+auto rrvBegin(std::vector<T>&) {
+	return IntIter{0};
+}
+
+template<typename T>
+auto rrvEnd(std::vector<T>& v) {
+	return IntIter{(int)v.size()};
+}
+
+template<typename Self>
+std::pair<MemberIterator<std::is_const_v<Self>>, MemberIterator<std::is_const_v<Self>>> nodeConcreteGetIterators(Self& self) {
+	constexpr bool self_is_const = std::is_const_v<Self>;
+	using T = Self::ContainedType;
+	static_assert(kIsDynamicMemberType<T> != kIsStaticMemberType<T>, "types should only define one of getMember and getMembers");
+
+	if constexpr (kIsDynamicMemberType<T>) {
+		return {
+			// TODO: avoid the allocation somehow?
+			typename MemberIteratorImplBase<self_is_const>::OwningPtr{new NodeConcreteDynamicMemberIter<self_is_const, decltype(rrvBegin(self.getObj())), Self>{rrvBegin(self.getObj()), &self}},
+			typename MemberIteratorImplBase<self_is_const>::OwningPtr{new NodeConcreteDynamicMemberIter<self_is_const, decltype(rrvEnd(self.getObj())), Self>{rrvEnd(self.getObj()), &self}},
+		};
+	} else {
+		self.initMemberCacheForStaticMembers();
+		return {
+			// TODO: avoid the allocation somehow?
+			typename MemberIteratorImplBase<self_is_const>::OwningPtr{new NodeConcreteStaticMemberIter<self_is_const>{self.member_cache.begin()}},
+			typename MemberIteratorImplBase<self_is_const>::OwningPtr{new NodeConcreteStaticMemberIter<self_is_const>{self.member_cache.end()}},
+		};
 	}
 }
 

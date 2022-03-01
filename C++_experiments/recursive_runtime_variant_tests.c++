@@ -38,6 +38,10 @@
 		- scalarize via getMembers instead of separate function
 		   - dynamic types will need to provide some list of members...
 		- setMember. Allows returning const& from getMember(s)?
+		   - can't: NodeBase::get returns a plain reference
+		- Clean up assignment code, especially dict
+		- Dict::operator[] emplace_hint suspicious
+		- extract static member names itto array from tupel via apply + CTAD?
 */
 
 using rrv::NodeOwning;
@@ -141,6 +145,9 @@ struct StructWithDynamicMembersViaMember {
 	auto& rrvMember(std::string_view key) {
 		if (key == "i") return i; else return j;
 	}
+	constexpr static auto names = std::array{"i", "j"};
+	auto rrvBegin() { return names.begin(); }
+	auto rrvEnd() { return names.end(); }
 };
 struct StructWithDynamicMembersViaFriend {
 	int i, j;
@@ -150,7 +157,25 @@ struct StructWithDynamicMembersViaFriend {
 	friend auto& rrvMember(StructWithDynamicMembersViaFriend& s, std::string_view key) {
 		if (key == "i") return s.i; else return s.j;
 	}
+	constexpr static auto names = std::array{"i", "j"};
+	friend auto rrvBegin(StructWithDynamicMembersViaFriend&) { return names.begin(); }
+	friend auto rrvEnd(StructWithDynamicMembersViaFriend&) { return names.end(); }
 };
+
+// come up with a use-case for this and test it
+struct MyVector {
+	std::vector<int> vecA;
+	std::vector<int> vecB;
+	struct MemberIter {
+		std::size_t i;
+		MemberIter& increment(const MyVector& mv) { if (i == mv.vecA.size()) i = -i; else ++i; return *this; }
+		// return pair<string, unique_ptr<NodeBase>> ?
+		//   not clear how this avoids the O(n*n) iteration...
+		auto dereference(const MyVector& mv) { return (i < mv.vecA.size() ? "A" : "B") + std::to_string(i - mv.vecA.size()); }
+		bool equals(const MemberIter& rhs, const MyVector&) const { return i == rhs.i; }
+	};
+};
+
 }
 
 TEST_CASE("conversion to Scalars") {
@@ -177,6 +202,7 @@ TEST_CASE("conversion to Scalars") {
 	SECTION("convert a simple struct -- member conversion function") {
 		struct Mm {
 			int ii;
+			auto operator<=>(const Mm&) const = default;
 
 			NodeOwning rrvScalarize() const {
 				NodeOwning r; r["ii"] = ii; return r;
@@ -190,6 +216,7 @@ TEST_CASE("conversion to Scalars") {
 		struct M {
 			int i;
 			Mm m;
+			auto operator<=>(const M&) const = default;
 
 			NodeOwning rrvScalarize() const {
 				NodeOwning r; r["i"] = i; r["m"] = m; return r;
@@ -238,6 +265,28 @@ TEST_CASE("conversion to Scalars") {
 			CHECK(n.at("i").get<int>() == 44);
 			CHECK(n.at("m").at("ii").get<int>() == 444);
 		}
+		SECTION("just one - member iter") {
+			NodeOwning n = M{44, {444}};
+			int saw_m = 0, saw_i = 0;
+			for (const auto& [k, v] : n) {
+				if (k == "m") { ++saw_m; CHECK(v->get<Mm>() == Mm{444}); }
+				if (k == "i") { ++saw_i; CHECK(v->get<int>() == 44); }
+			}
+			CHECK(saw_m == 1);
+			CHECK(saw_i == 1);
+		}
+		SECTION("vector<int> - member iter") {
+			NodeOwning n = std::vector{1, 2, 3, 4};
+			std::vector<int> saw_it(4);
+			for (const auto& [k, v] : n) {
+				auto i = stoi(k);
+				++saw_it.at(i);
+				CHECK(v->get<int>() == i+1);
+			}
+			for (auto saw : saw_it) {
+				CHECK(saw == 1);
+			}
+		}
 		SECTION("assign NodeOwning = member") {
 			NodeOwning n = M{44, {444}};
 			NodeOwning n2 = n.at("i");
@@ -255,6 +304,34 @@ TEST_CASE("conversion to Scalars") {
 			CHECK(n.at("i").get<int>() == 11);
 			CHECK(n.at("j").get<int>() == 22);
 			CHECK(n.at("e").get<int>() == 22);
+		}
+		SECTION("custom dynamic type - via member") {
+			NodeOwning n = StructWithDynamicMembersViaMember{11,22};
+			std::map<std::string, int> saw_it;
+			for (const auto& [k, v] : n) {
+				++saw_it[k];
+				CHECK((k == "i" || k == "j"));
+				if (k == "i") CHECK(v->get<int>() == 11);
+				if (k == "j") CHECK(v->get<int>() == 22);
+			}
+			for (const auto& [k, count] : saw_it) {
+				CHECK(count == 1);
+			}
+			CHECK(saw_it.size() == 2);
+		}
+		SECTION("custom dynamic type - via friend") {
+			NodeOwning n = StructWithDynamicMembersViaFriend{11,22};
+			std::map<std::string, int> saw_it;
+			for (const auto& [k, v] : n) {
+				++saw_it[k];
+				CHECK((k == "i" || k == "j"));
+				if (k == "i") CHECK(v->get<int>() == 11);
+				if (k == "j") CHECK(v->get<int>() == 22);
+			}
+			for (const auto& [k, count] : saw_it) {
+				CHECK(count == 1); (void)k;
+			}
+			CHECK(saw_it.size() == 2);
 		}
 	}
 }
@@ -362,12 +439,12 @@ TEST_CASE("error paths") {
 	SECTION("iterate object") {
 		NodeOwning no = 4;
 		const NodeOwning& const_no = no;
-		CHECK_THROWS_WITH(no.begin(), std::string(rrv::errors::kAccessMemberOfConcreteType));
-		CHECK_THROWS_WITH(no.end(), std::string(rrv::errors::kAccessMemberOfConcreteType));
-		CHECK_THROWS_WITH(no.cbegin(), std::string(rrv::errors::kAccessMemberOfConcreteType));
-		CHECK_THROWS_WITH(no.cend(), std::string(rrv::errors::kAccessMemberOfConcreteType));
-		CHECK_THROWS_WITH(const_no.begin(), std::string(rrv::errors::kAccessMemberOfConcreteType));
-		CHECK_THROWS_WITH(const_no.end(), std::string(rrv::errors::kAccessMemberOfConcreteType));
+		CHECK_THROWS_WITH(no.begin(), std::string(rrv::errors::kAccessMemberOfScalarType));
+		CHECK_THROWS_WITH(no.end(), std::string(rrv::errors::kAccessMemberOfScalarType));
+		CHECK_THROWS_WITH(no.cbegin(), std::string(rrv::errors::kAccessMemberOfScalarType));
+		CHECK_THROWS_WITH(no.cend(), std::string(rrv::errors::kAccessMemberOfScalarType));
+		CHECK_THROWS_WITH(const_no.begin(), std::string(rrv::errors::kAccessMemberOfScalarType));
+		CHECK_THROWS_WITH(const_no.end(), std::string(rrv::errors::kAccessMemberOfScalarType));
 	}
 	SECTION("access with wrong type") {
 		NodeOwning no = 4;
