@@ -58,10 +58,9 @@ class MemberIterator {
 	using ImplBase = MemberIteratorImplBase<const_iter>;
 	using OwningPtr = typename ImplBase::OwningPtr;
 	OwningPtr _impl;
-	OwningPtr clone_impl() const {
-		// _impl ? _impl->clone() : nullptr;
-		return _impl->clone();
-	}
+
+	OwningPtr clone_impl() const { return _impl->clone(); }
+
 public:
 	using value_type = typename ImplBase::value_type;
 	using reference = typename ImplBase::reference;
@@ -72,16 +71,12 @@ public:
 	MemberIterator& operator=(const MemberIterator& src) { _impl = src.clone_impl(); }
 	MemberIterator& operator=(MemberIterator&& src) = default;
 
-	// void check_done() { if (_impl && _impl->done()) impl.reset(); }
 	reference operator*() { return *_impl->deref(); }
 	const reference operator*() const { return *_impl->deref(); }
 	MemberIterator& operator++() { return _impl->advance(), *this; }
+
 	template<bool const_iter_>
-	bool operator==(const MemberIterator<const_iter_>& rhs) const {
-		// if (not _impl && not rhs._impl) return true;
-		// if (not _impl || not rhs._impl) return false;
-		return _impl->deref() == rhs._impl->deref();
-	}
+	bool operator==(const MemberIterator<const_iter_>& rhs) const { return _impl->deref() == rhs._impl->deref(); }
 	template<bool const_iter_>
 	bool operator!=(const MemberIterator<const_iter_>& rhs) const { return !(*this == rhs); }
 };
@@ -92,15 +87,10 @@ public:
 	NodeBase& operator=(T&& rhs);
 	virtual ~NodeBase() = default;
 
-	template<typename T>
-	const T* get_if() const { return get_if_impl<const T>(*this); }
-	template<typename T>
-	T* get_if() { return get_if_impl<T>(*this); }
-
-	template<typename T>
-	const T& get() const { return getImpl<const T>(*this); }
-	template<typename T>
-	T& get() { return getImpl<T>(*this); }
+	template<typename T> const T* get_if() const { return get_if_impl<const T>(*this); }
+	template<typename T>       T* get_if()       { return get_if_impl<      T>(*this); }
+	template<typename T> const T& get()    const { return getImpl<const T>(*this); }
+	template<typename T>       T& get()          { return getImpl<      T>(*this); }
 
 	template<typename T>
 	T as() const {
@@ -117,10 +107,7 @@ public:
 		throw std::logic_error(std::string(errors::kAsCannotAccessOrConvert));
 	}
 
-	template<typename T>
-	explicit operator const T&() const {
-		return get<T>();
-	}
+	template<typename T> explicit operator const T&() const { return get<T>(); }
 
 	virtual const NodeBase& operator[](std::string_view sv) const = 0;
 	virtual NodeBase& operator[](std::string_view sv) = 0;
@@ -292,16 +279,12 @@ private:
 	T* obj;
 };
 
-// rename to Root?
+
 class NodeOwning : public NodeBase {
 public:
 	using DictImpl = Dict;
-	// using ObjectImpl = std::unique_ptr<NodeOwning>;
-	// using DictImpl = NodeValue<Dict>;
-	// using Impl = std::unique_ptr<NodeOwning>;
 	using ObjectImpl = std::unique_ptr<NodeBase>;
 	using Impl = std::variant<DictImpl, ObjectImpl>;
-	Impl impl;
 
 	template<typename Self, typename DictF, typename ObjF>
 	friend decltype(auto) visitImpl(Self& self, DictF&& dict_f, ObjF&& obj_f) {
@@ -319,20 +302,8 @@ public:
 	NodeOwning() : impl(DictImpl()) {}
 	NodeOwning(const NodeOwning& src) : impl() { *this = src; }
 	NodeOwning(NodeOwning&& src) : impl() { *this = std::move(src); }
-	NodeOwning& operator=(const NodeOwning& src) {
-		visitImpl(src,
-			[this](auto& dict) { *this = dict; },
-			[this](auto& obj)  { *this = obj; }
-		);
-		return *this;
-	}
-	NodeOwning& operator=(NodeOwning&& src) {
-		visitImpl(src,
-			[this](auto& dict) { *this = std::move(dict); },
-			[this](auto& obj)  { *this = std::move(obj); }
-		);
-		return *this;
-	}
+	NodeOwning& operator=(const NodeOwning& src) { auto l = [this](auto& obj_or_dict) { *this = obj_or_dict; };            visitImpl(src, l, l); return *this; }
+	NodeOwning& operator=(     NodeOwning&& src) { auto l = [this](auto& obj_or_dict) { *this = std::move(obj_or_dict); }; visitImpl(src, l, l); return *this; }
 	explicit NodeOwning(ObjectImpl ri) : impl(std::move(ri)) {}
 	explicit NodeOwning(DictImpl di) : impl(std::move(di)) {}
 	NodeOwning(NodeBase& nb) : NodeOwning(std::move(nb).clone()) {}
@@ -397,74 +368,22 @@ public:
 		return *this;
 	}
 
-	// deduce *this via friend if it gets more complicated
-	const NodeBase& operator[](std::string_view sv) const override {
-		return visitImpl(*this,
-			[&](auto& dict) -> const NodeBase& { return dict[sv]; },
-			[&](auto& obj) -> const NodeBase& { return obj[sv]; }
-		);
-	}
-	NodeBase& operator[](std::string_view sv) override {
-		return visitImpl(*this,
-			[&](auto& dict) -> NodeBase& { return dict[sv]; },
-			[&](auto& obj) -> NodeBase& { return obj[sv]; }
-		);
-	}
-	NodeOwning toScalars() const override {
-		auto l = [](auto& obj_or_dict) { return obj_or_dict.toScalars(); };
-		return visitImpl(*this, l, l);
-	}
-	std::unique_ptr<NodeBase> clone() && override {
-		return std::unique_ptr<NodeBase>(new NodeOwning(std::move(*this)));
-	}
-	std::unique_ptr<NodeBase> clone() const& override {
-		return std::unique_ptr<NodeBase>(new NodeOwning(*this));
-	}
+	const NodeBase& operator[](std::string_view sv) const override { auto l = [&](auto& obj_or_dict) -> const NodeBase& { return obj_or_dict[sv]; }; return visitImpl(*this, l, l); }
+	      NodeBase& operator[](std::string_view sv)       override { auto l = [&](auto& obj_or_dict) ->       NodeBase& { return obj_or_dict[sv]; }; return visitImpl(*this, l, l); }
 
-	MemberIterator<false> begin() override {
-		return visitImpl(*this,
-			[&](auto& dict) { return dict.begin(); },
-			[&](auto& obj) { return obj.begin(); }
-		);
-	}
-	MemberIterator<true> begin() const override {
-		return visitImpl(*this,
-			[&](auto& dict) { return dict.begin(); },
-			[&](auto& obj) { return obj.begin(); }
-		);
-	}
-	MemberIterator<false> end() override {
-		return visitImpl(*this,
-			[&](auto& dict) { return dict.end(); },
-			[&](auto& obj) { return obj.end(); }
-		);
-	}
-	MemberIterator<true> end() const override {
-		return visitImpl(*this,
-			[&](auto& dict) { return dict.end(); },
-			[&](auto& obj) { return obj.end(); }
-		);
-	}
+	NodeOwning toScalars() const override { auto l = [](auto& obj_or_dict) { return obj_or_dict.toScalars(); }; return visitImpl(*this, l, l); }
 
-	// NodeOwning operator[](std::string_view sv) { return getImpl()[sv]; }
-	// template<typename T>       T& get()       { return getImpl().get<T>(); }
-	// template<typename T> const T& get() const { return getImpl().get<T>(); }
-	// template<typename T> T as() const { return getImpl().as<T>(); }
-	// NodeOwning toScalars() const { return getImpl().toScalars(); }
+	std::unique_ptr<NodeBase> clone() &&     override { return std::unique_ptr<NodeBase>(new NodeOwning(std::move(*this))); }
+	std::unique_ptr<NodeBase> clone() const& override { return std::unique_ptr<NodeBase>(new NodeOwning(*this)); }
+	
+	MemberIterator<false> begin()       override { auto l = [](auto& obj_or_dict) { return obj_or_dict.begin(); }; return visitImpl(*this, l, l); }
+	MemberIterator<true>  begin() const override { auto l = [](auto& obj_or_dict) { return obj_or_dict.begin(); }; return visitImpl(*this, l, l); }
+	MemberIterator<false> end()         override { auto l = [](auto& obj_or_dict) { return obj_or_dict.end();   }; return visitImpl(*this, l, l); }
+	MemberIterator<true>  end()   const override { auto l = [](auto& obj_or_dict) { return obj_or_dict.end();   }; return visitImpl(*this, l, l); }
+
 private:
-	// template<typename Self>
-	// friend NodeOwning& getImpl_(Self& self) {
-	// 	return std::visit([](auto& impl_choice) -> auto& {
-	// 		using Impl = std::remove_cv_t<std::remove_reference_t<decltype(impl_choice)>>;
-	// 		if constexpr (std::is_same_v<DictImpl, Impl>) {
-	// 			return impl_choice;
-	// 		} else {
-	// 			return *impl_choice;
-	// 		}
-	// 	}, self.impl);
-	// }
-	// NodeOwning& getImpl() { return getImpl_(*this); }
-	// NodeOwning& getImpl() const { return getImpl_(*this); }
+	friend NodeBase;
+	Impl impl;
 };
 
 template<typename T, typename Self>
