@@ -576,18 +576,16 @@ template<typename T> decltype(auto) rrvMember(std::vector<T>& obj, std::string_v
 
 // Dynamic member test
 template<typename Obj> auto rrvMemberTest() -> decltype(rrvMember(std::declval<Obj&>(), std::declval<std::string_view>()), void()) {}
-template<typename Obj, typename = void> struct RrvMemberTest : std::false_type {};
-template<typename Obj> struct RrvMemberTest<Obj, decltype(rrvMemberTest<Obj>())> : std::true_type {};
-template<typename Obj> constexpr static bool kIsDynamicMemberType = RrvMemberTest<Obj>::value;
+template<typename Obj, typename = void> constexpr static bool kIsDynamicMemberType = false;
+template<typename Obj> constexpr static bool kIsDynamicMemberType<Obj, decltype(rrvMemberTest<Obj>())> = true;
 
 // Static member test
 template<typename Obj> auto rrvMembersTest() -> decltype(rrvMembers(std::declval<Obj&>()), void()) {}
-template<typename Obj, typename = void> struct RrvMembersTest : std::false_type {};
-template<typename Obj> struct RrvMembersTest<Obj, decltype(rrvMembersTest<Obj>())> : std::true_type {};
-template<typename Obj> constexpr static bool kIsStaticMemberType = RrvMembersTest<Obj>::value;
+template<typename Obj, typename = void> constexpr static bool kIsStaticMemberType = false;
+template<typename Obj> constexpr static bool kIsStaticMemberType<Obj, decltype(rrvMembersTest<Obj>())> = true;
 
 // need this so all branches of NodeConcrete::getMember are well-formed...
-template<typename Obj> std::enable_if_t<kIsDynamicMemberType<Obj>, std::tuple<>> rrvMembers(Obj&) { return {}; }
+template<typename Obj> std::enable_if_t<kIsDynamicMemberType<Obj>, std::tuple<>> rrvMembers(Obj&) { static_assert(!sizeof(Obj*), "should never be instantiated"); return {}; }
 
 template <typename Container, typename T>
 struct NodeIndirectAcess : NodeConcrete<T> {
