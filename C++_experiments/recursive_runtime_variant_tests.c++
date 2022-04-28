@@ -34,11 +34,13 @@
 			rrv::Member("value", i),
 		};
 	Next:
+		- merge rrvMember into rrvMemberVariant -- variant is more flexible
 		- iteration for NodeConcrete and derived classes
 		- scalarize via getMembers instead of separate function
 		   - dynamic types will need to provide some list of members...
 		- setMember. Allows returning const& from getMember(s)?
 		   - can't: NodeBase::get returns a plain reference
+		     - return NodeReference<T>?
 		- Clean up assignment code, especially dict
 		- Dict::operator[] emplace_hint suspicious
 		- extract static member names itto array from tupel via apply + CTAD?
@@ -162,20 +164,43 @@ struct StructWithDynamicMembersViaFriend {
 	friend auto rrvEnd(StructWithDynamicMembersViaFriend&) { return names.end(); }
 };
 
-// come up with a use-case for this and test it
-struct MyVector {
-	std::vector<int> vecA;
-	std::vector<int> vecB;
+struct TwoTypeVector {
+	std::vector<int> vecInt;
+	std::vector<float> vecFloat;
 	struct MemberIter {
-		std::size_t i;
-		MemberIter& increment(const MyVector& mv) { if (i == mv.vecA.size()) i = -i; else ++i; return *this; }
+		bool inVecInt;
+		std::size_t i = 0;
+		auto operator<=>(const MemberIter&) const = default;
+		void increment(const TwoTypeVector& mv) { ++i; if (inVecInt and i == mv.vecInt.size()) { i = 0; inVecInt = false; } }
 		// return pair<string, unique_ptr<NodeBase>> ?
 		//   not clear how this avoids the O(n*n) iteration...
-		auto dereference(const MyVector& mv) { return (i < mv.vecA.size() ? "A" : "B") + std::to_string(i - mv.vecA.size()); }
-		bool equals(const MemberIter& rhs, const MyVector&) const { return i == rhs.i; }
+		auto dereference(const TwoTypeVector&) { return (inVecInt ? "i" : "f") + std::to_string(i); }
+		bool equals(const MemberIter& rhs, const TwoTypeVector&) const { return *this == rhs; }
 	};
+	friend std::variant<int*, float*, std::monostate> rrvMemberVariant(TwoTypeVector& s, std::string_view key) {
+		auto index = std::stoi(std::string(key.substr(1)));
+		if (key[0] == 'i') if ((std::size_t)index < s.vecInt.size())   return &s.vecInt.at(index);   else return std::monostate{};
+		              else if ((std::size_t)index < s.vecFloat.size()) return &s.vecFloat.at(index); else return std::monostate{};
+	}
+	friend auto rrvBegin(TwoTypeVector& s) { return MemberIter{s.vecInt.empty(), 0}; }
+	friend auto rrvEnd(TwoTypeVector& s) { return MemberIter{false, s.vecFloat.size()}; }
+	NodeOwning rrvScalarize() const { throw "not implemented"; }
 };
 
+}
+
+TEST_CASE("Multi-type member iteration") {
+	SECTION("TwoTypeVector") {
+		NodeOwning ttv_node = TwoTypeVector{{1, 2}, {3.0f, 4.0f}};
+		CHECK(ttv_node["i0"].as<int>() == 1);
+		CHECK(ttv_node["i1"].as<int>() == 2);
+		CHECK(ttv_node["f0"].as<float>() == 3.0f);
+		CHECK(ttv_node["f1"].as<float>() == 4.0f);
+
+		CHECK_THROWS_WITH(ttv_node["i2"].as<int>(), "Member not found");
+		ttv_node.get<TwoTypeVector>().vecInt.push_back(3);
+		CHECK(ttv_node["i2"].as<int>() == 3);
+	}
 }
 
 TEST_CASE("conversion to Scalars") {
