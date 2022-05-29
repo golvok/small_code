@@ -1,6 +1,5 @@
 #pragma once
 
-
 #include <map>
 #include <memory>
 #include <optional>
@@ -21,7 +20,6 @@ template<bool>
 class MemberIterator;
 template<bool>
 class MemberIteratorImplBase;
-// struct IsSclarar {};
 
 namespace errors {
 	using namespace std::literals::string_view_literals;
@@ -44,7 +42,7 @@ using DictBase = std::map<std::string, std::unique_ptr<NodeBase>, std::less<>>;
 template<bool const_iter>
 struct MemberIteratorImplBase {
 	using OwningPtr = std::unique_ptr<MemberIteratorImplBase>;
-	using reference = std::conditional_t<const_iter, const DictBase::reference, DictBase::reference>;
+	using reference = std::conditional_t<const_iter, DictBase::const_reference, DictBase::reference>;
 	using value_type = std::conditional_t<const_iter, const DictBase::value_type, DictBase::value_type>;
 
 	virtual ~MemberIteratorImplBase() = default;
@@ -73,7 +71,7 @@ public:
 	MemberIterator& operator=(MemberIterator&& src) = default;
 
 	reference operator*() { return *_impl->deref(); }
-	const reference operator*() const { return *_impl->deref(); }
+	reference operator*() const { return *_impl->deref(); }
 	MemberIterator& operator++() { return _impl->advance(), *this; }
 
 	template<bool const_iter_>
@@ -207,9 +205,6 @@ public:
 	std::unique_ptr<NodeBase> clone() const& override { return std::unique_ptr<NodeBase>(new Dict(*this)); }
 	std::unique_ptr<NodeBase> clone() &&     override { return std::unique_ptr<NodeBase>(new Dict(std::move(*this))); }
 };
-
-template <typename T>
-NodeOwning scalarizeImpl(const T& t);
 
 using NodeConcreteMemberInfo = std::unique_ptr<NodeBase>;
 using NodeConcreteMemberCache = std::map<std::string, NodeConcreteMemberInfo, std::less<void>>;
@@ -489,7 +484,11 @@ NodeBase& Dict::operator[](std::string_view sv) {
 
 template<typename T>
 NodeOwning NodeConcrete<T>::toScalars() const {
-	return scalarizeImpl(getObj());
+	NodeOwning r;
+	for (const auto& name_and_member : *this) {
+		r[name_and_member.first] = *name_and_member.second;
+	}
+	return r;
 }
 
 template<typename Obj> std::enable_if_t<std::is_arithmetic_v<Obj>, std::tuple<>> rrvMembers(Obj&) { return {}; }
@@ -679,34 +678,6 @@ std::pair<MemberIterator<std::is_const_v<Self>>, MemberIterator<std::is_const_v<
 			typename MemberIteratorImplBase<self_is_const>::OwningPtr{new NodeConcreteStaticMemberIter<self_is_const>{self.member_cache.end()}},
 		};
 	}
-}
-
-template<typename T> std::enable_if_t<std::is_arithmetic_v<T>, NodeOwning> rrvScalarize(const T& t) { return t; }
-template<typename T> auto rrvScalarize(const T& t) -> decltype(t.rrvScalarize()) { return t.rrvScalarize(); }
-
-template<typename T>
-NodeOwning rrvScalarize(const std::vector<T>& arg) {
-	NodeOwning n;
-	for (int i = 0; i < (int)arg.size(); ++i) {
-		// TODO: don't want to convert the index to string here?
-		using ::std::to_string;
-		using ::rrv::rrvScalarize;
-		n[to_string(i)] = rrvScalarize(arg[i]);
-	}
-	return n;
-}
-
-template <typename T>
-NodeOwning scalarizeImpl(const T& t) {
-	using ::rrv::rrvScalarize;
-	return rrvScalarize(t);
-// 	auto scalarized = rrvScalarize(t);
-// 	using Scalarized = std::remove_cvref_t<decltype(scalarized)>;
-// 	if constexpr (std::is_same_v<Scalarized, IsSclarar>) {
-// 		return NodeOwning(t);
-// 	} else {
-// 		return scalarized;
-// 	}
 }
 
 template <typename Nb>

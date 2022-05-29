@@ -34,17 +34,16 @@
 			rrv::Member("value", i),
 		};
 	Next:
-		- iteration for NodeConcrete and derived classes
-		- scalarize via getMembers instead of separate function
-		   - dynamic types will need to provide some list of members...
 		- setMember. Allows returning const& from getMember(s)?
 		   - can't: NodeBase::get returns a plain reference
 		     - return NodeReference<T>?
 		- Clean up assignment code, especially dict
 		- Dict::operator[] emplace_hint suspicious
-		- extract static member names itto array from tupel via apply + CTAD?
+		- extract static member names into array from tuple via apply + CTAD?
 		- convert most of hierarchy to static polymorphism - don't need runtime, except for type-erased storage
 			- single (templated) derived class with variant of Owning, Bose, Concrete, Reference, Value, Dict?
+			- may resolve the "want to be able to construct a Node" problem, by defaulting to NodeOwning
+		- Catch exceptions to add context. Eg. what member names are being accessed
 */
 
 using rrv::NodeOwning;
@@ -130,9 +129,6 @@ TEST_CASE("iteration") {
 namespace {
 struct StructWithFriendConversions {
 	int i;
-	friend NodeOwning rrvScalarize(const StructWithFriendConversions& s) {
-		NodeOwning r; r["i"] = s.i; return r;
-	}
 	friend auto rrvMembers(StructWithFriendConversions& s) {
 		return std::make_tuple(
 			std::make_pair("i", &s.i)
@@ -142,9 +138,6 @@ struct StructWithFriendConversions {
 
 struct StructWithDynamicMembersViaMember {
 	int i, j;
-	NodeOwning rrvScalarize() const {
-		NodeOwning n; n["i"] = i; n["j"] = j; return n;
-	}
 	std::variant<int*> rrvMember(std::string_view key) {
 		if (key == "i") return &i; else return &j;
 	}
@@ -154,9 +147,6 @@ struct StructWithDynamicMembersViaMember {
 };
 struct StructWithDynamicMembersViaFriend {
 	int i, j;
-	NodeOwning rrvScalarize() const {
-		NodeOwning n; n["i"] = i; n["j"] = j; return n;
-	}
 	friend std::variant<int*> rrvMember(StructWithDynamicMembersViaFriend& s, std::string_view key) {
 		if (key == "i") return &s.i; else return &s.j;
 	}
@@ -185,7 +175,6 @@ struct TwoTypeVector {
 	}
 	friend auto rrvBegin(TwoTypeVector& s) { return MemberIter{s.vecInt.empty(), 0}; }
 	friend auto rrvEnd(TwoTypeVector& s) { return MemberIter{false, s.vecFloat.size()}; }
-	NodeOwning rrvScalarize() const { throw "not implemented"; }
 };
 
 }
@@ -230,9 +219,6 @@ TEST_CASE("conversion to Scalars") {
 			int ii;
 			auto operator<=>(const Mm&) const = default;
 
-			NodeOwning rrvScalarize() const {
-				NodeOwning r; r["ii"] = ii; return r;
-			}
 			auto rrvMembers() {
 				return std::make_tuple(
 					std::make_pair("ii", &ii)
@@ -244,9 +230,6 @@ TEST_CASE("conversion to Scalars") {
 			Mm m;
 			auto operator<=>(const M&) const = default;
 
-			NodeOwning rrvScalarize() const {
-				NodeOwning r; r["i"] = i; r["m"] = m; return r;
-			}
 			auto rrvMembers() {
 				return std::make_tuple(
 					std::make_pair("i", &i),
@@ -574,16 +557,6 @@ TEST_CASE("NodeOwning <- Dict interactions") {
 namespace {
 struct SmallTestProgramData {
 	int i, j, k;
-	friend NodeOwning rrvScalarize(const SmallTestProgramData& d) {
-		// return Dict({
-		// 	{"i", d.i}, {"j",d.j}, {"k",d.k}
-		// });
-		NodeOwning r;
-		r["i"] = d.i;
-		r["j"] = d.j;
-		r["k"] = d.k;
-		return r;
-	}
 	friend auto rrvMembers(SmallTestProgramData& s) {
 		return std::make_tuple(
 			std::make_pair("i", &s.i),
