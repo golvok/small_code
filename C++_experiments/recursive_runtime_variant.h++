@@ -498,22 +498,16 @@ template<typename Obj> auto rrvMembers(Obj& t) -> decltype(t.rrvMembers()) { ret
 template<typename Obj> auto rrvMember(Obj& obj, std::string_view key) -> std::enable_if_t<false, Obj*>;
 template<typename Obj> auto rrvMember(Obj& obj, std::string_view key) -> decltype(obj.rrvMember(key)) { return obj.rrvMember(key); }
 
-template<typename Obj> auto rrvMemberVariant(Obj& obj, std::string_view key) -> std::enable_if_t<false, Obj*>;
-template<typename Obj> auto rrvMemberVariant(Obj& obj, std::string_view key) -> decltype(obj.rrvMemberVariant(key)) { return obj.rrvMemberVariant(key); }
-
 // stdlib specializations
-template<typename T> decltype(auto) rrvMember(std::vector<T>& obj, std::string_view key) { return obj.at(std::stoi(std::string(key))); }
-
-// Dynamic multi-type member test
-template<typename Obj> auto rrvMemberVariantTest() -> decltype(rrvMemberVariant(std::declval<Obj&>(), std::declval<std::string_view>()), void()) {}
-template<typename Obj, typename = void> constexpr static bool kIsDynamicMemberVariantType = false;
-template<typename Obj> constexpr static bool kIsDynamicMemberVariantType<Obj, decltype(rrvMemberVariantTest<Obj>())> = true;
+template<typename T> std::variant<T*, std::monostate> rrvMember(std::vector<T>& obj, std::string_view key) {
+	const auto i = std::stoi(std::string(key));
+	if (i>=0 && (size_t)i<obj.size()) return &obj.at(i); else return std::monostate{};
+}
 
 // Dynamic member test
 template<typename Obj> auto rrvMemberTest() -> decltype(rrvMember(std::declval<Obj&>(), std::declval<std::string_view>()), void()) {}
 template<typename Obj, typename = void> constexpr static bool kIsDynamicMemberType = false;
 template<typename Obj> constexpr static bool kIsDynamicMemberType<Obj, decltype(rrvMemberTest<Obj>())> = true;
-template<typename Obj> constexpr static bool kIsDynamicMemberType<Obj, decltype(rrvMemberVariantTest<Obj>())> = true;
 
 // Static member test
 template<typename Obj> auto rrvMembersTest() -> decltype(rrvMembers(std::declval<Obj&>()), void()) {}
@@ -533,8 +527,7 @@ struct NodeIndirectAcess : NodeConcrete<T> {
 
 protected:
 	T& getObj() const override {
-		if constexpr (kIsDynamicMemberVariantType<Container>) return *std::get<T*>(rrvMemberVariant(*container, key));
-		else return rrvMember(*container, key);
+		return *std::get<T*>(rrvMember(*container, key));
 	}
 
 private:
@@ -546,40 +539,26 @@ template<typename T>
 NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(std::string_view key) const {
 	static_assert(kIsDynamicMemberType<T> != kIsStaticMemberType<T>, "types should only define one of getMember and getMembers");
 	if constexpr (kIsDynamicMemberType<T>) {
-		if constexpr (kIsDynamicMemberVariantType<T>) {
-			return std::visit(
-				[this, &key](auto member) -> NodeConcreteMemberCache::reference {
-					if constexpr (std::is_same_v<decltype(member), std::monostate>) {
-						throw std::logic_error("Member not found");
-					} else {
-						using Member = std::remove_pointer_t<decltype(member)>;
-						auto [lookup, is_new] = this->member_cache.emplace(key, NodeConcreteMemberInfo{});
-						auto& member_info = lookup->second;
-						if (is_new) {
-							member_info = NodeConcreteMemberInfo{
-								.node = std::unique_ptr<NodeBase>(
-									new NodeIndirectAcess<T, Member>(&getObj(), key)
-								),
-							};
-						}
-						return *lookup;
+		return std::visit(
+			[this, &key](auto member) -> NodeConcreteMemberCache::reference {
+				if constexpr (std::is_same_v<decltype(member), std::monostate>) {
+					throw std::logic_error("Member not found");
+				} else {
+					using Member = std::remove_pointer_t<decltype(member)>;
+					auto [lookup, is_new] = this->member_cache.emplace(key, NodeConcreteMemberInfo{});
+					auto& member_info = lookup->second;
+					if (is_new) {
+						member_info = NodeConcreteMemberInfo{
+							.node = std::unique_ptr<NodeBase>(
+								new NodeIndirectAcess<T, Member>(&getObj(), key)
+							),
+						};
 					}
-				},
-				rrvMemberVariant(getObj(), key)
-			);
-		} else {
-			using Member = std::remove_reference_t<decltype(rrvMember(getObj(), key))>;
-			auto [lookup, is_new] = member_cache.emplace(key, NodeConcreteMemberInfo{});
-			auto& member_info = lookup->second;
-			if (is_new) {
-				member_info = NodeConcreteMemberInfo{
-					.node = std::unique_ptr<NodeBase>(
-						new NodeIndirectAcess<T, Member>(&getObj(), key)
-					),
-				};
-			}
-			return *lookup;
-		}
+					return *lookup;
+				}
+			},
+			rrvMember(getObj(), key)
+		);
 	} else {
 		initMemberCacheForStaticMembers();
 		auto lookup = member_cache.find(key);

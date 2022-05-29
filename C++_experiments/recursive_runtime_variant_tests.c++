@@ -34,7 +34,6 @@
 			rrv::Member("value", i),
 		};
 	Next:
-		- merge rrvMember into rrvMemberVariant -- variant is more flexible
 		- iteration for NodeConcrete and derived classes
 		- scalarize via getMembers instead of separate function
 		   - dynamic types will need to provide some list of members...
@@ -44,6 +43,8 @@
 		- Clean up assignment code, especially dict
 		- Dict::operator[] emplace_hint suspicious
 		- extract static member names itto array from tupel via apply + CTAD?
+		- convert most of hierarchy to static polymorphism - don't need runtime, except for type-erased storage
+			- single (templated) derived class with variant of Owning, Bose, Concrete, Reference, Value, Dict?
 */
 
 using rrv::NodeOwning;
@@ -144,8 +145,8 @@ struct StructWithDynamicMembersViaMember {
 	NodeOwning rrvScalarize() const {
 		NodeOwning n; n["i"] = i; n["j"] = j; return n;
 	}
-	auto& rrvMember(std::string_view key) {
-		if (key == "i") return i; else return j;
+	std::variant<int*> rrvMember(std::string_view key) {
+		if (key == "i") return &i; else return &j;
 	}
 	constexpr static auto names = std::array{"i", "j"};
 	auto rrvBegin() { return names.begin(); }
@@ -156,8 +157,8 @@ struct StructWithDynamicMembersViaFriend {
 	NodeOwning rrvScalarize() const {
 		NodeOwning n; n["i"] = i; n["j"] = j; return n;
 	}
-	friend auto& rrvMember(StructWithDynamicMembersViaFriend& s, std::string_view key) {
-		if (key == "i") return s.i; else return s.j;
+	friend std::variant<int*> rrvMember(StructWithDynamicMembersViaFriend& s, std::string_view key) {
+		if (key == "i") return &s.i; else return &s.j;
 	}
 	constexpr static auto names = std::array{"i", "j"};
 	friend auto rrvBegin(StructWithDynamicMembersViaFriend&) { return names.begin(); }
@@ -177,7 +178,7 @@ struct TwoTypeVector {
 		auto dereference(const TwoTypeVector&) { return (inVecInt ? "i" : "f") + std::to_string(i); }
 		bool equals(const MemberIter& rhs, const TwoTypeVector&) const { return *this == rhs; }
 	};
-	friend std::variant<int*, float*, std::monostate> rrvMemberVariant(TwoTypeVector& s, std::string_view key) {
+	friend std::variant<int*, float*, std::monostate> rrvMember(TwoTypeVector& s, std::string_view key) {
 		auto index = std::stoi(std::string(key.substr(1)));
 		if (key[0] == 'i') if ((std::size_t)index < s.vecInt.size())   return &s.vecInt.at(index);   else return std::monostate{};
 		              else if ((std::size_t)index < s.vecFloat.size()) return &s.vecFloat.at(index); else return std::monostate{};
