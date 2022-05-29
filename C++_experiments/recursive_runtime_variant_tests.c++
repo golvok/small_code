@@ -3,37 +3,27 @@
 #include <catch2/catch.hpp>
 
 /*
-	Want to be able to consturct a Node{}... but this is the base class...
-		use different base for parameters, and NodeConcrete for local vars?
-			that is weird, but makes it very obvious what is going on
-		Make common class that is uninitialized, and deterlmined upon assignment?
-	Integer arguments for operator[]?
-		maybe take a variant of a couple stdlib types - long long, string_view
-		YAML does it by taking a Node as as argument... could do this too
-			getMember will have to convert -- make sure to catch exceptions from it to add context
-	Scalarize notes
-		returns variant<Dict,is_terminal> ?
-		use case: printing it? Could just have a toStringOrDict function instead
-		related: iterating members of structs
-			just want to implement a member range, then?
-		related; lookup of member of structs
-		 want fast way to determine if member is present in type
-		 convert to member ref Dict?
-		 how to combine all of these into one
-		two separate uses:
-		  "interface"
-		    - tagging arbitrary, nested, type-erased data onto things
-		      - debug info, metadata
-		  "configuration"
-		    - nested, type-erased configuration
-		      - config files, function params
-		Dict d;
-		d["value"] = i;
-		return d;
-		return std::array{
-			rrv::Member("value", i),
-		};
+	Goals:
+		Want to be able to construct a Node{}... but this is the base class...
+			use different base for parameters, and NodeConcrete for local vars?
+				that is weird, but makes it very obvious what is going on
+			Make common class that is uninitialized, and deterlmined upon assignment?
+		Two separate uses:
+			"metadata"
+				- tagging arbitrary, nested, type-erased data onto things
+				- debug info, metadata
+			"configuration"
+			    - nested, type-erased configuration
+			    - config files, function params
 	Next:
+		- make 'Scalar' types possible -- don't have member access/iteration methods
+		- avoid member lookup when iterating by passing returned MemberIterator to rrvMember?
+			- types probably shouldn't store actual iterators to avoid invalidation? or say screw it, and just use existing rules for type(s)
+		- non-string_view arguments for operator[]?
+			- maybe take a variant of a couple stdlib types - long long, string_view
+			- YAML does it by taking a Node as as argument... could do this too
+				- getMember will have to convert -- make sure to catch exceptions from it to add context
+			- Is it possible to use an overload set of rrvMember? - library automatically converts int<->string if only one
 		- setMember. Allows returning const& from getMember(s)?
 		   - can't: NodeBase::get returns a plain reference
 		     - return NodeReference<T>?
