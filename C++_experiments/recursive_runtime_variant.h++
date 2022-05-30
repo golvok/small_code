@@ -21,6 +21,10 @@ class MemberIterator;
 template<bool>
 class MemberIteratorImplBase;
 
+template<typename Obj, typename = void> constexpr static bool kIsDynamicMemberType = false;
+template<typename Obj, typename = void> constexpr static bool kIsStaticMemberType = false;
+template<typename Obj> constexpr static bool kIsScalarType = not kIsStaticMemberType<Obj> and not kIsDynamicMemberType<Obj>;
+
 namespace errors {
 	using namespace std::literals::string_view_literals;
 	constexpr auto kAssignObjectInNodeOwningToDict = "Trying to assign an object to a Dict (via a NodeOwning)"sv;
@@ -214,6 +218,8 @@ struct NodeConcrete : NodeBase {
 	static_assert(not std::is_reference_v<T>, "Use with a value type instead of a reference");
 	static_assert(std::is_copy_constructible_v<T>, "Require copy-constructible types so cloning will generally work");
 	static_assert(not std::is_const_v<T>, "NodeConcrete enforces constness itself");
+	static_assert(kIsDynamicMemberType<T> + kIsStaticMemberType<T> <= 1, "Types should define at most one of rrvMember and rrvMembers");
+
 	using ContainedType = T;
 
 	NodeConcrete() = default;
@@ -246,7 +252,7 @@ protected:
 	mutable NodeConcreteMemberCache member_cache = {};
 
 	NodeConcreteMemberCache::reference getMember(std::string_view key) const;
-	void initMemberCacheForStaticMembers() const;
+	template<typename TT = T> auto initMemberCacheForStaticMembers() const -> std::enable_if_t<kIsStaticMemberType<TT>>;
 	template<typename Self>
 	std::pair<MemberIterator<std::is_const_v<Self>>, MemberIterator<std::is_const_v<Self>>> friend nodeConcreteGetIterators(Self& self);
 };
@@ -491,10 +497,7 @@ NodeOwning NodeConcrete<T>::toScalars() const {
 	return r;
 }
 
-template<typename Obj> std::enable_if_t<std::is_arithmetic_v<Obj>, std::tuple<>> rrvMembers(Obj&) { return {}; }
 template<typename Obj> auto rrvMembers(Obj& t) -> decltype(t.rrvMembers()) { return t.rrvMembers(); }
-
-template<typename Obj> auto rrvMember(Obj& obj, std::string_view key) -> std::enable_if_t<false, Obj*>;
 template<typename Obj> auto rrvMember(Obj& obj, std::string_view key) -> decltype(obj.rrvMember(key)) { return obj.rrvMember(key); }
 
 // stdlib specializations
@@ -505,16 +508,11 @@ template<typename T> std::variant<T*, std::monostate> rrvMember(std::vector<T>& 
 
 // Dynamic member test
 template<typename Obj> auto rrvMemberTest() -> decltype(rrvMember(std::declval<Obj&>(), std::declval<std::string_view>()), void()) {}
-template<typename Obj, typename = void> constexpr static bool kIsDynamicMemberType = false;
 template<typename Obj> constexpr static bool kIsDynamicMemberType<Obj, decltype(rrvMemberTest<Obj>())> = true;
 
 // Static member test
 template<typename Obj> auto rrvMembersTest() -> decltype(rrvMembers(std::declval<Obj&>()), void()) {}
-template<typename Obj, typename = void> constexpr static bool kIsStaticMemberType = false;
 template<typename Obj> constexpr static bool kIsStaticMemberType<Obj, decltype(rrvMembersTest<Obj>())> = true;
-
-// need this so all branches of NodeConcrete::getMember are well-formed...
-template<typename Obj> std::enable_if_t<kIsDynamicMemberType<Obj>, std::tuple<>> rrvMembers(Obj&) { static_assert(!sizeof(Obj*), "should never be instantiated"); return {}; }
 
 template <typename Container, typename T>
 struct NodeIndirectAcess : NodeConcrete<T> {
@@ -536,7 +534,7 @@ private:
 
 template<typename T>
 NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(std::string_view key) const {
-	static_assert(kIsDynamicMemberType<T> != kIsStaticMemberType<T>, "types should only define one of getMember and getMembers");
+	static_assert(kIsScalarType<T> + kIsDynamicMemberType<T> + kIsStaticMemberType<T> == 1, "Internal error");
 	if constexpr (kIsDynamicMemberType<T>) {
 		return std::visit(
 			[this, &key](auto member) -> NodeConcreteMemberCache::reference {
@@ -558,27 +556,26 @@ NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(std::string_view k
 			},
 			rrvMember(getObj(), key)
 		);
-	} else {
+	} else if constexpr (kIsStaticMemberType<T>) {
 		initMemberCacheForStaticMembers();
 		auto lookup = member_cache.find(key);
 		if (lookup == member_cache.end()) {
 			throw std::logic_error("Member not found");
 		}
 		return *lookup;
+	} else if constexpr (kIsScalarType<T>) {
+		throw std::logic_error(std::string(errors::kAccessMemberOfScalarType));
 	}
 }
 
-template<typename T>
-void NodeConcrete<T>::initMemberCacheForStaticMembers() const {
+template<typename T> template<typename TT>
+auto NodeConcrete<T>::initMemberCacheForStaticMembers() const -> std::enable_if_t<kIsStaticMemberType<TT>> {
 	if (not member_cache.empty()) return;
 
 	const auto add_elem = [this](auto&& elem) {
 		using MemberType = std::remove_reference_t<decltype(*elem.second)>;
-		if constexpr (not std::is_const_v<MemberType>) {
-			this->member_cache.emplace(elem.first, std::unique_ptr<NodeBase>(new NodeReference<MemberType>(elem.second)));
-		} else {
-			static_assert(not sizeof(T*), "rrvMembers should not return pointers to const. Perhaps 'this' is const in the implementation of rrvMembers.");
-		}
+		static_assert(not std::is_const_v<MemberType>, "rrvMembers should not return pointers to const. Perhaps 'this' is const in the implementation of rrvMembers.");
+		this->member_cache.emplace(elem.first, std::unique_ptr<NodeBase>(new NodeReference<MemberType>(elem.second)));
 	};
 
 	const auto add_all = [&add_elem](auto&&... elems) {
@@ -586,10 +583,6 @@ void NodeConcrete<T>::initMemberCacheForStaticMembers() const {
 	};
 
 	std::apply(add_all, rrvMembers(this->getObj()));
-
-	if (member_cache.empty()) {
-		throw std::logic_error(std::string(errors::kAccessMemberOfScalarType));
-	}
 }
 
 template<bool const_iter>
@@ -635,9 +628,6 @@ struct NodeConcreteDynamicMemberIter : MemberIteratorImplBase<const_iter> {
 	template<typename TImpl> auto equalImpl(const TImpl& rhs) const -> decltype(std::declval<TImpl&>() == rhs) { return impl == rhs; }
 };
 
-
-template<typename Obj> std::enable_if_t<std::is_arithmetic_v<Obj>, int> rrvBegin(Obj&) { throw std::logic_error(std::string(errors::kAccessMemberOfScalarType)); }
-template<typename Obj> std::enable_if_t<std::is_arithmetic_v<Obj>, int> rrvEnd(Obj&) { throw std::logic_error(std::string(errors::kAccessMemberOfScalarType)); }
 template<typename Obj> auto rrvBegin(Obj& t) -> decltype(t.rrvBegin()) { return t.rrvBegin(); }
 template<typename Obj> auto rrvEnd(Obj& t) -> decltype(t.rrvEnd()) { return t.rrvEnd(); }
 
@@ -662,21 +652,23 @@ template<typename Self>
 std::pair<MemberIterator<std::is_const_v<Self>>, MemberIterator<std::is_const_v<Self>>> nodeConcreteGetIterators(Self& self) {
 	constexpr bool self_is_const = std::is_const_v<Self>;
 	using T = Self::ContainedType;
-	static_assert(kIsDynamicMemberType<T> != kIsStaticMemberType<T>, "types should only define one of getMember and getMembers");
 
+	static_assert(kIsScalarType<T> + kIsDynamicMemberType<T> + kIsStaticMemberType<T> == 1, "Internal error");
 	if constexpr (kIsDynamicMemberType<T>) {
 		return {
 			// TODO: avoid the allocation somehow?
 			typename MemberIteratorImplBase<self_is_const>::OwningPtr{new NodeConcreteDynamicMemberIter<self_is_const, decltype(rrvBegin(self.getObj())), Self>{rrvBegin(self.getObj()), &self}},
 			typename MemberIteratorImplBase<self_is_const>::OwningPtr{new NodeConcreteDynamicMemberIter<self_is_const, decltype(rrvEnd(self.getObj())), Self>{rrvEnd(self.getObj()), &self}},
 		};
-	} else {
+	} else if constexpr (kIsStaticMemberType<T>) {
 		self.initMemberCacheForStaticMembers();
 		return {
 			// TODO: avoid the allocation somehow?
 			typename MemberIteratorImplBase<self_is_const>::OwningPtr{new NodeConcreteStaticMemberIter<self_is_const>{self.member_cache.begin()}},
 			typename MemberIteratorImplBase<self_is_const>::OwningPtr{new NodeConcreteStaticMemberIter<self_is_const>{self.member_cache.end()}},
 		};
+	} else if constexpr (kIsScalarType<T>) {
+		throw std::logic_error(std::string(errors::kAccessMemberOfScalarType));
 	}
 }
 

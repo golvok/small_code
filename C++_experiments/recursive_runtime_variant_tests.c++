@@ -16,7 +16,6 @@
 			    - nested, type-erased configuration
 			    - config files, function params
 	Next:
-		- make 'Scalar' types possible -- don't have member access/iteration methods
 		- avoid member lookup when iterating by passing returned MemberIterator to rrvMember?
 			- types probably shouldn't store actual iterators to avoid invalidation? or say screw it, and just use existing rules for type(s)
 		- non-string_view arguments for operator[]?
@@ -426,13 +425,18 @@ TEST_CASE("error paths") {
 		NodeOwning no = 4;
 		CHECK_THROWS_WITH(no["k"], std::string(rrv::errors::kAccessMemberOfScalarType));
 	}
+	SECTION("access member of an object in a NodeOwning") {
+		struct ScalarStruct { int i; };
+		NodeOwning no = ScalarStruct{};
+		CHECK_THROWS_WITH(no["i"], std::string(rrv::errors::kAccessMemberOfScalarType));
+	}
 	SECTION("assign object to Dict from a NodeOwning") {
 		Dict d;
 		CHECK_THROWS_WITH(d = NodeOwning{4}, std::string(rrv::errors::kAssignObjectInNodeOwningToDict));
 	}
 	SECTION("assign object to Dict from a NodeBase") {
 		Dict d;
-		auto nc = NodeValue<int>{4}; // constructing a NodeOwning doesn't work -- it tries that downcast
+		auto nc = NodeValue<int>{4}; // avoid special case for NodeOwning (kAssignObjectInNodeOwningToDict)
 		CHECK_THROWS_WITH(d = nc, std::string(rrv::errors::kAssignObjectToDict));
 	}
 	SECTION("iterate object") {
