@@ -223,7 +223,7 @@ struct NodeConcrete : NodeBase {
 	using ContainedType = T;
 
 	NodeConcrete() = default;
-	NodeConcrete(const NodeConcrete&) = default;
+	NodeConcrete(const NodeConcrete&) = delete;
 	NodeConcrete(NodeConcrete&&) = default;
 	NodeConcrete& operator=(const NodeConcrete&) = default;
 	NodeConcrete& operator=(NodeConcrete&&) = default;

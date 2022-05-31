@@ -85,13 +85,64 @@ TEST_CASE("basic use") {
 		REQUIRE(root["j"]["k"].get<int>() == 44);
 		REQUIRE(root["j"]["k"].get<const int>() == 44);
 	}
-	SECTION("copy-assign nested node") {
+	SECTION("copy-assign nested node - scalar") {
 		NodeOwning root;
 		NodeOwning child;
 		child["k"] = 44;
+		REQUIRE(child["k"].get<int>() == 44);
+		REQUIRE(child["k"].get<const int>() == 44);
 		root["j"] = child;
 		REQUIRE(root["j"]["k"].get<int>() == 44);
 		REQUIRE(root["j"]["k"].get<const int>() == 44);
+		SECTION("copies are independent") {
+			child["k"] = 33;
+			REQUIRE(child["k"].get<int>() == 33);
+			REQUIRE(child["k"].get<const int>() == 33);
+			REQUIRE(root["j"]["k"].get<int>() == 44);
+			REQUIRE(root["j"]["k"].get<const int>() == 44);
+		}
+	}
+	SECTION("copy-assign nested node - static members") {
+		struct S {int i; auto rrvMembers() { return std::make_tuple(std::make_pair("i", &i)); }};
+		NodeOwning root;
+		NodeOwning child;
+		child["k"] = S{44};
+		REQUIRE(child["k"]["i"].get<int>() == 44);
+		REQUIRE(child["k"]["i"].get<const int>() == 44);
+		root["j"] = child;
+		REQUIRE(root["j"]["k"]["i"].get<int>() == 44);
+		REQUIRE(root["j"]["k"]["i"].get<const int>() == 44);
+		SECTION("copies are independent") {
+			child["k"]["i"].get<int>() = 33;
+			REQUIRE(child["k"]["i"].get<int>() == 33);
+			REQUIRE(child["k"]["i"].get<const int>() == 33);
+			REQUIRE(root["j"]["k"]["i"].get<int>() == 44);
+			REQUIRE(root["j"]["k"]["i"].get<const int>() == 44);
+		}
+	}
+	SECTION("copy-assign nested node - dynamic members") {
+		constexpr static auto names = std::array{"i"};
+		struct D {
+			int i;
+			std::variant<int*> rrvMember(std::string_view) { return &i; }
+			auto rrvBegin() const { return names.begin(); }
+			auto rrvEnd() const { return names.end(); }
+		};
+		NodeOwning root;
+		NodeOwning child;
+		child["k"] = D{44};
+		REQUIRE(child["k"]["i"].get<int>() == 44);
+		REQUIRE(child["k"]["i"].get<const int>() == 44);
+		root["j"] = child;
+		REQUIRE(root["j"]["k"]["i"].get<int>() == 44);
+		REQUIRE(root["j"]["k"]["i"].get<const int>() == 44);
+		SECTION("copies are independent") {
+			child["k"]["i"].get<int>() = 33;
+			REQUIRE(child["k"]["i"].get<int>() == 33);
+			REQUIRE(child["k"]["i"].get<const int>() == 33);
+			REQUIRE(root["j"]["k"]["i"].get<int>() == 44);
+			REQUIRE(root["j"]["k"]["i"].get<const int>() == 44);
+		}
 	}
 }
 
