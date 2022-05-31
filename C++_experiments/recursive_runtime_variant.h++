@@ -395,6 +395,35 @@ private:
 	Impl impl;
 };
 
+// Customization points
+template<typename Obj> auto rrvMembers(Obj& t) -> decltype(t.rrvMembers()) { return t.rrvMembers(); }
+template<typename Obj> auto rrvMember(Obj& obj, std::string_view key) -> decltype(obj.rrvMember(key)) { return obj.rrvMember(key); }
+template<typename Obj> auto rrvBegin(Obj& t) -> decltype(t.rrvBegin()) { return t.rrvBegin(); }
+template<typename Obj> auto rrvEnd(Obj& t) -> decltype(t.rrvEnd()) { return t.rrvEnd(); }
+
+// Specializations (must be before static/dynamic tests)
+// std::vector
+struct IntIter {
+	int i;
+	IntIter& operator++() { ++i; return *this; }
+	auto operator*() { return std::to_string(i); }
+	int operator<=>(const IntIter&) const = default;
+};
+template<typename T> std::variant<T*, std::monostate> rrvMember(std::vector<T>& obj, std::string_view key) {
+	const auto i = std::stoi(std::string(key));
+	if (i>=0 && (size_t)i<obj.size()) return &obj.at(i); else return std::monostate{};
+}
+template<typename T> auto rrvBegin(std::vector<T>&) { return IntIter{0}; }
+template<typename T> auto rrvEnd(std::vector<T>& v) { return IntIter{(int)v.size()}; }
+
+// Dynamic member test
+template<typename Obj> auto rrvMemberTest() -> decltype(rrvMember(std::declval<Obj&>(), std::declval<std::string_view>()), void()) {}
+template<typename Obj> constexpr static bool kIsDynamicMemberType<Obj, decltype(rrvMemberTest<Obj>())> = true;
+
+// Static member test
+template<typename Obj> auto rrvMembersTest() -> decltype(rrvMembers(std::declval<Obj&>()), void()) {}
+template<typename Obj> constexpr static bool kIsStaticMemberType<Obj, decltype(rrvMembersTest<Obj>())> = true;
+
 template<typename T, typename Self>
 T* NodeBase::get_if_impl(Self& self) {
 	constexpr auto self_is_const = std::is_const_v<Self>;
@@ -496,23 +525,6 @@ NodeOwning NodeConcrete<T>::toScalars() const {
 	}
 	return r;
 }
-
-template<typename Obj> auto rrvMembers(Obj& t) -> decltype(t.rrvMembers()) { return t.rrvMembers(); }
-template<typename Obj> auto rrvMember(Obj& obj, std::string_view key) -> decltype(obj.rrvMember(key)) { return obj.rrvMember(key); }
-
-// stdlib specializations
-template<typename T> std::variant<T*, std::monostate> rrvMember(std::vector<T>& obj, std::string_view key) {
-	const auto i = std::stoi(std::string(key));
-	if (i>=0 && (size_t)i<obj.size()) return &obj.at(i); else return std::monostate{};
-}
-
-// Dynamic member test
-template<typename Obj> auto rrvMemberTest() -> decltype(rrvMember(std::declval<Obj&>(), std::declval<std::string_view>()), void()) {}
-template<typename Obj> constexpr static bool kIsDynamicMemberType<Obj, decltype(rrvMemberTest<Obj>())> = true;
-
-// Static member test
-template<typename Obj> auto rrvMembersTest() -> decltype(rrvMembers(std::declval<Obj&>()), void()) {}
-template<typename Obj> constexpr static bool kIsStaticMemberType<Obj, decltype(rrvMembersTest<Obj>())> = true;
 
 template <typename Container, typename T>
 struct NodeIndirectAcess : NodeConcrete<T> {
@@ -627,26 +639,6 @@ struct NodeConcreteDynamicMemberIter : MemberIteratorImplBase<const_iter> {
 	template<typename TImpl> auto equalImpl(const TImpl& rhs) const -> decltype(std::declval<TImpl&>().equals(rhs, *self)) { return impl.equals(rhs, *self); }
 	template<typename TImpl> auto equalImpl(const TImpl& rhs) const -> decltype(std::declval<TImpl&>() == rhs) { return impl == rhs; }
 };
-
-template<typename Obj> auto rrvBegin(Obj& t) -> decltype(t.rrvBegin()) { return t.rrvBegin(); }
-template<typename Obj> auto rrvEnd(Obj& t) -> decltype(t.rrvEnd()) { return t.rrvEnd(); }
-
-struct IntIter {
-	int i;
-	IntIter& operator++() { ++i; return *this; }
-	auto operator*() { return std::to_string(i); }
-	int operator<=>(const IntIter&) const = default;
-};
-
-template<typename T>
-auto rrvBegin(std::vector<T>&) {
-	return IntIter{0};
-}
-
-template<typename T>
-auto rrvEnd(std::vector<T>& v) {
-	return IntIter{(int)v.size()};
-}
 
 template<typename Self>
 std::pair<MemberIterator<std::is_const_v<Self>>, MemberIterator<std::is_const_v<Self>>> nodeConcreteGetIterators(Self& self) {
