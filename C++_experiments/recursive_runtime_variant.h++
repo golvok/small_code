@@ -477,8 +477,8 @@ Dict& Dict::operator=(NodeBase&& rhs) {
 NodeOwning Dict::toScalars() const { return NodeOwning(*this); }
 
 NodeBase& Dict::operator[](std::string_view sv) {
-	auto lookup = find(sv);
-	if (lookup == this->DictBase::end()) {
+	auto lookup = lower_bound(sv);
+	if (lookup == DictBase::end() or lookup->first != sv) {
 		auto storage = mapped_type{new NodeOwning()};
 		auto& ref = *storage;
 		emplace_hint(lookup, std::string(sv), std::move(storage));

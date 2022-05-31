@@ -27,7 +27,6 @@
 		   - can't: NodeBase::get returns a plain reference
 		     - return NodeReference<T>?
 		- Clean up assignment code, especially dict
-		- Dict::operator[] emplace_hint suspicious
 		- extract static member names into array from tuple via apply + CTAD?
 		- convert most of hierarchy to static polymorphism - don't need runtime, except for type-erased storage
 			- single (templated) derived class with variant of Owning, Bose, Concrete, Reference, Value, Dict?
