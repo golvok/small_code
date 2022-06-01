@@ -10,16 +10,15 @@
 
 namespace rrv {
 
-class NodeBase;
-template<typename T> class NodeConcrete;
-template<typename T> class NodeReference;
-template<typename T> class NodeValue;
+struct Node;
+struct NodeConcreteBase;
+template<typename T> struct NodeConcrete;
+template<typename T> struct NodeReference;
+template<typename T> struct NodeValue;
+template <typename Container, typename T> struct NodeIndirectAcess;
 struct Dict;
-class NodeOwning;
-template<bool>
-class MemberIterator;
-template<bool>
-class MemberIteratorImplBase;
+template<bool> struct MemberIterator;
+template<bool> struct MemberIteratorImplBase;
 
 template<typename Obj, typename = void> constexpr static bool kIsDynamicMemberType = false;
 template<typename Obj, typename = void> constexpr static bool kIsStaticMemberType = false;
@@ -27,21 +26,20 @@ template<typename Obj> constexpr static bool kIsScalarType = not kIsStaticMember
 
 namespace errors {
 	using namespace std::literals::string_view_literals;
-	constexpr auto kAssignObjectInNodeOwningToDict = "Trying to assign an object to a Dict (via a NodeOwning)"sv;
+	constexpr auto kAssignObjectToDict = "Trying to assign an object to a Dict (via a Node)"sv;
 	constexpr auto kAccessMemberOfScalarType = "Accessing member of a scalar type"sv;
-	constexpr auto kAccessNodeOwningAsObjectButIsDict = "Trying to access a NodeOwning as an object, but it is a Dict"sv;
+	constexpr auto kAccessNodeAsObjectButIsDict = "Trying to access a Node as an object, but it is a Dict"sv;
 	constexpr auto kAccessWithWrongType = "Accessing with wrong type"sv;
 	constexpr auto kAsCannotAccessOrConvert = ".as is unable to access as or convert to the type requested"sv;
 	constexpr auto kCloneNotImplemented_ConstRef = "clone const& not implemented"sv;
 	constexpr auto kCloneNotImplemented_RvalRef = "clone && not implemented"sv;
 	constexpr auto kAccessMemberOfConcreteType = "can't get member of concrete type"sv;
-	constexpr auto kAssignObjectToDict = "Trying to assign an object to a Dict"sv;
 }
 
 template<typename Source, typename Target>
 using SameConstAs = std::conditional_t<std::is_const_v<Source>, const Target, Target>;
 
-using DictBase = std::map<std::string, std::unique_ptr<NodeBase>, std::less<>>;
+using DictBase = std::map<std::string, std::unique_ptr<Node>, std::less<>>;
 
 template<bool const_iter>
 struct MemberIteratorImplBase {
@@ -57,14 +55,9 @@ struct MemberIteratorImplBase {
 };
 
 template<bool const_iter>
-class MemberIterator {
+struct MemberIterator {
 	using ImplBase = MemberIteratorImplBase<const_iter>;
 	using OwningPtr = typename ImplBase::OwningPtr;
-	OwningPtr _impl;
-
-	OwningPtr clone_impl() const { return _impl->clone(); }
-
-public:
 	using value_type = typename ImplBase::value_type;
 	using reference = typename ImplBase::reference;
 
@@ -82,107 +75,40 @@ public:
 	bool operator==(const MemberIterator<const_iter_>& rhs) const { return _impl->equalTo(*rhs._impl); }
 	template<bool const_iter_>
 	bool operator!=(const MemberIterator<const_iter_>& rhs) const { return !(*this == rhs); }
-};
-
-class NodeBase {
-public:
-	template <typename T>
-	NodeBase& operator=(T&& rhs);
-	virtual ~NodeBase() = default;
-
-	template<typename T> const T* get_if() const { return get_if_impl<const T>(*this); }
-	template<typename T>       T* get_if()       { return get_if_impl<      T>(*this); }
-	template<typename T> const T& get()    const { return getImpl<const T>(*this); }
-	template<typename T>       T& get()          { return getImpl<      T>(*this); }
-
-	template<typename T>
-	T as() const {
-		if (auto ptr = get_if<T>()) {
-			return *ptr;
-		}
-		// if constexpr ( can convert T from Dict ) {
-		// 	if (auto ptr = get_if<Dict>()) {
-		// 		return DictConversion<T>::convert(*ptr);
-		// 	} else {
-		// 		return DictConversion<T>::convert(toDict());
-		// 	}
-		// }
-		throw std::logic_error(std::string(errors::kAsCannotAccessOrConvert));
-	}
-
-	template<typename T> explicit operator const T&() const { return get<T>(); }
-
-	virtual const NodeBase& operator[](std::string_view sv) const = 0;
-	virtual NodeBase& operator[](std::string_view sv) = 0;
-	const NodeBase& at(std::string_view sv) const { return (*this)[sv]; }
-	NodeBase& at(std::string_view sv) { return (*this)[sv]; }
-
-	virtual NodeOwning toScalars() const = 0;
-
-	virtual MemberIterator<false> begin() = 0;
-	virtual MemberIterator<true> begin() const = 0;
-	MemberIterator<true> cbegin() const { return begin(); }
-	virtual MemberIterator<false> end() = 0;
-	virtual MemberIterator<true> end() const = 0;
-	MemberIterator<true> cend() const { return end(); }
-
-	virtual std::unique_ptr<NodeBase> clone() const& = 0;
-	virtual std::unique_ptr<NodeBase> clone() && = 0;
 
 private:
-	template<typename T, typename Self>
-	static T* get_if_impl(Self&);
+	OwningPtr _impl;
 
-	template<typename T, typename Self>
-	static T& getImpl(Self& self) {
-		if (auto ptr = self.template get_if<T>()) {
-			return *ptr;
-		} else {
-			throw std::logic_error(std::string(errors::kAccessWithWrongType));
-		}
-	}
+	OwningPtr clone_impl() const { return _impl->clone(); }
 };
 
+template<bool const_iter>
+using MemberIteratorPair = std::pair<MemberIterator<const_iter>, MemberIterator<const_iter>>;
+
 // TODO: use composition instead....
-struct Dict : NodeBase, private DictBase {
-public:
-	Dict() {}
-	Dict(const Dict& src) : DictBase() { *this = src; }
+struct Dict  {
+	Dict() : impl() {}
+	Dict(const Dict& src) : impl() { *this = src; }
 	Dict(Dict&&) = default;
-	Dict(const DictBase& src) : DictBase() { *this = src; }
-	Dict(DictBase&& src) : DictBase(std::move(src)) {}
+	Dict(const DictBase& src) : impl() { *this = src; }
+	Dict(DictBase&& src) : impl() { *this = std::move(src); }
 
-	Dict& operator=(const DictBase& rhs) {
-		clear();
-		for (const auto& [k, v] : rhs) {
-			emplace(k, v->clone());
-		}
-		return *this;
-	}
-	Dict& operator=(const Dict& rhs) { // need this to override NodeBase's
-		return *this = static_cast<const DictBase&>(rhs);
-	}
-	Dict& operator=(Dict&& rhs) { // need this to override NodeBase's
-		this->DictBase::operator=(std::move(rhs));
-		return *this;
-	}
-	Dict& operator=(const NodeOwning& rhs);
-	Dict& operator=(const NodeBase& rhs);
-	Dict& operator=(NodeOwning&& rhs);
-	Dict& operator=(NodeBase&& rhs);
+	Dict& operator=(const DictBase& rhs);
+	Dict& operator=(const Dict& rhs) { return *this = rhs.impl; }
+	Dict& operator=(Dict&&) = default;
+	Dict& operator=(const Node& rhs);
+	Dict& operator=(Node&& rhs);
 
-	using DictBase::find;
-	using DictBase::empty;
-	using DictBase::size;
-	using DictBase::clear;
-	using DictBase::insert;
-	using DictBase::emplace;
-	using NodeBase::at;
+	Node toScalars() const;
+	const Node& operator[](std::string_view sv) const {
+		auto lookup = impl.find(sv);
+		if (lookup == impl.end()) throw std::logic_error("Cannot find member of Dict: " + std::string(sv));
+		return *lookup->second;
+	}
+	Node& operator[](std::string_view sv);
 
-	virtual NodeOwning toScalars() const override;
-	// TODO: don't make a string (use transparent find)
-	virtual const NodeBase& operator[](std::string_view sv) const override { return *DictBase::at(std::string(sv)); };
-	virtual NodeBase& operator[](std::string_view sv) override;
+	bool empty() const { return impl.empty(); }
+	std::size_t size() const { return impl.size(); }
 
 	template<bool const_iter>
 	struct Iter : MemberIteratorImplBase<const_iter> {
@@ -201,20 +127,37 @@ public:
 		bool equalTo(const ImplBase& rhs) const override { auto* downcasted = dynamic_cast<const Iter*>(&rhs); return downcasted && (this->impl == downcasted->impl); }
 	};
 
-	MemberIterator<false> begin()       override { return MemberIteratorImplBase<false>::OwningPtr{new Iter<false>{this->DictBase::begin()}}; }
-	MemberIterator<true>  begin() const override { return MemberIteratorImplBase<true>:: OwningPtr{new Iter<true> {this->DictBase::begin()}}; }
-	MemberIterator<false> end()         override { return MemberIteratorImplBase<false>::OwningPtr{new Iter<false>{this->DictBase::end()}}; }
-	MemberIterator<true>  end()   const override { return MemberIteratorImplBase<true>:: OwningPtr{new Iter<true> {this->DictBase::end()}}; }
-
-	std::unique_ptr<NodeBase> clone() const& override { return std::unique_ptr<NodeBase>(new Dict(*this)); }
-	std::unique_ptr<NodeBase> clone() &&     override { return std::unique_ptr<NodeBase>(new Dict(std::move(*this))); }
+	MemberIterator<false> begin()       { return MemberIteratorImplBase<false>::OwningPtr{new Iter<false>{impl.begin()}}; }
+	MemberIterator<true>  begin() const { return MemberIteratorImplBase<true>:: OwningPtr{new Iter<true> {impl.begin()}}; }
+	MemberIterator<false> end()         { return MemberIteratorImplBase<false>::OwningPtr{new Iter<false>{impl.end()}}; }
+	MemberIterator<true>  end()   const { return MemberIteratorImplBase<true>:: OwningPtr{new Iter<true> {impl.end()}}; }
+private:
+	DictBase impl;
 };
 
-using NodeConcreteMemberInfo = std::unique_ptr<NodeBase>;
-using NodeConcreteMemberCache = std::map<std::string, NodeConcreteMemberInfo, std::less<void>>;
+using NodeConcreteMemberInfo = std::unique_ptr<Node>;
+using NodeConcreteMemberCache = std::map<std::string, NodeConcreteMemberInfo, std::less<>>;
+
+struct NodeConcreteBase {
+	virtual const Node& operator[](std::string_view key) const = 0;
+	virtual       Node& operator[](std::string_view key) = 0;
+	virtual Node toScalars() const = 0;
+	MemberIterator<false> begin()       { return memberIteratorPair().first; }
+	MemberIterator<true>  begin() const { return memberIteratorPair().first; }
+	MemberIterator<false> end()         { return memberIteratorPair().second; }
+	MemberIterator<true>  end()   const { return memberIteratorPair().second; }
+	virtual std::unique_ptr<NodeConcreteBase> clone() const& = 0;
+	virtual std::unique_ptr<NodeConcreteBase> clone() && = 0;
+	virtual bool tryAssign(const NodeConcreteBase&  rhs) = 0;
+	virtual bool tryAssign(      NodeConcreteBase&& rhs) = 0;
+	virtual ~NodeConcreteBase() = default;
+protected:
+	virtual MemberIteratorPair<true>  memberIteratorPair() const = 0;
+	virtual MemberIteratorPair<false> memberIteratorPair() = 0;
+};
 
 template <typename T>
-struct NodeConcrete : NodeBase {
+struct NodeConcrete : NodeConcreteBase {
 	static_assert(not std::is_reference_v<T>, "Use with a value type instead of a reference");
 	static_assert(std::is_copy_constructible_v<T>, "Require copy-constructible types so cloning will generally work");
 	static_assert(not std::is_const_v<T>, "NodeConcrete enforces constness itself");
@@ -228,24 +171,36 @@ struct NodeConcrete : NodeBase {
 	NodeConcrete& operator=(const NodeConcrete&) = default;
 	NodeConcrete& operator=(NodeConcrete&&) = default;
 
-	const NodeBase& operator[](std::string_view key) const override { return *getMember(key).second; }
-	      NodeBase& operator[](std::string_view key)       override { return *getMember(key).second; }
+	const Node& operator[](std::string_view key) const override { return *getMember(key).second; }
+	      Node& operator[](std::string_view key)       override { return *getMember(key).second; }
 
-	NodeOwning toScalars() const override;
+	Node toScalars() const override;
 
-	MemberIterator<false> begin()       override { return nodeConcreteGetIterators(*this).first; }
-	MemberIterator<true>  begin() const override { return nodeConcreteGetIterators(*this).first; }
-	MemberIterator<false> end()         override { return nodeConcreteGetIterators(*this).second; }
-	MemberIterator<true>  end()   const override { return nodeConcreteGetIterators(*this).second; }
+	MemberIteratorPair<true>  memberIteratorPair() const override { return nodeConcreteGetIterators(*this); }
+	MemberIteratorPair<false> memberIteratorPair()       override { return nodeConcreteGetIterators(*this); }
 
-	std::unique_ptr<NodeBase> clone() const& override { return std::unique_ptr<NodeBase>(new NodeValue<T>(getObj())); }
-	std::unique_ptr<NodeBase> clone() &&     override { return std::unique_ptr<NodeBase>(new NodeValue<T>(std::move(getObj()))); }
+	std::unique_ptr<NodeConcreteBase> clone() const& override { return std::unique_ptr<NodeConcreteBase>(new NodeValue<T>(getObj())); }
+	std::unique_ptr<NodeConcreteBase> clone() &&     override { return std::unique_ptr<NodeConcreteBase>(new NodeValue<T>(std::move(getObj()))); }
+
+	virtual bool tryAssign(const NodeConcreteBase& rhs) {
+		auto downcasted = dynamic_cast<const NodeConcrete<T>*>(&rhs);
+		if (downcasted) getObject() = downcasted->getObject();
+		return downcasted;
+	}
+	virtual bool tryAssign(NodeConcreteBase&& rhs) {
+		auto downcasted = dynamic_cast<NodeConcrete<T>*>(&rhs);
+		if (downcasted) getObject() = std::move(*downcasted).getObject();
+		return downcasted;
+	}
 
 	T& getObject() const& { return getObj(); }
 	T&& getObject() && { return std::move(getObj()); }
 
 protected:
 	virtual T& getObj() const = 0;
+	// std::variant<T, T*> obj;
+	// T& getObj()       { if (auto* t = std::get_if<      T>(&obj)) return t; else return *std::get<T*>(obj); }
+	// T& getObj() const { if (auto* t = std::get_if<const T>(&obj)) return t; else return *std::get<T*>(obj); }
 	template<bool const_iter, typename Impl, typename Self>
 	friend struct NodeConcreteDynamicMemberIter;
 
@@ -254,7 +209,7 @@ protected:
 	NodeConcreteMemberCache::reference getMember(std::string_view key) const;
 	template<typename TT = T> auto initMemberCacheForStaticMembers() const -> std::enable_if_t<kIsStaticMemberType<TT>>;
 	template<typename Self>
-	std::pair<MemberIterator<std::is_const_v<Self>>, MemberIterator<std::is_const_v<Self>>> friend nodeConcreteGetIterators(Self& self);
+	MemberIteratorPair<std::is_const_v<Self>> friend nodeConcreteGetIterators(Self& self);
 };
 
 template <typename T>
@@ -288,11 +243,10 @@ private:
 	T* obj;
 };
 
-
-class NodeOwning : public NodeBase {
+struct Node {
 public:
 	using DictImpl = Dict;
-	using ObjectImpl = std::unique_ptr<NodeBase>;
+	using ObjectImpl = std::unique_ptr<NodeConcreteBase>;
 	using Impl = std::variant<DictImpl, ObjectImpl>;
 
 	template<typename Self, typename DictF, typename ObjF>
@@ -302,38 +256,33 @@ public:
 		if (dict_impl) {
 			return std::forward<DictF>(dict_f)(*dict_impl);
 		} else {
-			using ObjectPtr = std::conditional_t<std::is_const_v<Self>, const NodeBase*, NodeBase*>;
+			using ObjectPtr = std::conditional_t<std::is_const_v<Self>, const NodeConcreteBase*, NodeConcreteBase*>;
 			ObjectPtr obj_impl = std::get_if<ObjectImpl>(&self.impl)->get();
 			return std::forward<ObjF>(obj_f)(*obj_impl);
 		}
 	}
 
-	NodeOwning() : impl(DictImpl()) {}
-	NodeOwning(const NodeOwning& src) : impl() { *this = src; }
-	NodeOwning(NodeOwning&& src) : impl() { *this = std::move(src); }
-	NodeOwning& operator=(const NodeOwning& src) { auto l = [this](auto& obj_or_dict) { *this = obj_or_dict; };            visitImpl(src, l, l); return *this; }
-	NodeOwning& operator=(     NodeOwning&& src) { auto l = [this](auto& obj_or_dict) { *this = std::move(obj_or_dict); }; visitImpl(src, l, l); return *this; }
-	explicit NodeOwning(ObjectImpl ri) : impl(std::move(ri)) {}
-	explicit NodeOwning(DictImpl di) : impl(std::move(di)) {}
-	NodeOwning(NodeBase& nb) : NodeOwning(std::move(nb).clone()) {}
-	NodeOwning(NodeBase&& nb) : NodeOwning(std::move(nb).clone()) {}
-	NodeOwning(const NodeBase& nb) : NodeOwning(nb.clone()) {}
+	Node() : impl(DictImpl()) {}
+	Node(const Node&  src) : Node() { assign(src); }
+	Node(      Node&& src) : Node() { assign(std::move(src)); }
+	explicit Node(ObjectImpl ri) : impl(std::move(ri)) {}
+	explicit Node(DictImpl   di) : impl(std::move(di)) {}
+	Node(const NodeConcreteBase&  nb) : Node() { assign(nb); }
+	Node(      NodeConcreteBase&& nb) : Node() { assign(std::move(nb)); }
 
 	template<typename T>
-	NodeOwning(T&& t) : impl(ObjectImpl(new NodeValue<std::remove_cvref_t<T>>(std::forward<T>(t)))) {}
+	Node(T&& t) : Node() { assign(std::forward<T>(t)); }
 
 	template<typename T>
-	NodeOwning& operator=(T&& rhs) {
+	Node& operator=(T&& rhs) { assign(std::forward<T>(rhs)); return *this; }
+
+	template<typename T>
+	void assign(T&& rhs) {
 		using PlainT = std::remove_cvref_t<T>;
 		const bool is_copy_assignment = std::is_reference_v<T>;
-		const bool rhs_is_const = std::is_const_v<std::remove_reference_t<T>>;
-		using RhsNodeOwning = std::conditional_t<rhs_is_const, const NodeOwning, NodeOwning>;
-		using RhsDict = std::conditional_t<rhs_is_const, const Dict, Dict>;
-		using ForwardingRhsNodeOwning = std::conditional_t<is_copy_assignment, RhsNodeOwning&, RhsNodeOwning&&>;
-		using ForwardingRhsDict = std::conditional_t<is_copy_assignment, RhsDict&, RhsDict&&>;
 		const auto fwd_rhs = [&rhs]() -> decltype(auto) { return std::forward<T>(rhs); };
 
-		if constexpr (std::is_same_v<NodeOwning, PlainT>) {
+		if constexpr (std::is_base_of_v<Node, PlainT>) {
 			if constexpr (is_copy_assignment) {
 				visitImpl(rhs,
 					[this](auto& rhs_dict) { impl = rhs_dict; }, // just copy the dict
@@ -342,57 +291,86 @@ public:
 			} else {
 				this->impl = fwd_rhs().impl;
 			}
-		} else if constexpr (std::is_same_v<Dict, PlainT>) {
-			// want to avoid impl being a ObjctImpl(Dict*)
-			impl = fwd_rhs();
-		} else if constexpr (std::is_base_of_v<NodeBase, PlainT>) {
-			if (auto rhs_as_owning = dynamic_cast<RhsNodeOwning*>(&rhs)) {
-				// want to avoid impl being a ObjectImpl(NodeOwning*). Recurse and use NodeOwning case
-				*this = static_cast<ForwardingRhsNodeOwning>(*rhs_as_owning);
-			} else if (auto rhs_as_dict = dynamic_cast<RhsDict*>(&rhs)) {
-				// want to avoid impl being a ObjectImpl(Dict*). Recurse and use Dict case
-				*this = static_cast<ForwardingRhsDict>(*rhs_as_dict);
-			} else {
-				// some other NodeBase... overwrite impl with it
-				impl = NodeOwning::ObjectImpl(fwd_rhs().clone());
-			}
+		} else if constexpr (std::is_base_of_v<Dict, PlainT>) {
+			impl = fwd_rhs(); // (variant assigns through if same alternative)
+		} else if constexpr (std::is_base_of_v<NodeConcreteBase, PlainT>) {
+			visitImpl(*this,
+				[&, this](auto&& /*dict*/) { impl = fwd_rhs().clone(); }, // just overwrite the dict
+				[&, this](auto&& obj) {
+					if (not obj.tryAssign(fwd_rhs())) { // try to assign through
+						impl = fwd_rhs().clone(); // different type? overwrite it
+					}
+				}
+			);
 		} else {
-			// T is some type outside of the NodeBase hierarchy. Copy/move into a node
 			visitImpl(*this,
 				[&](auto& /*dict*/) {
 					// have a Dict; overwrite with object impl by making a new node
-					impl = NodeOwning::ObjectImpl(new NodeValue<PlainT>(fwd_rhs()));
+					impl = ObjectImpl(new NodeValue<PlainT>(fwd_rhs()));
 				},
 				[&, this](auto& obj) {
-					if (auto obj_impl = obj.template get_if<PlainT>()) {
+					if (auto downcast = dynamic_cast<NodeConcrete<PlainT>*>(&obj)) {
 						// type matches. Do an assignment to the underlying object
-						*obj_impl = fwd_rhs();
+						downcast->getObject() = fwd_rhs();
 					} else {
 						// type does not match. Make a new node
-						std::get_if<ObjectImpl>(&impl)->reset(new NodeValue<PlainT>(fwd_rhs()));
+						impl = ObjectImpl(new NodeValue<PlainT>(fwd_rhs()));
 					}
 				}
 			);
 		}
-		return *this;
 	}
 
-	const NodeBase& operator[](std::string_view sv) const override { auto l = [&](auto& obj_or_dict) -> const NodeBase& { return obj_or_dict[sv]; }; return visitImpl(*this, l, l); }
-	      NodeBase& operator[](std::string_view sv)       override { auto l = [&](auto& obj_or_dict) ->       NodeBase& { return obj_or_dict[sv]; }; return visitImpl(*this, l, l); }
+	template<typename T> const T* get_if() const { return get_if_impl<const T>(*this); }
+	template<typename T>       T* get_if()       { return get_if_impl<      T>(*this); }
+	template<typename T> const T& get()    const { return getImpl<const T>(*this); }
+	template<typename T>       T& get()          { return getImpl<      T>(*this); }
 
-	NodeOwning toScalars() const override { auto l = [](auto& obj_or_dict) { return obj_or_dict.toScalars(); }; return visitImpl(*this, l, l); }
+	template<typename T>
+	T as() const {
+		if (auto ptr = get_if<T>()) {
+			return *ptr;
+		}
+		// if constexpr ( can convert T from Dict ) {
+		// 	if (auto ptr = get_if<Dict>()) {
+		// 		return DictConversion<T>::convert(*ptr);
+		// 	} else {
+		// 		return DictConversion<T>::convert(toDict());
+		// 	}
+		// }
+		throw std::logic_error(std::string(errors::kAsCannotAccessOrConvert));
+	}
 
-	std::unique_ptr<NodeBase> clone() &&     override { return std::unique_ptr<NodeBase>(new NodeOwning(std::move(*this))); }
-	std::unique_ptr<NodeBase> clone() const& override { return std::unique_ptr<NodeBase>(new NodeOwning(*this)); }
-	
-	MemberIterator<false> begin()       override { auto l = [](auto& obj_or_dict) { return obj_or_dict.begin(); }; return visitImpl(*this, l, l); }
-	MemberIterator<true>  begin() const override { auto l = [](auto& obj_or_dict) { return obj_or_dict.begin(); }; return visitImpl(*this, l, l); }
-	MemberIterator<false> end()         override { auto l = [](auto& obj_or_dict) { return obj_or_dict.end();   }; return visitImpl(*this, l, l); }
-	MemberIterator<true>  end()   const override { auto l = [](auto& obj_or_dict) { return obj_or_dict.end();   }; return visitImpl(*this, l, l); }
+	template<typename T> explicit operator const T&() const { return get<T>(); }
+
+	const Node& operator[](std::string_view sv) const { auto l = [&](auto& obj_or_dict) -> const Node& { return obj_or_dict[sv]; }; return visitImpl(*this, l, l); }
+	      Node& operator[](std::string_view sv)       { auto l = [&](auto& obj_or_dict) ->       Node& { return obj_or_dict[sv]; }; return visitImpl(*this, l, l); }
+	const Node& at(std::string_view sv) const { return (*this)[sv]; }
+	      Node& at(std::string_view sv)       { return (*this)[sv]; }
+
+	Node toScalars() const { auto l = [](auto& obj_or_dict) { return obj_or_dict.toScalars(); }; return visitImpl(*this, l, l); }
+
+	MemberIterator<false> begin()       { auto l = [](auto& obj_or_dict) { return obj_or_dict.begin(); }; return visitImpl(*this, l, l); }
+	MemberIterator<true>  begin() const { auto l = [](auto& obj_or_dict) { return obj_or_dict.begin(); }; return visitImpl(*this, l, l); }
+	MemberIterator<true> cbegin() const { return begin(); }
+	MemberIterator<false> end()         { auto l = [](auto& obj_or_dict) { return obj_or_dict.end();   }; return visitImpl(*this, l, l); }
+	MemberIterator<true>  end()   const { auto l = [](auto& obj_or_dict) { return obj_or_dict.end();   }; return visitImpl(*this, l, l); }
+	MemberIterator<true> cend()   const { return end(); }
 
 private:
-	friend NodeBase;
 	Impl impl;
+
+	template<typename T, typename Self>
+	static T* get_if_impl(Self&);
+
+	template<typename T, typename Self>
+	static T& getImpl(Self& self) {
+		if (auto ptr = self.template get_if<T>()) {
+			return *ptr;
+		} else {
+			throw std::logic_error(std::string(errors::kAccessWithWrongType));
+		}
+	}
 };
 
 // Customization points
@@ -425,101 +403,66 @@ template<typename Obj> auto rrvMembersTest() -> decltype(rrvMembers(std::declval
 template<typename Obj> constexpr static bool kIsStaticMemberType<Obj, decltype(rrvMembersTest<Obj>())> = true;
 
 template<typename T, typename Self>
-T* NodeBase::get_if_impl(Self& self) {
-	constexpr auto self_is_const = std::is_const_v<Self>;
+T* Node::get_if_impl(Self& self) {
 	using PlainT = std::remove_cv_t<T>;
-	using NodeConcreteSameConst = std::conditional_t<self_is_const, const NodeConcrete<PlainT>, NodeConcrete<PlainT>>;
-	if (auto downcasted = dynamic_cast<NodeConcreteSameConst*>(&self)) {
-		return &downcasted->getObject();
-	}
-	using NodeOwningSameConst = std::conditional_t<self_is_const, const NodeOwning, NodeOwning>;
-	if (auto downcasted = dynamic_cast<NodeOwningSameConst*>(&self)) {
-		if constexpr (std::is_same_v<PlainT, Dict>) {
-			return std::get_if<NodeOwning::DictImpl>(&downcasted->impl);
-		} else {
-			return visitImpl(*downcasted,
-				[](auto&& /*dict*/) -> T* { throw std::logic_error(std::string(errors::kAccessNodeOwningAsObjectButIsDict)); },
-				[](auto&& obj) -> T* { return obj.template get_if<T>(); }
-			);
+
+	return visitImpl(self,
+		[](auto&& dict) -> T* {
+			if constexpr (std::is_same_v<PlainT, Dict>) {
+				return &dict;
+			} else {
+				throw std::logic_error(std::string(errors::kAccessNodeAsObjectButIsDict));
+			}
+		},
+		[](auto&& obj) -> T* {
+			constexpr auto self_is_const = std::is_const_v<Self>;
+			using NodeConcreteSameConst = std::conditional_t<self_is_const, const NodeConcrete<PlainT>, NodeConcrete<PlainT>>;
+			if (auto downcasted = dynamic_cast<NodeConcreteSameConst*>(&obj)) {
+				return &downcasted->getObject();
+			} else {
+				return nullptr; // access with wrong type case
+			}
 		}
-	}
-	return nullptr;
+	);
 }
 
-template <typename Rhs>
-NodeBase& NodeBase::operator=(Rhs&& rhs) {
-	using PlainRhs = std::remove_cvref_t<Rhs>;
-	constexpr auto t_derives_nodebase = std::is_base_of_v<NodeBase, PlainRhs>;
-
-	if constexpr (t_derives_nodebase) {
-		if (auto downcasted = dynamic_cast<Dict*>(this)) {
-			*downcasted = std::forward<Rhs>(rhs);
-		}
-	} else {
-		if (auto downcasted = dynamic_cast<NodeConcrete<PlainRhs>*>(this)) {
-			downcasted->getObject() = std::forward<Rhs>(rhs);
-			return *this;
-		}
+Dict& Dict::operator=(const DictBase& rhs) {
+	impl.clear();
+	for (const auto& [k, v] : rhs) {
+		impl.emplace(k, DictBase::mapped_type(new Node(*v)));
 	}
-	if (auto downcasted = dynamic_cast<NodeOwning*>(this)) {
-		*downcasted = std::forward<Rhs>(rhs);
-		return *this;
-	}
-	throw std::logic_error("TODO: make operator=(const NodeBase&) and operator=(NodeBase&) virtual??");
+	return *this;
 }
-
-Dict& Dict::operator=(const NodeOwning& rhs) {
+Dict& Dict::operator=(const Node& rhs) {
 	return visitImpl(rhs,
 		[this](auto&& dict) -> Dict& { return *this = dict; },
 		[this](auto&& /* obj */) -> Dict& {
-			throw std::logic_error(std::string(errors::kAssignObjectInNodeOwningToDict));
+			throw std::logic_error(std::string(errors::kAssignObjectToDict));
 		}
 	);
 }
-Dict& Dict::operator=(const NodeBase& rhs) {
-	if (auto* rhs_as_dict = dynamic_cast<const Dict*>(&rhs)) {
-		return *this = *rhs_as_dict;
-	} else if (auto* rhs_as_owning = dynamic_cast<const NodeOwning*>(&rhs)) {
-		return *this = *rhs_as_owning;
-	} else { // must be a NodeConcrete
-		throw std::logic_error(std::string(errors::kAssignObjectToDict));
-	}
-}
-Dict& Dict::operator=(NodeOwning&& rhs) {
+Dict& Dict::operator=(Node&& rhs) {
 	return visitImpl(rhs,
 		[this](auto&& dict) -> Dict& { return *this = std::move(dict); },
 		[this](auto&& /* obj */) -> Dict& {
-			throw std::logic_error(std::string(errors::kAssignObjectInNodeOwningToDict));
+			throw std::logic_error(std::string(errors::kAssignObjectToDict));
 		}
 	);
 }
-Dict& Dict::operator=(NodeBase&& rhs) {
-	if (auto* rhs_as_dict = dynamic_cast<Dict*>(&rhs)) {
-		return *this = std::move(*rhs_as_dict);
-	} else if (auto* rhs_as_owning = dynamic_cast<NodeOwning*>(&rhs)) {
-		return *this = std::move(*rhs_as_owning);
-	} else {
-		throw std::logic_error(std::string(errors::kAssignObjectToDict));
-	}
-}
 
-NodeOwning Dict::toScalars() const { return NodeOwning(*this); }
+Node Dict::toScalars() const { return Node(*this); }
 
-NodeBase& Dict::operator[](std::string_view sv) {
-	auto lookup = lower_bound(sv);
-	if (lookup == DictBase::end() or lookup->first != sv) {
-		auto storage = mapped_type{new NodeOwning()};
-		auto& ref = *storage;
-		emplace_hint(lookup, std::string(sv), std::move(storage));
-		return ref;
-	} else {
-		return *lookup->second;
+Node& Dict::operator[](std::string_view sv) {
+	auto lookup = impl.lower_bound(sv);
+	if (lookup == impl.end() or lookup->first != sv) {
+		lookup = impl.emplace_hint(lookup, std::string(sv), DictBase::mapped_type{new Node()});
 	}
+	return *lookup->second;
 }
 
 template<typename T>
-NodeOwning NodeConcrete<T>::toScalars() const {
-	NodeOwning r;
+Node NodeConcrete<T>::toScalars() const {
+	Node r;
 	for (const auto& name_and_member : *this) {
 		r[name_and_member.first] = *name_and_member.second;
 	}
@@ -557,11 +500,7 @@ NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(std::string_view k
 					auto [lookup, is_new] = this->member_cache.emplace(key, NodeConcreteMemberInfo{});
 					auto& member_info = lookup->second;
 					if (is_new) {
-						member_info = NodeConcreteMemberInfo{
-							.node = std::unique_ptr<NodeBase>(
-								new NodeIndirectAcess<T, Member>(&getObj(), key)
-							),
-						};
+						member_info = NodeConcreteMemberInfo(new Node(Node::ObjectImpl(new NodeIndirectAcess<T, Member>(&getObj(), key))));
 					}
 					return *lookup;
 				}
@@ -587,7 +526,7 @@ auto NodeConcrete<T>::initMemberCacheForStaticMembers() const -> std::enable_if_
 	const auto add_elem = [this](auto&& elem) {
 		using MemberType = std::remove_reference_t<decltype(*elem.second)>;
 		static_assert(not std::is_const_v<MemberType>, "rrvMembers should not return pointers to const. Perhaps 'this' is const in the implementation of rrvMembers.");
-		this->member_cache.emplace(elem.first, std::unique_ptr<NodeBase>(new NodeReference<MemberType>(elem.second)));
+		this->member_cache.emplace(elem.first, NodeConcreteMemberInfo(new Node(Node::ObjectImpl(new NodeReference<MemberType>(elem.second)))));
 	};
 
 	const auto add_all = [&add_elem](auto&&... elems) {
@@ -675,7 +614,7 @@ Nb* pathSubscript_impl(Nb& n, std::string_view path, char sep) {
 		if (path_elem.size() < 1) {
 			throw std::logic_error(std::string("Empty path element in path with sep='") + sep + "': " + std::string(path));
 		}
-		// version that returns nullptr if this fails? rn, this creates a new node, if it's a NodeOwning underneath.
+		// version that returns nullptr if this fails? rn, this creates a new node, if it's a Node underneath.
 		curr = &(*curr)[path_elem];
 		if (epos_maybe_npos == path.npos) {
 			return curr;
@@ -684,8 +623,8 @@ Nb* pathSubscript_impl(Nb& n, std::string_view path, char sep) {
 	}
 }
 
-NodeBase* pathSubscript(NodeBase& n, std::string_view path, char sep = '.') { return pathSubscript_impl(n, path, sep); }
-const NodeBase* pathSubscript(const NodeBase& n, std::string_view path, char sep = '.') { return pathSubscript_impl(n, path, sep); }
+Node* pathSubscript(Node& n, std::string_view path, char sep = '.') { return pathSubscript_impl(n, path, sep); }
+const Node* pathSubscript(const Node& n, std::string_view path, char sep = '.') { return pathSubscript_impl(n, path, sep); }
 
 
 }  // namespace rrv

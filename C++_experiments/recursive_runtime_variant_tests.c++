@@ -4,10 +4,6 @@
 
 /*
 	Goals:
-		Want to be able to construct a Node{}... but this is the base class...
-			use different base for parameters, and NodeConcrete for local vars?
-				that is weird, but makes it very obvious what is going on
-			Make common class that is uninitialized, and deterlmined upon assignment?
 		Two separate uses:
 			"metadata"
 				- tagging arbitrary, nested, type-erased data onto things
@@ -16,6 +12,7 @@
 			    - nested, type-erased configuration
 			    - config files, function params
 	Next:
+		- some tests that check assign-through behaviour of Node::operator=
 		- avoid member lookup when iterating by passing returned MemberIterator to rrvMember?
 			- types probably shouldn't store actual iterators to avoid invalidation? or say screw it, and just use existing rules for type(s)
 		- non-string_view arguments for operator[]?
@@ -24,70 +21,64 @@
 				- getMember will have to convert -- make sure to catch exceptions from it to add context
 			- Is it possible to use an overload set of rrvMember? - library automatically converts int<->string if only one
 		- setMember. Allows returning const& from getMember(s)?
-		   - can't: NodeBase::get returns a plain reference
+		   - can't: Node::get returns a plain reference
 		     - return NodeReference<T>?
-		- Clean up assignment code, especially dict
-		- extract static member names into array from tuple via apply + CTAD?
-		- convert most of hierarchy to static polymorphism - don't need runtime, except for type-erased storage
-			- single (templated) derived class with variant of Owning, Bose, Concrete, Reference, Value, Dict?
-			- may resolve the "want to be able to construct a Node" problem, by defaulting to NodeOwning
+		- Convert NodeValue, RodeReference NodeIndirectAcess to static polymorphism
+		- make classes final
 		- Catch exceptions to add context. Eg. what member names are being accessed
+		- moving from a NodeReference seems sketchy
 */
 
-using rrv::NodeOwning;
-using rrv::NodeBase;
-using rrv::NodeConcrete;
-using rrv::NodeReference;
-using rrv::NodeValue;
+using rrv::Node;
 using rrv::Dict;
 
 TEST_CASE("basic use") {
 	SECTION("default init -- empty dict") {
-		NodeOwning e;
+		Node e;
 		auto& as_dict = e.get<Dict>();
 		REQUIRE(as_dict.empty());
 	}
 	SECTION("init with int") {
-		NodeOwning l = 4;
+		Node l = 4;
 		REQUIRE(l.get<int>() == 4);
 		REQUIRE(l.get<const int>() == 4);
 	}
 	SECTION("set and get int") {
-		NodeOwning d;
+		Node d;
 		d["k"] = 7;
 		REQUIRE(d["k"].get<int>() == 7);
 		REQUIRE(d["k"].get<const int>() == 7);
 	}
 	SECTION("check const access") {
-		const NodeOwning d = 7;
+		const Node d = 7;
 		auto& non_const_get = d.get<int>();
 		static_assert(std::is_same_v<decltype(non_const_get), const int&>, "const access should return const");
 		REQUIRE(d.get<const int>() == 7);
 	}
 	SECTION("dict with dict with int") {
-		NodeOwning root;
+		Node root;
 		auto& child = root["j"];
 		child["k"] = 8;
 		REQUIRE(root["j"]["k"].get<int>() == 8);
 		REQUIRE(root["j"]["k"].get<const int>() == 8);
 	}
 	SECTION("assign empty rvalue node") {
-		NodeOwning root;
-		root["j"] = NodeOwning();
+		Node root;
+		root["j"] = Node();
 		REQUIRE(root["j"].get<Dict>().empty());
 		REQUIRE(root["j"].get<const Dict>().empty());
 	}
 	SECTION("move-assign nested node") {
-		NodeOwning root;
-		NodeOwning child;
+		Node root;
+		Node child;
 		child["k"] = 44;
 		root["j"] = std::move(child);
 		REQUIRE(root["j"]["k"].get<int>() == 44);
 		REQUIRE(root["j"]["k"].get<const int>() == 44);
 	}
 	SECTION("copy-assign nested node - scalar") {
-		NodeOwning root;
-		NodeOwning child;
+		Node root;
+		Node child;
 		child["k"] = 44;
 		REQUIRE(child["k"].get<int>() == 44);
 		REQUIRE(child["k"].get<const int>() == 44);
@@ -104,8 +95,8 @@ TEST_CASE("basic use") {
 	}
 	SECTION("copy-assign nested node - static members") {
 		struct S {int i; auto rrvMembers() { return std::make_tuple(std::make_pair("i", &i)); }};
-		NodeOwning root;
-		NodeOwning child;
+		Node root;
+		Node child;
 		child["k"] = S{44};
 		REQUIRE(child["k"]["i"].get<int>() == 44);
 		REQUIRE(child["k"]["i"].get<const int>() == 44);
@@ -128,8 +119,8 @@ TEST_CASE("basic use") {
 			auto rrvBegin() const { return names.begin(); }
 			auto rrvEnd() const { return names.end(); }
 		};
-		NodeOwning root;
-		NodeOwning child;
+		Node root;
+		Node child;
 		child["k"] = D{44};
 		REQUIRE(child["k"]["i"].get<int>() == 44);
 		REQUIRE(child["k"]["i"].get<const int>() == 44);
@@ -155,8 +146,8 @@ TEST_CASE("iteration") {
 			REQUIRE(v->get<int>() == 4);
 		}
 	}
-	SECTION("basic on NodeOwning") {
-		NodeOwning no;
+	SECTION("basic on Node") {
+		Node no;
 		no["k"] = 4;
 		for (const auto& [k, v] : no) {
 			REQUIRE(k == "k");
@@ -202,7 +193,7 @@ struct TwoTypeVector {
 		std::size_t i = 0;
 		auto operator<=>(const MemberIter&) const = default;
 		void increment(const TwoTypeVector& mv) { ++i; if (inVecInt and i == mv.vecInt.size()) { i = 0; inVecInt = false; } }
-		// return pair<string, unique_ptr<NodeBase>> ?
+		// return pair<string, unique_ptr<Node>> ?
 		//   not clear how this avoids the O(n*n) iteration...
 		auto dereference(const TwoTypeVector&) { return (inVecInt ? "i" : "f") + std::to_string(i); }
 		bool equals(const MemberIter& rhs, const TwoTypeVector&) const { return *this == rhs; }
@@ -220,7 +211,7 @@ struct TwoTypeVector {
 
 TEST_CASE("Multi-type member iteration") {
 	SECTION("TwoTypeVector") {
-		NodeOwning ttv_node = TwoTypeVector{{1, 2}, {3.0f, 4.0f}};
+		Node ttv_node = TwoTypeVector{{1, 2}, {3.0f, 4.0f}};
 		CHECK(ttv_node["i0"].as<int>() == 1);
 		CHECK(ttv_node["i1"].as<int>() == 2);
 		CHECK(ttv_node["f0"].as<float>() == 3.0f);
@@ -233,15 +224,15 @@ TEST_CASE("Multi-type member iteration") {
 }
 
 TEST_CASE("conversion to Scalars") {
-	NodeOwning root;
-	SECTION("convert 1-level NodeOwning Dict to Scalars") {
+	Node root;
+	SECTION("convert 1-level Node Dict to Scalars") {
 		root["a"] = 4;
 		root["b"] = 5;
 		const auto scalared = root.toScalars();
 		CHECK(scalared.at("a").get<int>() == 4);
 		CHECK(scalared.at("b").get<int>() == 5);
 	}
-	SECTION("convert NodeOwning Dict to Scalars") {
+	SECTION("convert Node Dict to Scalars") {
 		root["a"]["aa"] = 4;
 		root["b"]["bb"] = 5;
 		const auto scalared = root.toScalars();
@@ -277,13 +268,13 @@ TEST_CASE("conversion to Scalars") {
 			}
 		};
 		SECTION("just one - scalarize") {
-			NodeOwning n = M{44, {444}};
+			Node n = M{44, {444}};
 			const auto scalared = n.toScalars();
 			CHECK(scalared.at("i").get<int>() == 44);
 			CHECK(scalared.at("m").at("ii").get<int>() == 444);
 		}
 		SECTION("a vector - scalarize") {
-			NodeOwning n = std::vector{M{55, {555}}, M{66, {666}}, M{77, {777}}};
+			Node n = std::vector{M{55, {555}}, M{66, {666}}, M{77, {777}}};
 			const auto scalared = n.toScalars();
 			CHECK(scalared.at("0").at("i").get<int>() == 55);
 			CHECK(scalared.at("0").at("m").at("ii").get<int>() == 555);
@@ -293,7 +284,7 @@ TEST_CASE("conversion to Scalars") {
 			CHECK(scalared.at("2").at("m").at("ii").get<int>() == 777);
 		}
 		SECTION("a vector - member access") {
-			NodeOwning n = std::vector{M{55, {555}}, M{66, {666}}, M{77, {777}}};
+			Node n = std::vector{M{55, {555}}, M{66, {666}}, M{77, {777}}};
 			CHECK(n.at("0").at("i").get<int>() == 55);
 			CHECK(n.at("0").at("m").at("ii").get<int>() == 555);
 			CHECK(n.at("1").at("i").get<int>() == 66);
@@ -309,12 +300,12 @@ TEST_CASE("conversion to Scalars") {
 			CHECK(vec.at(0).i == 222);
 		}
 		SECTION("just one - member access") {
-			NodeOwning n = M{44, {444}};
+			Node n = M{44, {444}};
 			CHECK(n.at("i").get<int>() == 44);
 			CHECK(n.at("m").at("ii").get<int>() == 444);
 		}
 		SECTION("just one - member iter") {
-			NodeOwning n = M{44, {444}};
+			Node n = M{44, {444}};
 			int saw_m = 0, saw_i = 0;
 			for (const auto& [k, v] : n) {
 				if (k == "m") { ++saw_m; CHECK(v->get<Mm>() == Mm{444}); }
@@ -324,7 +315,7 @@ TEST_CASE("conversion to Scalars") {
 			CHECK(saw_i == 1);
 		}
 		SECTION("vector<int> - member iter") {
-			NodeOwning n = std::vector{1, 2, 3, 4};
+			Node n = std::vector{1, 2, 3, 4};
 			std::vector<int> saw_it(4);
 			for (const auto& [k, v] : n) {
 				auto i = stoi(k);
@@ -335,26 +326,26 @@ TEST_CASE("conversion to Scalars") {
 				CHECK(saw == 1);
 			}
 		}
-		SECTION("assign NodeOwning = member") {
-			NodeOwning n = M{44, {444}};
-			NodeOwning n2 = n.at("i");
+		SECTION("assign Node = member") {
+			Node n = M{44, {444}};
+			Node n2 = n.at("i");
 			n.get<M>().i = 55;
 			CHECK(n2.get<int>() == 44);
 		}
 		SECTION("custom dynamic type - via member") {
-			NodeOwning n = StructWithDynamicMembersViaMember{11,22};
+			Node n = StructWithDynamicMembersViaMember{11,22};
 			CHECK(n.at("i").get<int>() == 11);
 			CHECK(n.at("j").get<int>() == 22);
 			CHECK(n.at("e").get<int>() == 22);
 		}
 		SECTION("custom dynamic type - via friend") {
-			NodeOwning n = StructWithDynamicMembersViaFriend{11,22};
+			Node n = StructWithDynamicMembersViaFriend{11,22};
 			CHECK(n.at("i").get<int>() == 11);
 			CHECK(n.at("j").get<int>() == 22);
 			CHECK(n.at("e").get<int>() == 22);
 		}
 		SECTION("custom dynamic type - via member") {
-			NodeOwning n = StructWithDynamicMembersViaMember{11,22};
+			Node n = StructWithDynamicMembersViaMember{11,22};
 			std::map<std::string, int> saw_it;
 			for (const auto& [k, v] : n) {
 				++saw_it[k];
@@ -368,7 +359,7 @@ TEST_CASE("conversion to Scalars") {
 			CHECK(saw_it.size() == 2);
 		}
 		SECTION("custom dynamic type - via friend") {
-			NodeOwning n = StructWithDynamicMembersViaFriend{11,22};
+			Node n = StructWithDynamicMembersViaFriend{11,22};
 			std::map<std::string, int> saw_it;
 			for (const auto& [k, v] : n) {
 				++saw_it[k];
@@ -385,7 +376,7 @@ TEST_CASE("conversion to Scalars") {
 }
 
 TEST_CASE("pathSubscript") {
-	NodeOwning root;
+	Node root;
 	root["a"]["aa"]["aaa"] = 4;
 	SECTION("access 1 level") {
 		const auto rv = pathSubscript(root, "a");
@@ -428,8 +419,8 @@ TEST_CASE("pathSubscript") {
 }
 
 TEST_CASE("pathSubscript const") {
-	const NodeOwning root = []() {
-		NodeOwning root;
+	const Node root = []() {
+		Node root;
 		root["a"]["aa"]["aaa"] = 4;
 		return root;
 	}();
@@ -467,31 +458,26 @@ TEST_CASE("pathSubscript const") {
 }
 
 TEST_CASE("error paths") {
-	SECTION("access NodeOwning that is a Dict as object") {
-		NodeOwning no;
-		CHECK_THROWS_WITH(no.get<int>(), std::string(rrv::errors::kAccessNodeOwningAsObjectButIsDict));
+	SECTION("access Node that is a Dict as object") {
+		Node no;
+		CHECK_THROWS_WITH(no.get<int>(), std::string(rrv::errors::kAccessNodeAsObjectButIsDict));
 	}
-	SECTION("access member of an object in a NodeOwning") {
-		NodeOwning no = 4;
+	SECTION("access member of an object in a Node") {
+		Node no = 4;
 		CHECK_THROWS_WITH(no["k"], std::string(rrv::errors::kAccessMemberOfScalarType));
 	}
-	SECTION("access member of an object in a NodeOwning") {
+	SECTION("access member of an object in a Node") {
 		struct ScalarStruct { int i; };
-		NodeOwning no = ScalarStruct{};
+		Node no = ScalarStruct{};
 		CHECK_THROWS_WITH(no["i"], std::string(rrv::errors::kAccessMemberOfScalarType));
 	}
-	SECTION("assign object to Dict from a NodeOwning") {
+	SECTION("assign object to Dict from a Node") {
 		Dict d;
-		CHECK_THROWS_WITH(d = NodeOwning{4}, std::string(rrv::errors::kAssignObjectInNodeOwningToDict));
-	}
-	SECTION("assign object to Dict from a NodeBase") {
-		Dict d;
-		auto nc = NodeValue<int>{4}; // avoid special case for NodeOwning (kAssignObjectInNodeOwningToDict)
-		CHECK_THROWS_WITH(d = nc, std::string(rrv::errors::kAssignObjectToDict));
+		CHECK_THROWS_WITH(d = Node{4}, std::string(rrv::errors::kAssignObjectToDict));
 	}
 	SECTION("iterate object") {
-		NodeOwning no = 4;
-		const NodeOwning& const_no = no;
+		Node no = 4;
+		const Node& const_no = no;
 		CHECK_THROWS_WITH(no.begin(), std::string(rrv::errors::kAccessMemberOfScalarType));
 		CHECK_THROWS_WITH(no.end(), std::string(rrv::errors::kAccessMemberOfScalarType));
 		CHECK_THROWS_WITH(no.cbegin(), std::string(rrv::errors::kAccessMemberOfScalarType));
@@ -500,11 +486,11 @@ TEST_CASE("error paths") {
 		CHECK_THROWS_WITH(const_no.end(), std::string(rrv::errors::kAccessMemberOfScalarType));
 	}
 	SECTION("access with wrong type") {
-		NodeOwning no = 4;
+		Node no = 4;
 		CHECK_THROWS_WITH(no.get<float>(), std::string(rrv::errors::kAccessWithWrongType));
 	}
 	SECTION("access as wrong type") {
-		NodeOwning no = 4;
+		Node no = 4;
 		CHECK_THROWS_WITH(no.as<float>(), std::string(rrv::errors::kAsCannotAccessOrConvert));
 	}
 	SECTION("non-copyable") {
@@ -515,7 +501,7 @@ TEST_CASE("error paths") {
 		// 	NoCopy(const NoCopy&) = delete;
 		// 	NoCopy& operator=(const NoCopy&) = delete;
 		// };
-		// auto no = NodeOwning(NoCopy{}); (void)no;
+		// auto no = Node(NoCopy{}); (void)no;
 	}
 }
 
@@ -558,39 +544,24 @@ TEST_CASE("basic dict operations") {
 	}
 }
 
-TEST_CASE("Dict <- NodeOwning interactions") {
+TEST_CASE("Dict <- Node interactions") {
 	Dict d;
-	SECTION("Dict = NodeOwning that is Dict") {
-		NodeOwning no;
+	SECTION("Dict = Node that is Dict") {
+		Node no;
 		no["k"] = 1;
 		d = no;
 		CHECK(d.size() == 1);
 		CHECK(d["k"].get<int>() == 1);
 	}
-	SECTION("Dict = NodeOwning that is object") {
-		NodeOwning no = 1;
-		CHECK_THROWS_WITH(d = no, std::string(rrv::errors::kAssignObjectInNodeOwningToDict));
-	}
-	SECTION("Dict = NodeOwning that is Dict via NodeBase") {
-		NodeOwning no;
-		no["k"] = 1;
-		d = *(NodeBase*)&no;
-		CHECK(d.size() == 1);
-		CHECK(d["k"].get<int>() == 1);
-	}
-	SECTION("Dict = NodeOwning that is object via NodeBase") {
-		NodeOwning no = 1;
-		CHECK_THROWS_WITH(d = *(NodeBase*)&no, std::string(rrv::errors::kAssignObjectInNodeOwningToDict));
-	}
 }
 
-TEST_CASE("NodeOwning <- Dict interactions") {
-	NodeOwning no;
-	SECTION("default-constucted NodeOwning = Dict") {
+TEST_CASE("Node <- Dict interactions") {
+	Node no;
+	SECTION("default-constucted Node = Dict") {
 		no = Dict{};
 		no.get<Dict>();
 	}
-	SECTION("NodeOwning with element = Dict") {
+	SECTION("Node with element = Dict") {
 		no["k"] = 1;
 		CHECK(no.get<Dict>().size() == 1);
 		no = Dict{};
@@ -614,17 +585,17 @@ struct SmallTestProgramData {
 TEST_CASE("small test program") {
 	using Data = SmallTestProgramData;
 	const auto producer = [](int a, int b) {
-		NodeOwning data;
+		Node data;
 		data["alpha"] = Data{a, a+b, b};
 		data["beta"] = std::vector<Data>{Data{1,2,3}, Data{a,5,b}};
 		return data;
 	};
-	const auto modifyer = [](NodeBase& data) {
+	const auto modifyer = [](Node& data) {
 		data["alpha"].get<Data>().i = 44;
 		data["beta"].get<std::vector<Data>>().at(1).k += 6;
 		data["gamma"] = 4;
 	};
-	const auto consumer = [](const NodeBase& data) {
+	const auto consumer = [](const Node& data) {
 		const Data& alpha = data["alpha"].get<Data>();
 		const std::vector<Data>& beta = data["beta"].get<std::vector<Data>>();
 		CHECK(alpha.i == 44);
