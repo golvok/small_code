@@ -2,17 +2,38 @@
 
 #include <catch2/catch.hpp>
 
+#include <iostream>
+#include <sstream>
+
 /*
 	Goals:
 		Two separate uses:
 			"metadata"
 				- tagging arbitrary, nested, type-erased data onto things
 				- debug info, metadata
+				- wants to pull types out as they are... except vector, map, etc?
+					- ie NodeConcrete \is NodeValue
+				- scalar types are good enough (don't care about others)
 			"configuration"
-			    - nested, type-erased configuration
-			    - config files, function params
+				- nested, type-erased configuration
+				- config files, function parameters
+				- wants access into everything
+					- ie NodeConcrete \in { NodeValue, NodeReference, NodeIndirectAccess, ... }
+				- doesn't want scalar types. Could add a bool template param to Node, which propagates down to requiring !Scalar<T>
 	Next:
 		- some tests that check assign-through behaviour of Node::operator=
+			- performance vs. always replacing it?
+			- This *is API* (it's observable), so can't easily change it
+			- not consistent?
+				- invalidates iterators/references either way
+				- address being the same is not enough (need a type with specific moved-from guarantees to observe it)
+				- the main thing is that some references *won't* be invalidated
+					- invalidates? Assign with dict over dict: not root, but yes to all sub-objects
+						- should assign through for matching keys?
+					- invalidates? Assign with dict over type: yes
+					- invalidates? Assign with same type: no (different from std::any)
+						- any uses swap for exception-safe self-assignment-safe assignment
+					- invalidates? Assign with different type: yes
 		- avoid member lookup when iterating by passing returned MemberIterator to rrvMember?
 			- types probably shouldn't store actual iterators to avoid invalidation? or say screw it, and just use existing rules for type(s)
 		- non-string_view arguments for operator[]?
@@ -22,15 +43,115 @@
 			- Is it possible to use an overload set of rrvMember? - library automatically converts int<->string if only one
 		- setMember. Allows returning const& from getMember(s)?
 		   - can't: Node::get returns a plain reference
-		     - return NodeReference<T>?
+		     - return NodeConcrete<T>&?
 		- Convert NodeValue, RodeReference NodeIndirectAcess to static polymorphism
 		- make classes final
 		- Catch exceptions to add context. Eg. what member names are being accessed
-		- moving from a NodeReference seems sketchy
+		- moving from a NodeReference seems sketchy (tryAssign, clone)
+		- can cut-down vtables by having a single virtual method with a dispatch enum
+			- hard to avoid completely, since destructor doesn't know type -- unless a 'deleter' is stored
+				- NodeConcreteBase would be more unique_ptr wrapper?
 */
 
 using rrv::Node;
 using rrv::Dict;
+
+namespace {
+
+struct LifetimeTracer {
+	struct Stats {
+		std::string name;
+
+		int copy_constructions = 0;
+		int move_constructions = 0;
+		int copy_assignments_to = 0;
+		int move_assignments_to = 0;
+		int copy_assignments_from = 0;
+		int move_assignments_from = 0;
+		int destructions = 0;
+		int destructions_from_moved = 0;
+
+		bool noisy = false;
+	};
+
+	using DataHandle = std::shared_ptr<Stats>;
+
+	DataHandle actual;
+	Stats expected = {};
+
+	LifetimeTracer() : LifetimeTracer("") {}
+	explicit LifetimeTracer(std::string name) : actual(std::make_shared<Stats>(Stats{std::move(name)})) {}
+	LifetimeTracer(const LifetimeTracer&) = delete;
+	LifetimeTracer& operator=(const LifetimeTracer&) = delete;
+	~LifetimeTracer() { actual = nullptr; }
+
+	int numAlive() const { return actual.use_count() - 1; }
+
+	std::string compare(int expectedNumAlive) {
+		std::ostringstream errs;
+		auto compare_var = [&errs](const auto& exp, const auto& act, const auto& name) {
+			if (exp != act) errs << "expected " << exp << " " << name << ", but saw " << act << "\n";
+		};
+		compare_var(expectedNumAlive, numAlive(), "numAlive");
+		compare_var(expected.copy_constructions, actual->copy_constructions, "copy_constructions");
+		compare_var(expected.move_constructions, actual->move_constructions, "move_constructions");
+		compare_var(expected.copy_assignments_to, actual->copy_assignments_to, "copy_assignments_to");
+		compare_var(expected.move_assignments_to, actual->move_assignments_to, "move_assignments_to");
+		compare_var(expected.copy_assignments_from, actual->copy_assignments_from, "copy_assignments_from");
+		compare_var(expected.move_assignments_from, actual->move_assignments_from, "move_assignments_from");
+		compare_var(expected.destructions, actual->destructions, "destructions");
+		return errs.str();
+	}
+
+	struct Instance {
+		Instance(DataHandle stats) : stats(std::move(stats)) {}
+
+		Instance(const Instance& src) : stats(src.stats) {
+			++stats->copy_constructions;
+			if (stats->noisy) std::cout << stats->name << ": copy_construction\n";
+		}
+		Instance(Instance&& src) : stats(src.stats) {
+			++stats->move_constructions;
+			if (stats->noisy) std::cout << stats->name << ": move_construction\n";
+			src.moved_from = true;
+		}
+		Instance& operator=(const Instance& rhs) {
+			++stats->copy_assignments_to;
+			if (stats->noisy) std::cout << stats->name << ": copy-assignment to\n";
+			stats = rhs.stats;
+			++stats->copy_assignments_from;
+			if (stats->noisy) std::cout << stats->name << ": copy-assignment from\n";
+			moved_from = false;
+			return *this;
+		}
+		Instance& operator=(Instance&& rhs) {
+			++stats->move_assignments_to;
+			if (stats->noisy) std::cout << stats->name << ": move-assignment to\n";
+			stats = rhs.stats;
+			++stats->move_assignments_from;
+			if (stats->noisy) std::cout << stats->name << ": move-assignment from\n";
+			moved_from = false;
+			rhs.moved_from = true;
+			return *this;
+		}
+		~Instance() {
+			if (moved_from) {
+				++stats->destructions_from_moved;
+				if (stats->noisy) std::cout << stats->name << ": destructed from moved\n";
+			} else {
+				++stats->destructions;
+				if (stats->noisy) std::cout << stats->name << ": destructed\n";
+			}
+		}
+
+		DataHandle stats;
+		bool moved_from = false;
+	};
+
+	Instance makeInstance() { return Instance(actual); }
+};
+
+}
 
 TEST_CASE("basic use") {
 	SECTION("default init -- empty dict") {
@@ -372,6 +493,137 @@ TEST_CASE("conversion to Scalars") {
 			}
 			CHECK(saw_it.size() == 2);
 		}
+	}
+}
+
+TEST_CASE("Assign-through behaviour") {
+	auto tracer1 = LifetimeTracer("t1");
+	auto tracer2 = LifetimeTracer("t2");
+
+	WHEN("assign with different type") {
+		Node n1 = tracer1.makeInstance();
+		++tracer1.expected.move_constructions;
+		++tracer1.expected.destructions_from_moved;
+		CHECK(tracer1.compare(1) == "");
+
+		n1 = 4;
+		++tracer1.expected.destructions;
+		CHECK(tracer1.compare(0) == "");
+	}
+
+	WHEN("making a copy") {
+		{
+			Node n1 = tracer1.makeInstance();
+			++tracer1.expected.move_constructions;
+			++tracer1.expected.destructions_from_moved;
+			CHECK(tracer1.compare(1) == "");
+
+			{
+				Node n2 = n1;
+				++tracer1.expected.copy_constructions;
+				CHECK(tracer1.compare(2) == "");
+			}
+			++tracer1.expected.destructions;
+			CHECK(tracer1.compare(1) == "");
+		}
+		++tracer1.expected.destructions;
+		CHECK(tracer1.compare(0) == "");
+	}
+
+	WHEN("assign with same type rvalue") {
+		{
+			Node n1 = tracer1.makeInstance();
+			++tracer1.expected.move_constructions;
+			++tracer1.expected.destructions_from_moved;
+			CHECK(tracer1.compare(1) == "");
+
+			n1 = tracer2.makeInstance();
+			++tracer1.expected.move_assignments_to;
+			++tracer2.expected.move_assignments_from;
+			++tracer2.expected.destructions_from_moved;
+			CHECK(tracer1.compare(0) == "");
+			CHECK(tracer2.compare(1) == "");
+		}
+		++tracer2.expected.destructions;
+		CHECK(tracer1.compare(0) == "");
+		CHECK(tracer2.compare(0) == "");
+	}
+
+	WHEN("assign with same type lvalue") {
+		{
+			Node n1 = tracer1.makeInstance();
+			++tracer1.expected.move_constructions;
+			++tracer1.expected.destructions_from_moved;
+			CHECK(tracer1.compare(1) == "");
+
+			{
+				auto i2 = tracer2.makeInstance();
+				CHECK(tracer2.compare(1) == "");
+
+				n1 = i2;
+				++tracer1.expected.copy_assignments_to;
+				++tracer2.expected.copy_assignments_from;
+				CHECK(tracer1.compare(0) == "");
+				CHECK(tracer2.compare(2) == "");
+			}
+			++tracer2.expected.destructions;
+			CHECK(tracer2.compare(1) == "");
+		}
+		++tracer2.expected.destructions;
+		CHECK(tracer1.compare(0) == "");
+		CHECK(tracer2.compare(0) == "");
+	}
+
+	WHEN("assign with node rvalue holding same type") {
+		{
+			Node n1 = tracer1.makeInstance();
+			++tracer1.expected.move_constructions;
+			++tracer1.expected.destructions_from_moved;
+			CHECK(tracer1.compare(1) == "");
+			{
+				Node n2 = tracer2.makeInstance();
+				++tracer2.expected.move_constructions;
+				++tracer2.expected.destructions_from_moved;
+				CHECK(tracer2.compare(1) == "");
+
+				n1 = std::move(n2);
+				++tracer1.expected.move_assignments_to;
+				++tracer2.expected.move_assignments_from;
+				CHECK(tracer1.compare(0) == "");
+				CHECK(tracer2.compare(2) == "");
+			}
+			++tracer2.expected.destructions_from_moved;
+			CHECK(tracer2.compare(1) == "");
+		}
+		++tracer2.expected.destructions;
+		CHECK(tracer1.compare(0) == "");
+		CHECK(tracer2.compare(0) == "");
+	}
+
+	WHEN("assign with node lvalue holding same type") {
+		{
+			Node n1 = tracer1.makeInstance();
+			++tracer1.expected.move_constructions;
+			++tracer1.expected.destructions_from_moved;
+			CHECK(tracer1.compare(1) == "");
+			{
+				Node n2 = tracer2.makeInstance();
+				++tracer2.expected.move_constructions;
+				++tracer2.expected.destructions_from_moved;
+				CHECK(tracer2.compare(1) == "");
+
+				n1 = n2;
+				++tracer1.expected.copy_assignments_to;
+				++tracer2.expected.copy_assignments_from;
+				CHECK(tracer1.compare(0) == "");
+				CHECK(tracer2.compare(2) == "");
+			}
+			++tracer2.expected.destructions;
+			CHECK(tracer2.compare(1) == "");
+		}
+		++tracer2.expected.destructions;
+		CHECK(tracer1.compare(0) == "");
+		CHECK(tracer2.compare(0) == "");
 	}
 }
 

@@ -285,11 +285,14 @@ public:
 		if constexpr (std::is_base_of_v<Node, PlainT>) {
 			if constexpr (is_copy_assignment) {
 				visitImpl(rhs,
-					[this](auto& rhs_dict) { impl = rhs_dict; }, // just copy the dict
+					[this](auto& rhs_dict) { impl = rhs_dict; }, // just copy the dict (may assign through)
 					[this](auto& rhs_obj)  { *this = rhs_obj; } // recurse on held object
 				);
 			} else {
-				this->impl = fwd_rhs().impl;
+				visitImpl(rhs,
+					[this](auto& rhs_dict) { impl = std::move(rhs_dict); }, // just move the dict (may assign through)
+					[this](auto& rhs_obj)  { *this = std::move(rhs_obj); } // recurse on held object
+				);
 			}
 		} else if constexpr (std::is_base_of_v<Dict, PlainT>) {
 			impl = fwd_rhs(); // (variant assigns through if same alternative)
