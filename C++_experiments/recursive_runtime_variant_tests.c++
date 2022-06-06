@@ -100,6 +100,7 @@ struct LifetimeTracer {
 		compare_var(expected.copy_assignments_from, actual->copy_assignments_from, "copy_assignments_from");
 		compare_var(expected.move_assignments_from, actual->move_assignments_from, "move_assignments_from");
 		compare_var(expected.destructions, actual->destructions, "destructions");
+		compare_var(expected.destructions_from_moved, actual->destructions_from_moved, "destructions_from_moved");
 		return errs.str();
 	}
 
@@ -496,20 +497,9 @@ TEST_CASE("conversion to Scalars") {
 	}
 }
 
-TEST_CASE("Assign-through behaviour") {
+TEST_CASE("assignment/construction behaviour") {
 	auto tracer1 = LifetimeTracer("t1");
 	auto tracer2 = LifetimeTracer("t2");
-
-	WHEN("assign with different type") {
-		Node n1 = tracer1.makeInstance();
-		++tracer1.expected.move_constructions;
-		++tracer1.expected.destructions_from_moved;
-		CHECK(tracer1.compare(1) == "");
-
-		n1 = 4;
-		++tracer1.expected.destructions;
-		CHECK(tracer1.compare(0) == "");
-	}
 
 	WHEN("making a copy") {
 		{
@@ -526,6 +516,22 @@ TEST_CASE("Assign-through behaviour") {
 			++tracer1.expected.destructions;
 			CHECK(tracer1.compare(1) == "");
 		}
+		++tracer1.expected.destructions;
+		CHECK(tracer1.compare(0) == "");
+	}
+}
+
+TEST_CASE("Assign-through behaviour") {
+	auto tracer1 = LifetimeTracer("t1");
+	auto tracer2 = LifetimeTracer("t2");
+
+	WHEN("assign with different type") {
+		Node n1 = tracer1.makeInstance();
+		++tracer1.expected.move_constructions;
+		++tracer1.expected.destructions_from_moved;
+		CHECK(tracer1.compare(1) == "");
+
+		n1 = 4;
 		++tracer1.expected.destructions;
 		CHECK(tracer1.compare(0) == "");
 	}
