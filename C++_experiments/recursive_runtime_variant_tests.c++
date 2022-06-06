@@ -171,6 +171,13 @@ TEST_CASE("basic use") {
 		REQUIRE(d["k"].get<int>() == 7);
 		REQUIRE(d["k"].get<const int>() == 7);
 	}
+	SECTION("assign to const int") {
+		Node d;
+		const int i = 7;
+		d["k"] = i;
+		REQUIRE(d["k"].get<int>() == 7);
+		REQUIRE(d["k"].get<const int>() == 7);
+	}
 	SECTION("check const access") {
 		const Node d = 7;
 		auto& non_const_get = d.get<int>();
@@ -501,6 +508,51 @@ TEST_CASE("assignment/construction behaviour") {
 	auto tracer1 = LifetimeTracer("t1");
 	auto tracer2 = LifetimeTracer("t2");
 
+	WHEN("assign to rvalue") {
+		{
+			auto i1 = tracer1.makeInstance();
+			{
+				Node n1 = std::move(i1);
+				++tracer1.expected.move_constructions;
+				CHECK(tracer1.compare(2) == "");
+			}
+			++tracer1.expected.destructions;
+			CHECK(tracer1.compare(1) == "");
+		}
+		++tracer1.expected.destructions_from_moved;
+		CHECK(tracer1.compare(0) == "");
+	}
+
+	WHEN("assign to lvalue") {
+		{
+			auto i1 = tracer1.makeInstance();
+			{
+				Node n1 = i1;
+				++tracer1.expected.copy_constructions;
+				CHECK(tracer1.compare(2) == "");
+			}
+			++tracer1.expected.destructions;
+			CHECK(tracer1.compare(1) == "");
+		}
+		++tracer1.expected.destructions;
+		CHECK(tracer1.compare(0) == "");
+	}
+
+	WHEN("assign to const lvalue") {
+		{
+			const auto i1 = tracer1.makeInstance();
+			{
+				Node n1 = i1;
+				++tracer1.expected.copy_constructions;
+				CHECK(tracer1.compare(2) == "");
+			}
+			++tracer1.expected.destructions;
+			CHECK(tracer1.compare(1) == "");
+		}
+		++tracer1.expected.destructions;
+		CHECK(tracer1.compare(0) == "");
+	}
+
 	WHEN("making a copy") {
 		{
 			Node n1 = tracer1.makeInstance();
@@ -510,6 +562,130 @@ TEST_CASE("assignment/construction behaviour") {
 
 			{
 				Node n2 = n1;
+				++tracer1.expected.copy_constructions;
+				CHECK(tracer1.compare(2) == "");
+			}
+			++tracer1.expected.destructions;
+			CHECK(tracer1.compare(1) == "");
+		}
+		++tracer1.expected.destructions;
+		CHECK(tracer1.compare(0) == "");
+	}
+
+	WHEN("making a copy from const") {
+		{
+			Node n1 = tracer1.makeInstance();
+			++tracer1.expected.move_constructions;
+			++tracer1.expected.destructions_from_moved;
+			CHECK(tracer1.compare(1) == "");
+
+			{
+				const Node n2 = n1;
+				++tracer1.expected.copy_constructions;
+				CHECK(tracer1.compare(2) == "");
+			}
+			++tracer1.expected.destructions;
+			CHECK(tracer1.compare(1) == "");
+		}
+		++tracer1.expected.destructions;
+		CHECK(tracer1.compare(0) == "");
+	}
+
+	WHEN("moving a node") {
+		{
+			Node n1 = tracer1.makeInstance();
+			++tracer1.expected.move_constructions;
+			++tracer1.expected.destructions_from_moved;
+			CHECK(tracer1.compare(1) == "");
+
+			{
+				Node n2 = std::move(n1);
+				CHECK(tracer1.compare(1) == "");
+			}
+			++tracer1.expected.destructions;
+			CHECK(tracer1.compare(0) == "");
+		}
+		CHECK(tracer1.compare(0) == "");
+	}
+
+	WHEN("assign to rvalue, non-root") {
+		{
+			auto i1 = tracer1.makeInstance();
+			{
+				Node n1;
+				n1["k"] = std::move(i1);
+				++tracer1.expected.move_constructions;
+				CHECK(tracer1.compare(2) == "");
+			}
+			++tracer1.expected.destructions;
+			CHECK(tracer1.compare(1) == "");
+		}
+		++tracer1.expected.destructions_from_moved;
+		CHECK(tracer1.compare(0) == "");
+	}
+
+	WHEN("assign to lvalue, non-root") {
+		{
+			auto i1 = tracer1.makeInstance();
+			{
+				Node n1;
+				n1["k"] = i1;
+				++tracer1.expected.copy_constructions;
+				CHECK(tracer1.compare(2) == "");
+			}
+			++tracer1.expected.destructions;
+			CHECK(tracer1.compare(1) == "");
+		}
+		++tracer1.expected.destructions;
+		CHECK(tracer1.compare(0) == "");
+	}
+
+	WHEN("assign to const lvalue, non-root") {
+		{
+			const auto i1 = tracer1.makeInstance();
+			{
+				Node n1;
+				n1["k"] = i1;
+				++tracer1.expected.copy_constructions;
+				CHECK(tracer1.compare(2) == "");
+			}
+			++tracer1.expected.destructions;
+			CHECK(tracer1.compare(1) == "");
+		}
+		++tracer1.expected.destructions;
+		CHECK(tracer1.compare(0) == "");
+	}
+
+	WHEN("making a copy, non-root") {
+		{
+			Node n1;
+			n1["k"] = tracer1.makeInstance();
+			++tracer1.expected.move_constructions;
+			++tracer1.expected.destructions_from_moved;
+			CHECK(tracer1.compare(1) == "");
+
+			{
+				Node n2 = n1;
+				++tracer1.expected.copy_constructions;
+				CHECK(tracer1.compare(2) == "");
+			}
+			++tracer1.expected.destructions;
+			CHECK(tracer1.compare(1) == "");
+		}
+		++tracer1.expected.destructions;
+		CHECK(tracer1.compare(0) == "");
+	}
+
+	WHEN("making a copy from const, non-root") {
+		{
+			Node n1;
+			n1["k"] = tracer1.makeInstance();
+			++tracer1.expected.move_constructions;
+			++tracer1.expected.destructions_from_moved;
+			CHECK(tracer1.compare(1) == "");
+
+			{
+				const Node n2 = n1;
 				++tracer1.expected.copy_constructions;
 				CHECK(tracer1.compare(2) == "");
 			}

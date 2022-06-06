@@ -249,16 +249,21 @@ public:
 	using ObjectImpl = std::unique_ptr<NodeConcreteBase>;
 	using Impl = std::variant<DictImpl, ObjectImpl>;
 
-	template<typename Self, typename DictF, typename ObjF>
+	template<bool unwrap_obj_impl = true, typename Self, typename DictF, typename ObjF>
 	friend decltype(auto) visitImpl(Self& self, DictF&& dict_f, ObjF&& obj_f) {
 		static_assert(std::variant_size_v<Impl> == 2);
 		auto* dict_impl = std::get_if<DictImpl>(&self.impl);
 		if (dict_impl) {
 			return std::forward<DictF>(dict_f)(*dict_impl);
 		} else {
-			using ObjectPtr = std::conditional_t<std::is_const_v<Self>, const NodeConcreteBase*, NodeConcreteBase*>;
-			ObjectPtr obj_impl = std::get_if<ObjectImpl>(&self.impl)->get();
-			return std::forward<ObjF>(obj_f)(*obj_impl);
+			auto& obj_impl = *std::get_if<ObjectImpl>(&self.impl);
+			if constexpr (unwrap_obj_impl) {
+				using ObjectPtr = std::conditional_t<std::is_const_v<Self>, const NodeConcreteBase*, NodeConcreteBase*>;
+				ObjectPtr obj = obj_impl.get();
+				return std::forward<ObjF>(obj_f)(*obj);
+			} else {
+				return std::forward<ObjF>(obj_f)(obj_impl);
+			}
 		}
 	}
 
@@ -280,7 +285,13 @@ public:
 	void assign(T&& rhs) {
 		using PlainT = std::remove_cvref_t<T>;
 		const bool is_copy_assignment = std::is_reference_v<T>;
-		const auto fwd_rhs = [&rhs]() -> decltype(auto) { return std::forward<T>(rhs); };
+		const auto fwd = [](auto& a) -> decltype(auto) {
+			if constexpr (is_copy_assignment) {
+				return a;
+			} else {
+				return std::move(a);
+			}
+		};
 
 		if constexpr (std::is_base_of_v<Node, PlainT>) {
 			if constexpr (is_copy_assignment) {
@@ -289,35 +300,45 @@ public:
 					[this](auto& rhs_obj)  { *this = rhs_obj; } // recurse on held object
 				);
 			} else {
-				visitImpl(rhs,
+				visitImpl<false>(rhs,
 					[this](auto& rhs_dict) { impl = std::move(rhs_dict); }, // just move the dict (may assign through)
-					[this](auto& rhs_obj)  { *this = std::move(rhs_obj); } // recurse on held object
+					[this](auto& rhs_obj)  {
+						visitImpl<false>(*this,
+							[&, this](auto& /*this_dict*/) { impl = std::move(rhs_obj); }, // move rhs into us
+							[&, this](auto& this_obj) {
+								if (not this_obj->tryAssign(std::move(*rhs_obj))) {
+									this_obj = std::move(rhs_obj);
+								}
+							}
+						);
+					}
 				);
 			}
 		} else if constexpr (std::is_base_of_v<Dict, PlainT>) {
-			impl = fwd_rhs(); // (variant assigns through if same alternative)
+			impl = fwd(rhs); // (variant assigns through if same alternative)
 		} else if constexpr (std::is_base_of_v<NodeConcreteBase, PlainT>) {
-			visitImpl(*this,
-				[&, this](auto&& /*dict*/) { impl = fwd_rhs().clone(); }, // just overwrite the dict
+			visitImpl<false>(*this,
+				[&, this](auto&& /*dict*/) { impl = fwd(rhs).clone(); }, // just overwrite the dict
 				[&, this](auto&& obj) {
-					if (not obj.tryAssign(fwd_rhs())) { // try to assign through
-						impl = fwd_rhs().clone(); // different type? overwrite it
+					if (not obj->tryAssign(fwd(rhs))) { // try to assign through
+						obj = fwd(rhs).clone(); // different type? overwrite it
 					}
 				}
 			);
 		} else {
-			visitImpl(*this,
+			visitImpl<false>(*this,
 				[&](auto& /*dict*/) {
 					// have a Dict; overwrite with object impl by making a new node
-					impl = ObjectImpl(new NodeValue<PlainT>(fwd_rhs()));
+					impl = ObjectImpl(new NodeValue<PlainT>(fwd(rhs)));
 				},
 				[&, this](auto& obj) {
-					if (auto downcast = dynamic_cast<NodeConcrete<PlainT>*>(&obj)) {
+					// don't have a NodeConcreteBase for rhs, so can't use tryAssign as-is
+					if (auto downcast = dynamic_cast<NodeConcrete<PlainT>*>(obj.get())) {
 						// type matches. Do an assignment to the underlying object
-						downcast->getObject() = fwd_rhs();
+						downcast->getObject() = fwd(rhs);
 					} else {
 						// type does not match. Make a new node
-						impl = ObjectImpl(new NodeValue<PlainT>(fwd_rhs()));
+						obj = ObjectImpl(new NodeValue<PlainT>(fwd(rhs)));
 					}
 				}
 			);
