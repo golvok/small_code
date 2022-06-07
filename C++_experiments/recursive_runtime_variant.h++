@@ -86,13 +86,9 @@ using MemberIteratorPair = std::pair<MemberIterator<const_iter>, MemberIterator<
 
 struct Dict  {
 	Dict() : impl() {}
-	Dict(const Dict& src) : impl() { *this = src; }
+	Dict(const Dict& src) : impl() { synchronizeKeys(src.impl); }
 	Dict(Dict&&) = default;
-	Dict(const DictBase& src) : impl() { *this = src; }
-	Dict(DictBase&& src) : impl() { *this = std::move(src); }
-
-	Dict& operator=(const DictBase& rhs);
-	Dict& operator=(const Dict& rhs) { return *this = rhs.impl; }
+	Dict& operator=(const Dict& rhs) { synchronizeKeys(rhs.impl); return *this; }
 	Dict& operator=(Dict&&) = default;
 
 	Node toScalars() const;
@@ -127,8 +123,11 @@ struct Dict  {
 	MemberIterator<true>  begin() const { return MemberIteratorImplBase<true>:: OwningPtr{new Iter<true> {impl.begin()}}; }
 	MemberIterator<false> end()         { return MemberIteratorImplBase<false>::OwningPtr{new Iter<false>{impl.end()}}; }
 	MemberIterator<true>  end()   const { return MemberIteratorImplBase<true>:: OwningPtr{new Iter<true> {impl.end()}}; }
+
 private:
 	DictBase impl;
+
+	void synchronizeKeys(const DictBase& src);
 };
 
 using NodeConcreteMemberInfo = std::unique_ptr<Node>;
@@ -446,12 +445,17 @@ T* Node::get_if_impl(Self& self) {
 	);
 }
 
-Dict& Dict::operator=(const DictBase& rhs) {
-	impl.clear();
-	for (const auto& [k, v] : rhs) {
-		impl.emplace(k, DictBase::mapped_type(new Node(*v)));
+void Dict::synchronizeKeys(const DictBase& src) {
+	DictBase new_impl;
+	for (const auto& [k, src_v] : src) {
+		if (auto old_node = impl.extract(k)) {
+			*old_node.mapped() = *src_v;
+			new_impl.insert(std::move(old_node));
+		} else {
+			new_impl.emplace(k, DictBase::mapped_type(new Node(*src_v)));
+		}
 	}
-	return *this;
+	impl = std::move(new_impl);
 }
 
 Node Dict::toScalars() const { return Node(*this); }

@@ -20,20 +20,17 @@
 				- wants access into everything
 					- ie NodeConcrete \in { NodeValue, NodeReference, NodeIndirectAccess, ... }
 				- doesn't want scalar types. Could add a bool template param to Node, which propagates down to requiring !Scalar<T>
+		Assign-through
+			- prefer copy-assignment over copy-construction
+			- more like assigning to data members of an object
+			- some references *won't* be invalidated
+				- invalidates? Assign with dict over dict: not root, but yes to all non-matching sub-objects
+					- we assign through for matching keys
+				- invalidates? Assign with dict over type: yes
+				- invalidates? Assign with same type: no (different from std::any)
+					- any uses swap for exception-safe self-assignment-safe assignment
+				- invalidates? Assign with different type: yes
 	Next:
-		- some tests that check assign-through behaviour of Node::operator=
-			- performance vs. always replacing it?
-			- This *is API* (it's observable), so can't easily change it
-			- not consistent?
-				- invalidates iterators/references either way
-				- address being the same is not enough (need a type with specific moved-from guarantees to observe it)
-				- the main thing is that some references *won't* be invalidated
-					- invalidates? Assign with dict over dict: not root, but yes to all sub-objects
-						- should assign through for matching keys?
-					- invalidates? Assign with dict over type: yes
-					- invalidates? Assign with same type: no (different from std::any)
-						- any uses swap for exception-safe self-assignment-safe assignment
-					- invalidates? Assign with different type: yes
 		- avoid member lookup when iterating by passing returned MemberIterator to rrvMember?
 			- types probably shouldn't store actual iterators to avoid invalidation? or say screw it, and just use existing rules for type(s)
 		- non-string_view arguments for operator[]?
@@ -697,7 +694,7 @@ TEST_CASE("assignment/construction behaviour") {
 	}
 }
 
-TEST_CASE("Assign-through behaviour") {
+TEST_CASE("Assign-through behaviour - single nodes") {
 	auto tracer1 = LifetimeTracer("t1");
 	auto tracer2 = LifetimeTracer("t2");
 
@@ -806,6 +803,119 @@ TEST_CASE("Assign-through behaviour") {
 		++tracer2.expected.destructions;
 		CHECK(tracer1.compare(0) == "");
 		CHECK(tracer2.compare(0) == "");
+	}
+}
+
+TEST_CASE("Assign-through behaviour - hierarchies") {
+	auto tracer1 = LifetimeTracer("t1");
+	auto tracer2 = LifetimeTracer("t2");
+	auto tracer3 = LifetimeTracer("t3");
+	auto tracer4 = LifetimeTracer("t4");
+	auto tracer5 = LifetimeTracer("t5");
+	auto tracer6 = LifetimeTracer("t6");
+
+	WHEN("assigning same key") {
+		Node h1;
+		h1["k1"] = tracer1.makeInstance();
+		++tracer1.expected.move_constructions;
+		++tracer1.expected.destructions_from_moved;
+		CHECK(tracer1.compare(1) == "");
+
+		Node h2;
+		h2["k1"] = tracer2.makeInstance();
+		++tracer2.expected.move_constructions;
+		++tracer2.expected.destructions_from_moved;
+		CHECK(tracer2.compare(1) == "");
+
+		h1 = h2;
+		++tracer1.expected.copy_assignments_to;
+		++tracer2.expected.copy_assignments_from;
+		CHECK(tracer1.compare(0) == "");
+		CHECK(tracer2.compare(2) == "");
+	}
+
+	WHEN("assigning same key, both nested") {
+		Node h1;
+		h1["k1"]["kk1"] = tracer1.makeInstance();
+		++tracer1.expected.move_constructions;
+		++tracer1.expected.destructions_from_moved;
+		CHECK(tracer1.compare(1) == "");
+
+		Node h2;
+		h2["k1"]["kk1"] = tracer2.makeInstance();
+		++tracer2.expected.move_constructions;
+		++tracer2.expected.destructions_from_moved;
+		CHECK(tracer2.compare(1) == "");
+
+		h1 = h2;
+		++tracer1.expected.copy_assignments_to;
+		++tracer2.expected.copy_assignments_from;
+		CHECK(tracer1.compare(0) == "");
+		CHECK(tracer2.compare(2) == "");
+	}
+
+	WHEN("assigning same key, lhs nested") {
+		Node h1;
+		h1["k1"]["kk1"] = tracer1.makeInstance();
+		++tracer1.expected.move_constructions;
+		++tracer1.expected.destructions_from_moved;
+		CHECK(tracer1.compare(1) == "");
+
+		Node h2;
+		h2["kk1"] = tracer2.makeInstance();
+		++tracer2.expected.move_constructions;
+		++tracer2.expected.destructions_from_moved;
+		CHECK(tracer2.compare(1) == "");
+
+		h1["k1"] = h2;
+		++tracer1.expected.copy_assignments_to;
+		++tracer2.expected.copy_assignments_from;
+		CHECK(tracer1.compare(0) == "");
+		CHECK(tracer2.compare(2) == "");
+	}
+
+	WHEN("assigning same key, mixed, extra node") {
+		Node h1;
+		h1["k1"]["kk1"] = tracer1.makeInstance();
+		++tracer1.expected.move_constructions;
+		++tracer1.expected.destructions_from_moved;
+		CHECK(tracer1.compare(1) == "");
+		h1["k2"] = tracer2.makeInstance();
+		++tracer2.expected.move_constructions;
+		++tracer2.expected.destructions_from_moved;
+		CHECK(tracer2.compare(1) == "");
+		h1["k3"]["k-copy"] = tracer5.makeInstance();
+		++tracer5.expected.move_constructions;
+		++tracer5.expected.destructions_from_moved;
+		CHECK(tracer5.compare(1) == "");
+
+		Node h2;
+		h2["k1"]["kk1"] = tracer3.makeInstance();
+		++tracer3.expected.move_constructions;
+		++tracer3.expected.destructions_from_moved;
+		CHECK(tracer3.compare(1) == "");
+		h2["k2"] = tracer4.makeInstance();
+		++tracer4.expected.move_constructions;
+		++tracer4.expected.destructions_from_moved;
+		CHECK(tracer4.compare(1) == "");
+		h2["k3"]["k-drop"] = tracer6.makeInstance();
+		++tracer6.expected.move_constructions;
+		++tracer6.expected.destructions_from_moved;
+		CHECK(tracer6.compare(1) == "");
+
+		h1 = h2;
+		++tracer1.expected.copy_assignments_to;
+		++tracer2.expected.copy_assignments_to;
+		++tracer3.expected.copy_assignments_from;
+		++tracer4.expected.copy_assignments_from;
+		++tracer5.expected.destructions;
+		++tracer6.expected.copy_constructions;
+		CHECK(tracer1.compare(0) == "");
+		CHECK(tracer2.compare(0) == "");
+		CHECK(tracer3.compare(2) == "");
+		CHECK(tracer4.compare(2) == "");
+		CHECK(tracer5.compare(0) == "");
+		CHECK(tracer6.compare(2) == "");
 	}
 }
 
