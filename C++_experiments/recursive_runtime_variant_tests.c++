@@ -905,10 +905,6 @@ TEST_CASE("error paths") {
 		Node no = ScalarStruct{};
 		CHECK_THROWS_WITH(no["i"], std::string(rrv::errors::kAccessMemberOfScalarType));
 	}
-	SECTION("assign object to Dict from a Node") {
-		Dict d;
-		CHECK_THROWS_WITH(d = Node{4}, std::string(rrv::errors::kAssignObjectToDict));
-	}
 	SECTION("iterate object") {
 		Node no = 4;
 		const Node& const_no = no;
@@ -975,17 +971,6 @@ TEST_CASE("basic dict operations") {
 		CHECK(cpy.size() == 1);
 		CHECK(cpy["k"].get<int>() == 1);
 		CHECK(d.size() == 0);
-	}
-}
-
-TEST_CASE("Dict <- Node interactions") {
-	Dict d;
-	SECTION("Dict = Node that is Dict") {
-		Node no;
-		no["k"] = 1;
-		d = no;
-		CHECK(d.size() == 1);
-		CHECK(d["k"].get<int>() == 1);
 	}
 }
 

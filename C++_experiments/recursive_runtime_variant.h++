@@ -26,7 +26,6 @@ template<typename Obj> constexpr static bool kIsScalarType = not kIsStaticMember
 
 namespace errors {
 	using namespace std::literals::string_view_literals;
-	constexpr auto kAssignObjectToDict = "Trying to assign an object to a Dict (via a Node)"sv;
 	constexpr auto kAccessMemberOfScalarType = "Accessing member of a scalar type"sv;
 	constexpr auto kAccessNodeAsObjectButIsDict = "Trying to access a Node as an object, but it is a Dict"sv;
 	constexpr auto kAccessWithWrongType = "Accessing with wrong type"sv;
@@ -85,7 +84,6 @@ private:
 template<bool const_iter>
 using MemberIteratorPair = std::pair<MemberIterator<const_iter>, MemberIterator<const_iter>>;
 
-// TODO: use composition instead....
 struct Dict  {
 	Dict() : impl() {}
 	Dict(const Dict& src) : impl() { *this = src; }
@@ -96,8 +94,6 @@ struct Dict  {
 	Dict& operator=(const DictBase& rhs);
 	Dict& operator=(const Dict& rhs) { return *this = rhs.impl; }
 	Dict& operator=(Dict&&) = default;
-	Dict& operator=(const Node& rhs);
-	Dict& operator=(Node&& rhs);
 
 	Node toScalars() const;
 	const Node& operator[](std::string_view sv) const {
@@ -456,22 +452,6 @@ Dict& Dict::operator=(const DictBase& rhs) {
 		impl.emplace(k, DictBase::mapped_type(new Node(*v)));
 	}
 	return *this;
-}
-Dict& Dict::operator=(const Node& rhs) {
-	return visitImpl(rhs,
-		[this](auto&& dict) -> Dict& { return *this = dict; },
-		[this](auto&& /* obj */) -> Dict& {
-			throw std::logic_error(std::string(errors::kAssignObjectToDict));
-		}
-	);
-}
-Dict& Dict::operator=(Node&& rhs) {
-	return visitImpl(rhs,
-		[this](auto&& dict) -> Dict& { return *this = std::move(dict); },
-		[this](auto&& /* obj */) -> Dict& {
-			throw std::logic_error(std::string(errors::kAssignObjectToDict));
-		}
-	);
 }
 
 Node Dict::toScalars() const { return Node(*this); }
