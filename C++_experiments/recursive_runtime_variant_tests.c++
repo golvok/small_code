@@ -149,6 +149,80 @@ struct LifetimeTracer {
 	Instance makeInstance() { return Instance(actual); }
 };
 
+struct StructWithFriendConversions {
+	int i;
+	friend auto rrvMembers(StructWithFriendConversions& s) {
+		return std::make_tuple(
+			std::make_pair("i", &s.i)
+		);
+	}
+};
+
+struct StructWithDynamicMembersViaMember {
+	int i, j;
+	std::variant<int*> rrvMember(std::string_view key) {
+		if (key == "i") return &i; else return &j;
+	}
+	constexpr static auto names = std::array{"i", "j"};
+	auto rrvBegin() { return names.begin(); }
+	auto rrvEnd() { return names.end(); }
+};
+
+struct StructWithDynamicMembersViaFriend {
+	int i, j;
+	friend std::variant<int*> rrvMember(StructWithDynamicMembersViaFriend& s, std::string_view key) {
+		if (key == "i") return &s.i; else return &s.j;
+	}
+	constexpr static auto names = std::array{"i", "j"};
+	friend auto rrvBegin(StructWithDynamicMembersViaFriend&) { return names.begin(); }
+	friend auto rrvEnd(StructWithDynamicMembersViaFriend&) { return names.end(); }
+};
+
+struct TwoTypeVector {
+	std::vector<int> vecInt;
+	std::vector<float> vecFloat;
+	struct MemberIter {
+		bool inVecInt;
+		std::size_t i = 0;
+		auto operator<=>(const MemberIter&) const = default;
+		void increment(const TwoTypeVector& mv) { ++i; if (inVecInt and i == mv.vecInt.size()) { i = 0; inVecInt = false; } }
+		// return pair<string, unique_ptr<Node>> ?
+		//   not clear how this avoids the O(n*n) iteration...
+		auto dereference(const TwoTypeVector&) { return (inVecInt ? "i" : "f") + std::to_string(i); }
+		bool equals(const MemberIter& rhs, const TwoTypeVector&) const { return *this == rhs; }
+	};
+	friend std::variant<int*, float*, std::monostate> rrvMember(TwoTypeVector& s, std::string_view key) {
+		auto index = std::stoi(std::string(key.substr(1)));
+		if (key[0] == 'i') if ((std::size_t)index < s.vecInt.size())   return &s.vecInt.at(index);   else return std::monostate{};
+		              else if ((std::size_t)index < s.vecFloat.size()) return &s.vecFloat.at(index); else return std::monostate{};
+	}
+	friend auto rrvBegin(TwoTypeVector& s) { return MemberIter{s.vecInt.empty(), 0}; }
+	friend auto rrvEnd(TwoTypeVector& s) { return MemberIter{false, s.vecFloat.size()}; }
+};
+
+struct TheNested {
+	int ii;
+	auto operator<=>(const TheNested&) const = default;
+
+	auto rrvMembers() {
+		return std::make_tuple(
+			std::make_pair("ii", &ii)
+		);
+	}
+};
+struct HasNested {
+	int i;
+	TheNested m;
+	auto operator<=>(const HasNested&) const = default;
+
+	auto rrvMembers() {
+		return std::make_tuple(
+			std::make_pair("i", &i),
+			std::make_pair("m", &m)
+		);
+	}
+};
+
 }
 
 TEST_CASE("basic use") {
@@ -263,6 +337,48 @@ TEST_CASE("basic use") {
 	}
 }
 
+TEST_CASE("conversion to Scalars") {
+	SECTION("convert 1-level Node Dict to Scalars") {
+		Node n;
+		n["a"] = 4;
+		n["b"] = 5;
+		const auto scalared = n.toScalars();
+		CHECK(scalared.at("a").get<int>() == 4);
+		CHECK(scalared.at("b").get<int>() == 5);
+	}
+	SECTION("convert Node Dict to Scalars") {
+		Node n;
+		n["a"]["aa"] = 4;
+		n["b"]["bb"] = 5;
+		const auto scalared = n.toScalars();
+		CHECK(scalared.at("a").at("aa").get<int>() == 4);
+		CHECK(scalared.at("b").at("bb").get<int>() == 5);
+	}
+	SECTION("convert a simple struct -- friend conversion function") {
+		Node n = StructWithFriendConversions{3};
+		const auto scalared = n.toScalars();
+		CHECK(scalared.at("i").get<int>() == 3);
+	}
+	SECTION("convert a simple struct -- member conversion function") {
+		SECTION("just one") {
+			Node n = HasNested{44, {444}};
+			const auto scalared = n.toScalars();
+			CHECK(scalared.at("i").get<int>() == 44);
+			CHECK(scalared.at("m").at("ii").get<int>() == 444);
+		}
+		SECTION("a vector") {
+			Node n = std::vector{HasNested{55, {555}}, HasNested{66, {666}}, HasNested{77, {777}}};
+			const auto scalared = n.toScalars();
+			CHECK(scalared.at("0").at("i").get<int>() == 55);
+			CHECK(scalared.at("0").at("m").at("ii").get<int>() == 555);
+			CHECK(scalared.at("1").at("i").get<int>() == 66);
+			CHECK(scalared.at("1").at("m").at("ii").get<int>() == 666);
+			CHECK(scalared.at("2").at("i").get<int>() == 77);
+			CHECK(scalared.at("2").at("m").at("ii").get<int>() == 777);
+		}
+	}
+}
+
 TEST_CASE("iteration") {
 	SECTION("basic on Dict") {
 		Dict d;
@@ -280,63 +396,60 @@ TEST_CASE("iteration") {
 			REQUIRE(v->get<int>() == 4);
 		}
 	}
+	SECTION("just one") {
+		Node n = HasNested{44, {444}};
+		int saw_m = 0, saw_i = 0;
+		for (const auto& [k, v] : n) {
+			if (k == "m") { ++saw_m; CHECK(v->get<TheNested>() == TheNested{444}); }
+			if (k == "i") { ++saw_i; CHECK(v->get<int>() == 44); }
+		}
+		CHECK(saw_m == 1);
+		CHECK(saw_i == 1);
+	}
+	SECTION("vector<int>") {
+		Node n = std::vector{1, 2, 3, 4};
+		std::vector<int> saw_it(4);
+		for (const auto& [k, v] : n) {
+			auto i = stoi(k);
+			++saw_it.at(i);
+			CHECK(v->get<int>() == i+1);
+		}
+		for (auto saw : saw_it) {
+			CHECK(saw == 1);
+		}
+	}
+	SECTION("custom dynamic type - via member") {
+		Node n = StructWithDynamicMembersViaMember{11,22};
+		std::map<std::string, int> saw_it;
+		for (const auto& [k, v] : n) {
+			++saw_it[k];
+			CHECK((k == "i" || k == "j"));
+			if (k == "i") CHECK(v->get<int>() == 11);
+			if (k == "j") CHECK(v->get<int>() == 22);
+		}
+		for (const auto& [k, count] : saw_it) {
+			CHECK(count == 1);
+		}
+		CHECK(saw_it.size() == 2);
+	}
+	SECTION("custom dynamic type - via friend") {
+		Node n = StructWithDynamicMembersViaFriend{11,22};
+		std::map<std::string, int> saw_it;
+		for (const auto& [k, v] : n) {
+			++saw_it[k];
+			CHECK((k == "i" || k == "j"));
+			if (k == "i") CHECK(v->get<int>() == 11);
+			if (k == "j") CHECK(v->get<int>() == 22);
+		}
+		for (const auto& [k, count] : saw_it) {
+			CHECK(count == 1); (void)k;
+		}
+		CHECK(saw_it.size() == 2);
+	}
 }
 
-namespace {
-struct StructWithFriendConversions {
-	int i;
-	friend auto rrvMembers(StructWithFriendConversions& s) {
-		return std::make_tuple(
-			std::make_pair("i", &s.i)
-		);
-	}
-};
-
-struct StructWithDynamicMembersViaMember {
-	int i, j;
-	std::variant<int*> rrvMember(std::string_view key) {
-		if (key == "i") return &i; else return &j;
-	}
-	constexpr static auto names = std::array{"i", "j"};
-	auto rrvBegin() { return names.begin(); }
-	auto rrvEnd() { return names.end(); }
-};
-struct StructWithDynamicMembersViaFriend {
-	int i, j;
-	friend std::variant<int*> rrvMember(StructWithDynamicMembersViaFriend& s, std::string_view key) {
-		if (key == "i") return &s.i; else return &s.j;
-	}
-	constexpr static auto names = std::array{"i", "j"};
-	friend auto rrvBegin(StructWithDynamicMembersViaFriend&) { return names.begin(); }
-	friend auto rrvEnd(StructWithDynamicMembersViaFriend&) { return names.end(); }
-};
-
-struct TwoTypeVector {
-	std::vector<int> vecInt;
-	std::vector<float> vecFloat;
-	struct MemberIter {
-		bool inVecInt;
-		std::size_t i = 0;
-		auto operator<=>(const MemberIter&) const = default;
-		void increment(const TwoTypeVector& mv) { ++i; if (inVecInt and i == mv.vecInt.size()) { i = 0; inVecInt = false; } }
-		// return pair<string, unique_ptr<Node>> ?
-		//   not clear how this avoids the O(n*n) iteration...
-		auto dereference(const TwoTypeVector&) { return (inVecInt ? "i" : "f") + std::to_string(i); }
-		bool equals(const MemberIter& rhs, const TwoTypeVector&) const { return *this == rhs; }
-	};
-	friend std::variant<int*, float*, std::monostate> rrvMember(TwoTypeVector& s, std::string_view key) {
-		auto index = std::stoi(std::string(key.substr(1)));
-		if (key[0] == 'i') if ((std::size_t)index < s.vecInt.size())   return &s.vecInt.at(index);   else return std::monostate{};
-		              else if ((std::size_t)index < s.vecFloat.size()) return &s.vecFloat.at(index); else return std::monostate{};
-	}
-	friend auto rrvBegin(TwoTypeVector& s) { return MemberIter{s.vecInt.empty(), 0}; }
-	friend auto rrvEnd(TwoTypeVector& s) { return MemberIter{false, s.vecFloat.size()}; }
-};
-
-}
-
-TEST_CASE("Multi-type member iteration") {
-	SECTION("TwoTypeVector") {
+TEST_CASE("member access") {
+	SECTION("multi-type") {
 		Node ttv_node = TwoTypeVector{{1, 2}, {3.0f, 4.0f}};
 		CHECK(ttv_node["i0"].as<int>() == 1);
 		CHECK(ttv_node["i1"].as<int>() == 2);
@@ -347,157 +460,44 @@ TEST_CASE("Multi-type member iteration") {
 		ttv_node.get<TwoTypeVector>().vecInt.push_back(3);
 		CHECK(ttv_node["i2"].as<int>() == 3);
 	}
-}
+	SECTION("a vector - member access") {
+		Node n = std::vector{HasNested{55, {555}}, HasNested{66, {666}}, HasNested{77, {777}}};
+		CHECK(n.at("0").at("i").get<int>() == 55);
+		CHECK(n.at("0").at("m").at("ii").get<int>() == 555);
+		CHECK(n.at("1").at("i").get<int>() == 66);
+		CHECK(n.at("1").at("m").at("ii").get<int>() == 666);
+		CHECK(n.at("2").at("i").get<int>() == 77);
+		CHECK(n.at("2").at("m").at("ii").get<int>() == 777);
 
-TEST_CASE("conversion to Scalars") {
-	Node root;
-	SECTION("convert 1-level Node Dict to Scalars") {
-		root["a"] = 4;
-		root["b"] = 5;
-		const auto scalared = root.toScalars();
-		CHECK(scalared.at("a").get<int>() == 4);
-		CHECK(scalared.at("b").get<int>() == 5);
+		auto& vec = n.get<std::vector<HasNested>>();
+		CHECK(n.at("0").at("i").get<int>() == 55);
+		vec.at(0).i = 111;
+		CHECK(n.at("0").at("i").get<int>() == 111);
+		n.at("0").at("i").get<int>() = 222;
+		CHECK(vec.at(0).i == 222);
 	}
-	SECTION("convert Node Dict to Scalars") {
-		root["a"]["aa"] = 4;
-		root["b"]["bb"] = 5;
-		const auto scalared = root.toScalars();
-		CHECK(scalared.at("a").at("aa").get<int>() == 4);
-		CHECK(scalared.at("b").at("bb").get<int>() == 5);
+	SECTION("just one - member access") {
+		Node n = HasNested{44, {444}};
+		CHECK(n.at("i").get<int>() == 44);
+		CHECK(n.at("m").at("ii").get<int>() == 444);
 	}
-	SECTION("convert a simple struct -- friend conversion function") {
-		root = StructWithFriendConversions{3};
-		const auto scalared = root.toScalars();
-		CHECK(scalared.at("i").get<int>() == 3);
+	SECTION("assign Node = member") {
+		Node n = HasNested{44, {444}};
+		Node n2 = n.at("i");
+		n.get<HasNested>().i = 55;
+		CHECK(n2.get<int>() == 44);
 	}
-	SECTION("convert a simple struct -- member conversion function") {
-		struct Mm {
-			int ii;
-			auto operator<=>(const Mm&) const = default;
-
-			auto rrvMembers() {
-				return std::make_tuple(
-					std::make_pair("ii", &ii)
-				);
-			}
-		};
-		struct M {
-			int i;
-			Mm m;
-			auto operator<=>(const M&) const = default;
-
-			auto rrvMembers() {
-				return std::make_tuple(
-					std::make_pair("i", &i),
-					std::make_pair("m", &m)
-				);
-			}
-		};
-		SECTION("just one - scalarize") {
-			Node n = M{44, {444}};
-			const auto scalared = n.toScalars();
-			CHECK(scalared.at("i").get<int>() == 44);
-			CHECK(scalared.at("m").at("ii").get<int>() == 444);
-		}
-		SECTION("a vector - scalarize") {
-			Node n = std::vector{M{55, {555}}, M{66, {666}}, M{77, {777}}};
-			const auto scalared = n.toScalars();
-			CHECK(scalared.at("0").at("i").get<int>() == 55);
-			CHECK(scalared.at("0").at("m").at("ii").get<int>() == 555);
-			CHECK(scalared.at("1").at("i").get<int>() == 66);
-			CHECK(scalared.at("1").at("m").at("ii").get<int>() == 666);
-			CHECK(scalared.at("2").at("i").get<int>() == 77);
-			CHECK(scalared.at("2").at("m").at("ii").get<int>() == 777);
-		}
-		SECTION("a vector - member access") {
-			Node n = std::vector{M{55, {555}}, M{66, {666}}, M{77, {777}}};
-			CHECK(n.at("0").at("i").get<int>() == 55);
-			CHECK(n.at("0").at("m").at("ii").get<int>() == 555);
-			CHECK(n.at("1").at("i").get<int>() == 66);
-			CHECK(n.at("1").at("m").at("ii").get<int>() == 666);
-			CHECK(n.at("2").at("i").get<int>() == 77);
-			CHECK(n.at("2").at("m").at("ii").get<int>() == 777);
-
-			auto& vec = n.get<std::vector<M>>();
-			CHECK(n.at("0").at("i").get<int>() == 55);
-			vec.at(0).i = 111;
-			CHECK(n.at("0").at("i").get<int>() == 111);
-			n.at("0").at("i").get<int>() = 222;
-			CHECK(vec.at(0).i == 222);
-		}
-		SECTION("just one - member access") {
-			Node n = M{44, {444}};
-			CHECK(n.at("i").get<int>() == 44);
-			CHECK(n.at("m").at("ii").get<int>() == 444);
-		}
-		SECTION("just one - member iter") {
-			Node n = M{44, {444}};
-			int saw_m = 0, saw_i = 0;
-			for (const auto& [k, v] : n) {
-				if (k == "m") { ++saw_m; CHECK(v->get<Mm>() == Mm{444}); }
-				if (k == "i") { ++saw_i; CHECK(v->get<int>() == 44); }
-			}
-			CHECK(saw_m == 1);
-			CHECK(saw_i == 1);
-		}
-		SECTION("vector<int> - member iter") {
-			Node n = std::vector{1, 2, 3, 4};
-			std::vector<int> saw_it(4);
-			for (const auto& [k, v] : n) {
-				auto i = stoi(k);
-				++saw_it.at(i);
-				CHECK(v->get<int>() == i+1);
-			}
-			for (auto saw : saw_it) {
-				CHECK(saw == 1);
-			}
-		}
-		SECTION("assign Node = member") {
-			Node n = M{44, {444}};
-			Node n2 = n.at("i");
-			n.get<M>().i = 55;
-			CHECK(n2.get<int>() == 44);
-		}
-		SECTION("custom dynamic type - via member") {
-			Node n = StructWithDynamicMembersViaMember{11,22};
-			CHECK(n.at("i").get<int>() == 11);
-			CHECK(n.at("j").get<int>() == 22);
-			CHECK(n.at("e").get<int>() == 22);
-		}
-		SECTION("custom dynamic type - via friend") {
-			Node n = StructWithDynamicMembersViaFriend{11,22};
-			CHECK(n.at("i").get<int>() == 11);
-			CHECK(n.at("j").get<int>() == 22);
-			CHECK(n.at("e").get<int>() == 22);
-		}
-		SECTION("custom dynamic type - via member") {
-			Node n = StructWithDynamicMembersViaMember{11,22};
-			std::map<std::string, int> saw_it;
-			for (const auto& [k, v] : n) {
-				++saw_it[k];
-				CHECK((k == "i" || k == "j"));
-				if (k == "i") CHECK(v->get<int>() == 11);
-				if (k == "j") CHECK(v->get<int>() == 22);
-			}
-			for (const auto& [k, count] : saw_it) {
-				CHECK(count == 1);
-			}
-			CHECK(saw_it.size() == 2);
-		}
-		SECTION("custom dynamic type - via friend") {
-			Node n = StructWithDynamicMembersViaFriend{11,22};
-			std::map<std::string, int> saw_it;
-			for (const auto& [k, v] : n) {
-				++saw_it[k];
-				CHECK((k == "i" || k == "j"));
-				if (k == "i") CHECK(v->get<int>() == 11);
-				if (k == "j") CHECK(v->get<int>() == 22);
-			}
-			for (const auto& [k, count] : saw_it) {
-				CHECK(count == 1); (void)k;
-			}
-			CHECK(saw_it.size() == 2);
-		}
+	SECTION("custom dynamic type - via member") {
+		Node n = StructWithDynamicMembersViaMember{11,22};
+		CHECK(n.at("i").get<int>() == 11);
+		CHECK(n.at("j").get<int>() == 22);
+		CHECK(n.at("e").get<int>() == 22);
+	}
+	SECTION("custom dynamic type - via friend") {
+		Node n = StructWithDynamicMembersViaFriend{11,22};
+		CHECK(n.at("i").get<int>() == 11);
+		CHECK(n.at("j").get<int>() == 22);
+		CHECK(n.at("e").get<int>() == 22);
 	}
 }
 
