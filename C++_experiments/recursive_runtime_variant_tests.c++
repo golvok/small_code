@@ -411,7 +411,7 @@ TEST_CASE("iteration") {
 		Node n = std::vector{1, 2, 3, 4};
 		std::vector<int> saw_it(4);
 		for (const auto& [k, v] : n) {
-			auto i = std::get<long long>(k.impl);
+			auto i = stoi(std::string(std::get<std::string>(k.impl)));
 			++saw_it.at(i);
 			CHECK(v->get<int>() == i+1);
 		}

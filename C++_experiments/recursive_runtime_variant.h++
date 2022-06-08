@@ -40,6 +40,15 @@ struct KeyTypeOwning {
 	KeyTypeOwning(float d) = delete;
 	KeyTypeOwning(double d) = delete;
 
+	explicit KeyTypeOwning(const KeyType& src) : impl(0) {
+		struct V {
+			KeyTypeOwning* self;
+			void operator()(long long i) { self->impl = i; }
+			void operator()(std::string_view s) { self->impl = std::string(s); }
+		};
+		src.visit(V{this});
+	}
+
 	KeyTypeOwning(const KeyTypeOwning&) = default;
 	KeyTypeOwning(KeyTypeOwning&&) = default;
 	KeyTypeOwning& operator=(const KeyTypeOwning&) = default;
@@ -480,11 +489,37 @@ template<typename Obj> auto rrvMemberTestInt() -> decltype(rrvMember(std::declva
 template<typename Obj, typename = void> constexpr static bool kIsDynamicMemberTypeByInt = false;
 template<typename Obj> constexpr static bool kIsDynamicMemberTypeByInt<Obj, decltype(rrvMemberTestInt<Obj>())> = true;
 
-template<typename Obj> constexpr static bool kIsDynamicMemberType<Obj, std::enable_if_t<kIsDynamicMemberTypeByString<Obj> && kIsDynamicMemberTypeByInt<Obj>>> = true;
+template<typename Obj> constexpr static bool kIsDynamicMemberType<Obj, std::enable_if_t<kIsDynamicMemberTypeByString<Obj> || kIsDynamicMemberTypeByInt<Obj>>> = true;
 
 // Static member test
 template<typename Obj> auto rrvMembersTest() -> decltype(rrvMembers(std::declval<Obj&>()), void()) {}
 template<typename Obj> constexpr static bool kIsStaticMemberType<Obj, decltype(rrvMembersTest<Obj>())> = true;
+
+
+// Internal dispatch
+// static_assert(kIsDynamicMemberTypeByString<T> + kIsDynamicMemberTypeByInt<T> == 1, "Internal error");
+// // using Ret = std::
+// // struct V {
+// // 	const NodeConcrete* self;
+// // 	operator()
+// // };
+// return key.visit([this](auto& k) -> decltype(rrvMember(getObj(), std::declval<std::string_view>())) {
+// 	if constexpr (kIsDynamicMemberTypeByInt<T>) {
+// 		if constexpr (std::is_same_v<decltype(k), long long&>) {
+// 			return rrvMember(getObj(), k);
+// 		} else {
+// 			throw "access with wrong key type";
+// 		}
+// 	} else if constexpr (kIsDynamicMemberTypeByString<T>) {
+// 		if constexpr (std::is_same_v<decltype(k), std::string_view&>) {
+// 			return rrvMember(getObj(), k);
+// 		} else {
+// 			throw "access with wrong key type";
+// 		}
+// 	}
+// })
+template<typename Obj> auto rrvMemberK(Obj& obj, const KeyType& key) -> decltype(rrvMember(obj, std::declval<std::string_view>())) { return rrvMember(obj, std::get<std::string_view>(key.impl)); }
+template<typename Obj> auto rrvMemberK(Obj& obj, const KeyType& key) -> decltype(rrvMember(obj, std::declval<long long>())) { return rrvMember(obj, std::get<long long>(key.impl)); }
 
 template<typename T, typename Self>
 T* Node::get_if_impl(Self& self) {
@@ -552,7 +587,7 @@ struct NodeIndirectAcess : NodeConcrete<T> {
 
 protected:
 	T& getObj() const override {
-		return *std::get<T*>(rrvMember(*container, key));
+		return *std::get<T*>(rrvMemberK(*container, key));
 	}
 
 private:
@@ -578,7 +613,7 @@ NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(KeyType key) const
 					return *lookup;
 				}
 			},
-			rrvMember(getObj(), key)
+			rrvMemberK(getObj(), key)
 		);
 	} else if constexpr (kIsStaticMemberType<T>) {
 		initMemberCacheForStaticMembers();
@@ -638,7 +673,7 @@ struct NodeConcreteDynamicMemberIter : MemberIteratorImplBase<const_iter> {
 	NodeConcreteDynamicMemberIter& operator=(const NodeConcreteDynamicMemberIter&) = default;
 	NodeConcreteDynamicMemberIter& operator=(NodeConcreteDynamicMemberIter&&) = default;
 
-	value_type* deref() override { return &self->getMember(derefImpl<Impl>()); }
+	value_type* deref() override { return &self->getMember(KeyTypeOwning(derefImpl<Impl>())); }
 	void advance() override { incrementImpl<Impl>(); }
 	OwningPtr clone() const& override { return OwningPtr{new NodeConcreteDynamicMemberIter(*this)}; }
 	bool equalTo(const BaseClass& rhs) const override { auto* downcasted = dynamic_cast<const NodeConcreteDynamicMemberIter*>(&rhs); return downcasted && equalImpl(downcasted->impl); }
