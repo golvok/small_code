@@ -10,6 +10,53 @@
 
 namespace rrv {
 
+struct KeyType {
+	KeyType(const char* s) : KeyType(std::string_view(s)) {}
+	KeyType(std::string_view sv) : impl(sv) {}
+	KeyType(int i) : impl(i) {}
+	KeyType(long long i) : impl(i) {}
+	KeyType(float d) = delete;
+	KeyType(double d) = delete;
+
+	KeyType(const KeyType&) = default;
+	KeyType(KeyType&&) = default;
+	KeyType& operator=(const KeyType&) = default;
+	KeyType& operator=(KeyType&&) = default;
+
+	std::strong_ordering operator<=>(const KeyType&) const = default;
+
+	template<typename F> decltype(auto) visit(F f)       { return std::visit(std::forward<F>(f), impl); }
+	template<typename F> decltype(auto) visit(F f) const { return std::visit(std::forward<F>(f), impl); }
+
+// private:
+	std::variant<std::string_view, long long> impl;
+};
+
+struct KeyTypeOwning {
+	KeyTypeOwning(const char* s) : KeyTypeOwning(std::string(s)) {}
+	KeyTypeOwning(std::string s) : impl(s) {}
+	KeyTypeOwning(int i) : impl(i) {}
+	KeyTypeOwning(long long i) : impl(i) {}
+	KeyTypeOwning(float d) = delete;
+	KeyTypeOwning(double d) = delete;
+
+	KeyTypeOwning(const KeyTypeOwning&) = default;
+	KeyTypeOwning(KeyTypeOwning&&) = default;
+	KeyTypeOwning& operator=(const KeyTypeOwning&) = default;
+	KeyTypeOwning& operator=(KeyTypeOwning&&) = default;
+
+	std::strong_ordering operator<=>(const KeyTypeOwning&) const = default;
+
+	template<typename F> decltype(auto) visit(F f)       { return std::visit(std::forward<F>(f), impl); }
+	template<typename F> decltype(auto) visit(F f) const { return std::visit(std::forward<F>(f), impl); }
+
+	operator KeyType() const { return visit([](auto& e) { return KeyType(e); }); }
+	bool operator<(const KeyType& rhs) const { return (bool)((KeyType)(*this) < rhs); }
+
+// private:
+	std::variant<std::string, long long> impl;
+};
+
 struct Node;
 struct NodeConcreteBase;
 template<typename T> struct NodeConcrete;
@@ -38,7 +85,7 @@ namespace errors {
 template<typename Source, typename Target>
 using SameConstAs = std::conditional_t<std::is_const_v<Source>, const Target, Target>;
 
-using DictBase = std::map<std::string, std::unique_ptr<Node>, std::less<>>;
+using DictBase = std::map<KeyTypeOwning, std::unique_ptr<Node>, std::less<>>;
 
 template<bool const_iter>
 struct MemberIteratorImplBase {
@@ -84,6 +131,16 @@ private:
 template<bool const_iter>
 using MemberIteratorPair = std::pair<MemberIterator<const_iter>, MemberIterator<const_iter>>;
 
+std::string to_string(KeyType key) {
+	return key.visit([](auto& k) {
+		if constexpr(std::is_same_v<decltype(k), std::string_view&>) {
+			return std::string(k);
+		} else {
+			return std::to_string(k);
+		}
+	});
+}
+
 struct Dict  {
 	Dict() : impl() {}
 	Dict(const Dict& src) : impl() { synchronizeKeys(src.impl); }
@@ -92,12 +149,12 @@ struct Dict  {
 	Dict& operator=(Dict&&) = default;
 
 	Node toScalars() const;
-	const Node& operator[](std::string_view sv) const {
+	const Node& operator[](KeyType sv) const {
 		auto lookup = impl.find(sv);
-		if (lookup == impl.end()) throw std::logic_error("Cannot find member of Dict: " + std::string(sv));
+		if (lookup == impl.end()) throw std::logic_error("Cannot find member of Dict: " + to_string(sv));
 		return *lookup->second;
 	}
-	Node& operator[](std::string_view sv);
+	Node& operator[](KeyType sv);
 
 	bool empty() const { return impl.empty(); }
 	std::size_t size() const { return impl.size(); }
@@ -131,11 +188,11 @@ private:
 };
 
 using NodeConcreteMemberInfo = std::unique_ptr<Node>;
-using NodeConcreteMemberCache = std::map<std::string, NodeConcreteMemberInfo, std::less<>>;
+using NodeConcreteMemberCache = std::map<KeyTypeOwning, NodeConcreteMemberInfo, std::less<>>;
 
 struct NodeConcreteBase {
-	virtual const Node& operator[](std::string_view key) const = 0;
-	virtual       Node& operator[](std::string_view key) = 0;
+	virtual const Node& operator[](KeyType key) const = 0;
+	virtual       Node& operator[](KeyType key) = 0;
 	virtual Node toScalars() const = 0;
 	MemberIterator<false> begin()       { return memberIteratorPair().first; }
 	MemberIterator<true>  begin() const { return memberIteratorPair().first; }
@@ -166,8 +223,8 @@ struct NodeConcrete : NodeConcreteBase {
 	NodeConcrete& operator=(const NodeConcrete&) = default;
 	NodeConcrete& operator=(NodeConcrete&&) = default;
 
-	const Node& operator[](std::string_view key) const override { return *getMember(key).second; }
-	      Node& operator[](std::string_view key)       override { return *getMember(key).second; }
+	const Node& operator[](KeyType key) const override { return *getMember(key).second; }
+	      Node& operator[](KeyType key)       override { return *getMember(key).second; }
 
 	Node toScalars() const override;
 
@@ -201,7 +258,7 @@ protected:
 
 	mutable NodeConcreteMemberCache member_cache = {};
 
-	NodeConcreteMemberCache::reference getMember(std::string_view key) const;
+	NodeConcreteMemberCache::reference getMember(KeyType key) const;
 	template<typename TT = T> auto initMemberCacheForStaticMembers() const -> std::enable_if_t<kIsStaticMemberType<TT>>;
 	template<typename Self>
 	MemberIteratorPair<std::is_const_v<Self>> friend nodeConcreteGetIterators(Self& self);
@@ -362,10 +419,10 @@ public:
 
 	template<typename T> explicit operator const T&() const { return get<T>(); }
 
-	const Node& operator[](std::string_view sv) const { auto l = [&](auto& obj_or_dict) -> const Node& { return obj_or_dict[sv]; }; return visitImpl(*this, l, l); }
-	      Node& operator[](std::string_view sv)       { auto l = [&](auto& obj_or_dict) ->       Node& { return obj_or_dict[sv]; }; return visitImpl(*this, l, l); }
-	const Node& at(std::string_view sv) const { return (*this)[sv]; }
-	      Node& at(std::string_view sv)       { return (*this)[sv]; }
+	const Node& operator[](KeyType sv) const { auto l = [&](auto& obj_or_dict) -> const Node& { return obj_or_dict[sv]; }; return visitImpl(*this, l, l); }
+	      Node& operator[](KeyType sv)       { auto l = [&](auto& obj_or_dict) ->       Node& { return obj_or_dict[sv]; }; return visitImpl(*this, l, l); }
+	const Node& at(KeyType sv) const { return (*this)[sv]; }
+	      Node& at(KeyType sv)       { return (*this)[sv]; }
 
 	Node toScalars() const { auto l = [](auto& obj_or_dict) { return obj_or_dict.toScalars(); }; return visitImpl(*this, l, l); }
 
@@ -395,6 +452,7 @@ private:
 // Customization points
 template<typename Obj> auto rrvMembers(Obj& t) -> decltype(t.rrvMembers()) { return t.rrvMembers(); }
 template<typename Obj> auto rrvMember(Obj& obj, std::string_view key) -> decltype(obj.rrvMember(key)) { return obj.rrvMember(key); }
+template<typename Obj> auto rrvMember(Obj& obj, long long key) -> decltype(obj.rrvMember(key)) { return obj.rrvMember(key); }
 template<typename Obj> auto rrvBegin(Obj& t) -> decltype(t.rrvBegin()) { return t.rrvBegin(); }
 template<typename Obj> auto rrvEnd(Obj& t) -> decltype(t.rrvEnd()) { return t.rrvEnd(); }
 
@@ -414,8 +472,15 @@ template<typename T> auto rrvBegin(std::vector<T>&) { return IntIter{0}; }
 template<typename T> auto rrvEnd(std::vector<T>& v) { return IntIter{(int)v.size()}; }
 
 // Dynamic member test
-template<typename Obj> auto rrvMemberTest() -> decltype(rrvMember(std::declval<Obj&>(), std::declval<std::string_view>()), void()) {}
-template<typename Obj> constexpr static bool kIsDynamicMemberType<Obj, decltype(rrvMemberTest<Obj>())> = true;
+template<typename Obj> auto rrvMemberTestString() -> decltype(rrvMember(std::declval<Obj&>(), std::declval<std::string_view>()), void()) {}
+template<typename Obj, typename = void> constexpr static bool kIsDynamicMemberTypeByString = false;
+template<typename Obj> constexpr static bool kIsDynamicMemberTypeByString<Obj, decltype(rrvMemberTestString<Obj>())> = true;
+
+template<typename Obj> auto rrvMemberTestInt() -> decltype(rrvMember(std::declval<Obj&>(), std::declval<long long>()), void()) {}
+template<typename Obj, typename = void> constexpr static bool kIsDynamicMemberTypeByInt = false;
+template<typename Obj> constexpr static bool kIsDynamicMemberTypeByInt<Obj, decltype(rrvMemberTestInt<Obj>())> = true;
+
+template<typename Obj> constexpr static bool kIsDynamicMemberType<Obj, std::enable_if_t<kIsDynamicMemberTypeByString<Obj> && kIsDynamicMemberTypeByInt<Obj>>> = true;
 
 // Static member test
 template<typename Obj> auto rrvMembersTest() -> decltype(rrvMembers(std::declval<Obj&>()), void()) {}
@@ -460,10 +525,10 @@ void Dict::synchronizeKeys(const DictBase& src) {
 
 Node Dict::toScalars() const { return Node(*this); }
 
-Node& Dict::operator[](std::string_view sv) {
+Node& Dict::operator[](KeyType sv) {
 	auto lookup = impl.lower_bound(sv);
 	if (lookup == impl.end() or lookup->first != sv) {
-		lookup = impl.emplace_hint(lookup, std::string(sv), DictBase::mapped_type{new Node()});
+		lookup = impl.emplace_hint(lookup, to_string(sv), DictBase::mapped_type{new Node()});
 	}
 	return *lookup->second;
 }
@@ -483,7 +548,7 @@ struct NodeIndirectAcess : NodeConcrete<T> {
 	NodeIndirectAcess(NodeIndirectAcess&&) = default;
 	NodeIndirectAcess& operator=(const NodeIndirectAcess&) = default;
 	NodeIndirectAcess& operator=(NodeIndirectAcess&&) = default;
-	explicit NodeIndirectAcess(Container* container_, std::string_view key_) : container(container_), key(key_) {}
+	explicit NodeIndirectAcess(Container* container_, KeyType key_) : container(container_), key(key_) {}
 
 protected:
 	T& getObj() const override {
@@ -492,11 +557,11 @@ protected:
 
 private:
 	Container* container;
-	std::string key;
+	KeyTypeOwning key;
 };
 
 template<typename T>
-NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(std::string_view key) const {
+NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(KeyType key) const {
 	static_assert(kIsScalarType<T> + kIsDynamicMemberType<T> + kIsStaticMemberType<T> == 1, "Internal error");
 	if constexpr (kIsDynamicMemberType<T>) {
 		return std::visit(

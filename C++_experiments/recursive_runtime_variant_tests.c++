@@ -43,6 +43,7 @@
 		     - return NodeConcrete<T>&?
 		- Convert NodeValue, RodeReference NodeIndirectAcess to static polymorphism
 		- make classes final
+		- 'at' throw if not exist
 		- Catch exceptions to add context. Eg. what member names are being accessed
 		- moving from a NodeReference seems sketchy (tryAssign, clone)
 		- can cut-down vtables by having a single virtual method with a dispatch enum
@@ -410,7 +411,7 @@ TEST_CASE("iteration") {
 		Node n = std::vector{1, 2, 3, 4};
 		std::vector<int> saw_it(4);
 		for (const auto& [k, v] : n) {
-			auto i = stoi(k);
+			auto i = std::get<long long>(k.impl);
 			++saw_it.at(i);
 			CHECK(v->get<int>() == i+1);
 		}
@@ -422,7 +423,7 @@ TEST_CASE("iteration") {
 		Node n = StructWithDynamicMembersViaMember{11,22};
 		std::map<std::string, int> saw_it;
 		for (const auto& [k, v] : n) {
-			++saw_it[k];
+			++saw_it[std::get<std::string>(k.impl)];
 			CHECK((k == "i" || k == "j"));
 			if (k == "i") CHECK(v->get<int>() == 11);
 			if (k == "j") CHECK(v->get<int>() == 22);
@@ -436,7 +437,7 @@ TEST_CASE("iteration") {
 		Node n = StructWithDynamicMembersViaFriend{11,22};
 		std::map<std::string, int> saw_it;
 		for (const auto& [k, v] : n) {
-			++saw_it[k];
+			++saw_it[std::get<std::string>(k.impl)];
 			CHECK((k == "i" || k == "j"));
 			if (k == "i") CHECK(v->get<int>() == 11);
 			if (k == "j") CHECK(v->get<int>() == 22);
@@ -447,6 +448,16 @@ TEST_CASE("iteration") {
 		CHECK(saw_it.size() == 2);
 	}
 }
+
+struct StructWithDynamicMembersViaMemberIntAccess {
+	int i, j;
+	std::variant<int*> rrvMember(long long key) {
+		if (key == 0) return &i; else return &j;
+	}
+	constexpr static auto names = std::array{0, 1};
+	auto rrvBegin() { return names.begin(); }
+	auto rrvEnd() { return names.end(); }
+};
 
 TEST_CASE("member access") {
 	SECTION("multi-type") {
@@ -488,10 +499,10 @@ TEST_CASE("member access") {
 		CHECK(n2.get<int>() == 44);
 	}
 	SECTION("custom dynamic type - via member") {
-		Node n = StructWithDynamicMembersViaMember{11,22};
-		CHECK(n.at("i").get<int>() == 11);
-		CHECK(n.at("j").get<int>() == 22);
-		CHECK(n.at("e").get<int>() == 22);
+		Node n = StructWithDynamicMembersViaMemberIntAccess{11,22};
+		CHECK(n.at(0).get<int>() == 11);
+		CHECK(n.at(1).get<int>() == 22);
+		CHECK(n.at(7).get<int>() == 22);
 	}
 	SECTION("custom dynamic type - via friend") {
 		Node n = StructWithDynamicMembersViaFriend{11,22};
