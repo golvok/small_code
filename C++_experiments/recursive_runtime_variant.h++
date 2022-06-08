@@ -1,5 +1,6 @@
 #pragma once
 
+#include <charconv>
 #include <map>
 #include <memory>
 #include <optional>
@@ -65,6 +66,9 @@ struct KeyTypeOwning {
 // private:
 	std::variant<std::string, long long> impl;
 };
+
+namespace detail {}
+using namespace detail;
 
 struct Node;
 struct NodeConcreteBase;
@@ -497,29 +501,44 @@ template<typename Obj> constexpr static bool kIsStaticMemberType<Obj, decltype(r
 
 
 // Internal dispatch
-// static_assert(kIsDynamicMemberTypeByString<T> + kIsDynamicMemberTypeByInt<T> == 1, "Internal error");
-// // using Ret = std::
-// // struct V {
-// // 	const NodeConcrete* self;
-// // 	operator()
-// // };
-// return key.visit([this](auto& k) -> decltype(rrvMember(getObj(), std::declval<std::string_view>())) {
-// 	if constexpr (kIsDynamicMemberTypeByInt<T>) {
-// 		if constexpr (std::is_same_v<decltype(k), long long&>) {
-// 			return rrvMember(getObj(), k);
-// 		} else {
-// 			throw "access with wrong key type";
-// 		}
-// 	} else if constexpr (kIsDynamicMemberTypeByString<T>) {
-// 		if constexpr (std::is_same_v<decltype(k), std::string_view&>) {
-// 			return rrvMember(getObj(), k);
-// 		} else {
-// 			throw "access with wrong key type";
-// 		}
-// 	}
-// })
-template<typename Obj> auto rrvMemberK(Obj& obj, const KeyType& key) -> decltype(rrvMember(obj, std::declval<std::string_view>())) { return rrvMember(obj, std::get<std::string_view>(key.impl)); }
-template<typename Obj> auto rrvMemberK(Obj& obj, const KeyType& key) -> decltype(rrvMember(obj, std::declval<long long>())) { return rrvMember(obj, std::get<long long>(key.impl)); }
+namespace detail {
+template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyType& key) -> decltype(rrvMember(obj, std::declval<std::string_view>())) {
+	using Ret = decltype((rrvMember(obj, std::declval<std::string_view>())));
+	struct V {
+		Obj* obj;
+		Ret operator()(std::string_view s) {
+			return rrvMember(*obj, s);
+		}
+		Ret operator()(long long i) {
+			// -2**63 = -9223372036854775808
+			std::array<char, 20> s;
+			auto res = std::to_chars(s.data(), s.data() + s.size(), i);
+			if (res.ec != std::errc()) { throw std::logic_error("failed to convert to integer"); }
+			return (*this)({s.data(), s.data() + s.size()});
+		}
+	};
+	return std::visit(V{&obj}, key.impl);
+}
+template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyType& key) -> decltype(rrvMember(obj, std::declval<long long>())) {
+	using Ret = decltype((rrvMember(obj, std::declval<long long>())));
+	struct V {
+		Obj* obj;
+		Ret operator()(std::string_view s) {
+			long long i;
+			auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), i);
+			if (ec == std::errc() && ptr == s.end()) {
+				return (*this)(i);
+			} else {
+				throw std::logic_error("Could not convert " + std::string(s) + " to an integer, and this type does not accept strings for rrvMember");
+			}
+		}
+		Ret operator()(long long i) {
+			return rrvMember(*obj, i);
+		}
+	};
+	return std::visit(V{&obj}, key.impl);
+}
+}
 
 template<typename T, typename Self>
 T* Node::get_if_impl(Self& self) {
@@ -587,7 +606,7 @@ struct NodeIndirectAcess : NodeConcrete<T> {
 
 protected:
 	T& getObj() const override {
-		return *std::get<T*>(rrvMemberK(*container, key));
+		return *std::get<T*>(rrvMemberFromKey(*container, key));
 	}
 
 private:
@@ -613,7 +632,7 @@ NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(KeyType key) const
 					return *lookup;
 				}
 			},
-			rrvMemberK(getObj(), key)
+			rrvMemberFromKey(getObj(), key)
 		);
 	} else if constexpr (kIsStaticMemberType<T>) {
 		initMemberCacheForStaticMembers();

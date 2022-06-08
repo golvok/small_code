@@ -501,8 +501,11 @@ TEST_CASE("member access") {
 	SECTION("custom dynamic type - via member") {
 		Node n = StructWithDynamicMembersViaMemberIntAccess{11,22};
 		CHECK(n.at(0).get<int>() == 11);
+		CHECK(n.at("0").get<int>() == 11);
 		CHECK(n.at(1).get<int>() == 22);
+		CHECK(n.at("1").get<int>() == 22);
 		CHECK(n.at(7).get<int>() == 22);
+		CHECK(n.at("7").get<int>() == 22);
 	}
 	SECTION("custom dynamic type - via friend") {
 		Node n = StructWithDynamicMembersViaFriend{11,22};
