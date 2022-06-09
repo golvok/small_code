@@ -29,6 +29,16 @@ struct KeyType {
 	template<typename F> decltype(auto) visit(F f)       { return std::visit(std::forward<F>(f), impl); }
 	template<typename F> decltype(auto) visit(F f) const { return std::visit(std::forward<F>(f), impl); }
 
+	friend std::string to_string(KeyType key) {
+		return key.visit([](auto& k) {
+			if constexpr(std::is_same_v<decltype(k), std::string_view&>) {
+				return std::string(k);
+			} else {
+				return std::to_string(k);
+			}
+		});
+	}
+
 // private:
 	std::variant<std::string_view, long long> impl;
 };
@@ -144,16 +154,6 @@ private:
 template<bool const_iter>
 using MemberIteratorPair = std::pair<MemberIterator<const_iter>, MemberIterator<const_iter>>;
 
-std::string to_string(KeyType key) {
-	return key.visit([](auto& k) {
-		if constexpr(std::is_same_v<decltype(k), std::string_view&>) {
-			return std::string(k);
-		} else {
-			return std::to_string(k);
-		}
-	});
-}
-
 struct Dict  {
 	Dict() : impl() {}
 	Dict(const Dict& src) : impl() { synchronizeKeys(src.impl); }
@@ -162,12 +162,12 @@ struct Dict  {
 	Dict& operator=(Dict&&) = default;
 
 	Node toScalars() const;
-	const Node& operator[](KeyType sv) const {
-		auto lookup = impl.find(sv);
-		if (lookup == impl.end()) throw std::logic_error("Cannot find member of Dict: " + to_string(sv));
+	const Node& operator[](KeyType key) const {
+		auto lookup = impl.find(key);
+		if (lookup == impl.end()) throw std::logic_error("Cannot find member of Dict: " + to_string(key));
 		return *lookup->second;
 	}
-	Node& operator[](KeyType sv);
+	Node& operator[](KeyType key);
 
 	bool empty() const { return impl.empty(); }
 	std::size_t size() const { return impl.size(); }
@@ -432,10 +432,10 @@ public:
 
 	template<typename T> explicit operator const T&() const { return get<T>(); }
 
-	const Node& operator[](KeyType sv) const { auto l = [&](auto& obj_or_dict) -> const Node& { return obj_or_dict[sv]; }; return visitImpl(*this, l, l); }
-	      Node& operator[](KeyType sv)       { auto l = [&](auto& obj_or_dict) ->       Node& { return obj_or_dict[sv]; }; return visitImpl(*this, l, l); }
-	const Node& at(KeyType sv) const { return (*this)[sv]; }
-	      Node& at(KeyType sv)       { return (*this)[sv]; }
+	const Node& operator[](KeyType key) const { auto l = [&](auto& obj_or_dict) -> const Node& { return obj_or_dict[key]; }; return visitImpl(*this, l, l); }
+	      Node& operator[](KeyType key)       { auto l = [&](auto& obj_or_dict) ->       Node& { return obj_or_dict[key]; }; return visitImpl(*this, l, l); }
+	const Node& at(KeyType key) const { return (*this)[key]; }
+	      Node& at(KeyType key)       { return (*this)[key]; }
 
 	Node toScalars() const { auto l = [](auto& obj_or_dict) { return obj_or_dict.toScalars(); }; return visitImpl(*this, l, l); }
 
@@ -579,10 +579,10 @@ void Dict::synchronizeKeys(const DictBase& src) {
 
 Node Dict::toScalars() const { return Node(*this); }
 
-Node& Dict::operator[](KeyType sv) {
-	auto lookup = impl.lower_bound(sv);
-	if (lookup == impl.end() or lookup->first != sv) {
-		lookup = impl.emplace_hint(lookup, to_string(sv), DictBase::mapped_type{new Node()});
+Node& Dict::operator[](KeyType key) {
+	auto lookup = impl.lower_bound(key);
+	if (lookup == impl.end() or lookup->first != key) {
+		lookup = impl.emplace_hint(lookup, to_string(key), DictBase::mapped_type{new Node()});
 	}
 	return *lookup->second;
 }
