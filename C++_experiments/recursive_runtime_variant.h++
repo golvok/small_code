@@ -653,6 +653,17 @@ NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(KeyType key) const
 		initMemberCacheForStaticMembers();
 		auto lookup = member_cache.find(key);
 		if (lookup == member_cache.end()) {
+			auto set_lookup = [&lookup, this](auto e) mutable {
+				lookup = member_cache.find(KeyType(e));
+			};
+			if (std::holds_alternative<long long>(key.impl)) {
+				callWithString(set_lookup, key);
+			}
+			if (std::holds_alternative<std::string_view>(key.impl)) {
+				callWithInt(set_lookup, key);
+			}
+		}
+		if (lookup == member_cache.end()) {
 			throw std::logic_error("Member not found");
 		}
 		return *lookup;
