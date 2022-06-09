@@ -1,6 +1,7 @@
 #pragma once
 
 #include <charconv>
+#include <limits>
 #include <map>
 #include <memory>
 #include <optional>
@@ -502,28 +503,37 @@ template<typename Obj> constexpr static bool kIsStaticMemberType<Obj, decltype(r
 
 // Internal dispatch
 namespace detail {
-template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyType& key) -> decltype(rrvMember(obj, std::declval<std::string_view>())) {
-	using Ret = decltype((rrvMember(obj, std::declval<std::string_view>())));
+
+template <typename F>
+decltype(auto) callWithString(F&& f, const KeyType& key) {
 	struct V {
-		Obj* obj;
-		Ret operator()(std::string_view s) {
-			return rrvMember(*obj, s);
+		F& f;
+		decltype(auto) operator()(std::string_view s) {
+			return std::forward<F>(f)(s);
 		}
-		Ret operator()(long long i) {
+		decltype(auto) operator()(long long i) {
 			// -2**63 = -9223372036854775808
-			std::array<char, 20> s;
-			auto res = std::to_chars(s.data(), s.data() + s.size(), i);
-			if (res.ec != std::errc()) { throw std::logic_error("failed to convert to integer"); }
-			return (*this)({s.data(), s.data() + s.size()});
+			static_assert(std::numeric_limits<long long>::digits10 <= 19);
+			std::array<char, 19 + 1> s; // +1 for the sign
+			auto [ptr, ec] = std::to_chars(s.data(), s.data() + s.size(), i);
+			if (ec == std::errc()) {
+				return (*this)({s.data(), ptr});
+			} else {
+				throw std::logic_error("failed to convert integer to string");
+			}
 		}
 	};
-	return std::visit(V{&obj}, key.impl);
+	return std::visit(V{f}, key.impl);
 }
-template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyType& key) -> decltype(rrvMember(obj, std::declval<long long>())) {
-	using Ret = decltype((rrvMember(obj, std::declval<long long>())));
+
+template <typename F>
+decltype(auto) callWithInt(F&& f, const KeyType& key) {
 	struct V {
-		Obj* obj;
-		Ret operator()(std::string_view s) {
+		F& f;
+		decltype(auto) operator()(long long i) {
+			return std::forward<F>(f)(i);
+		}
+		decltype(auto) operator()(std::string_view s) {
 			long long i;
 			auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), i);
 			if (ec == std::errc() && ptr == s.end()) {
@@ -532,12 +542,17 @@ template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyType& key) -> de
 				throw std::logic_error("Could not convert " + std::string(s) + " to an integer, and this type does not accept strings for rrvMember");
 			}
 		}
-		Ret operator()(long long i) {
-			return rrvMember(*obj, i);
-		}
 	};
-	return std::visit(V{&obj}, key.impl);
+	return std::visit(V{f}, key.impl);
 }
+
+template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyType& key) -> decltype(rrvMember(obj, std::declval<std::string_view>())) {
+	return callWithString([&](std::string_view sv) { return rrvMember(obj, sv); }, key);
+}
+template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyType& key) -> decltype(rrvMember(obj, std::declval<long long>())) {
+	return callWithInt([&](long long i) { return rrvMember(obj, i); }, key);
+}
+
 }
 
 template<typename T, typename Self>
