@@ -14,11 +14,19 @@ namespace rrv {
 
 struct KeyReference {
 	template<std::size_t N>
-	KeyReference(const char (&s)[N]) : KeyReference(std::string_view(s)) {}
+	KeyReference(const char  (&s)[N]) : KeyReference(std::string_view(s)) {}
 	KeyReference(std::string_view sv) : impl(sv) {}
-	KeyReference(int i) : impl(i) {}
-	KeyReference(long long i) : impl(i) {}
-	KeyReference(float d) = delete;
+	KeyReference(int               i) : impl(i) {}
+	KeyReference(long              i) : impl(i) {}
+	KeyReference(long long         i) : impl(i) {}
+
+	// questionable, but convenient
+	KeyReference(unsigned int       i) : KeyReference(static_cast<unsigned long>(i)) {}
+	KeyReference(unsigned long      i) : KeyReference(static_cast<unsigned long long>(i)) {}
+	KeyReference(unsigned long long i) : KeyReference(static_cast<long long>(i)) { if (std::numeric_limits<long long>::max() < i) { throw std::runtime_error("Signed cast would loose data"); } }
+
+	// ban implicit conversions from floating point types
+	KeyReference(float  d) = delete;
 	KeyReference(double d) = delete;
 
 	KeyReference(const KeyReference&) = default;
@@ -46,14 +54,8 @@ struct KeyReference {
 };
 
 struct Key {
-	Key(const char* s) : Key(std::string(s)) {}
 	Key(std::string s) : impl(s) {}
-	Key(int i) : impl(i) {}
-	Key(long long i) : impl(i) {}
-	Key(float d) = delete;
-	Key(double d) = delete;
-
-	explicit Key(const KeyReference& src) : impl(0) {
+	Key(const KeyReference& src) : impl(0) {
 		struct V {
 			Key* self;
 			void operator()(long long i) { self->impl = i; }
@@ -73,7 +75,10 @@ struct Key {
 	template<typename F> decltype(auto) visit(F f) const { return std::visit(std::forward<F>(f), impl); }
 
 	operator KeyReference() const { return visit([](auto& e) { return KeyReference(e); }); }
-	bool operator<(const KeyReference& rhs) const { return (bool)((KeyReference)(*this) < rhs); }
+	bool operator< (const KeyReference& rhs) const { return (bool)(KeyReference(*this)  < rhs); }
+	bool operator==(const KeyReference& rhs) const { return (bool)(KeyReference(*this) == rhs); }
+	friend bool operator<(const KeyReference& lhs, const Key& rhs) { return (bool)(lhs < KeyReference(rhs)); }
+	friend bool operator==(const KeyReference& lhs, const Key& rhs) { return (bool)(lhs < KeyReference(rhs)); }
 
 // private:
 	std::variant<std::string, long long> impl;
@@ -106,7 +111,7 @@ namespace errors {
 	constexpr auto kAsCannotAccessOrConvert = ".as is unable to access as or convert to the type requested"sv;
 	constexpr auto kCloneNotImplemented_ConstRef = "clone const& not implemented"sv;
 	constexpr auto kCloneNotImplemented_RvalRef = "clone && not implemented"sv;
-	constexpr auto kAccessMemberOfConcreteType = "can't get member of concrete type"sv;
+	constexpr auto kAccessMemberOfConcreteType = "Can't get member of concrete type"sv;
 }
 
 template<typename Source, typename Target>
@@ -718,7 +723,7 @@ struct NodeConcreteDynamicMemberIter : MemberIteratorImplBase<const_iter> {
 	NodeConcreteDynamicMemberIter& operator=(const NodeConcreteDynamicMemberIter&) = default;
 	NodeConcreteDynamicMemberIter& operator=(NodeConcreteDynamicMemberIter&&) = default;
 
-	value_type* deref() override { return &self->getMember(Key(derefImpl<Impl>())); }
+	value_type* deref() override { return &self->getMember(KeyReference(derefImpl<Impl>())); }
 	void advance() override { incrementImpl<Impl>(); }
 	OwningPtr clone() const& override { return OwningPtr{new NodeConcreteDynamicMemberIter(*this)}; }
 	bool equalTo(const BaseClass& rhs) const override { auto* downcasted = dynamic_cast<const NodeConcreteDynamicMemberIter*>(&rhs); return downcasted && equalImpl(downcasted->impl); }

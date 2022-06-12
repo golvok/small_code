@@ -256,6 +256,30 @@ TEST_CASE("basic use") {
 		static_assert(std::is_same_v<decltype(non_const_get), const int&>, "const access should return const");
 		REQUIRE(d.get<const int>() == 7);
 	}
+	SECTION("access string key with integer keys") {
+		Node d;
+		d["1"] = 7;
+		d["2"] = 8;
+		CHECK(d[(signed char)       1].get<int>() == 7);
+		CHECK(d[(short)             1].get<int>() == 7);
+		CHECK(d[(int)               1].get<int>() == 7);
+		CHECK(d[(long)              1].get<int>() == 7);
+		CHECK(d[(long long)         1].get<int>() == 7);
+		CHECK(d[(unsigned char)     1].get<int>() == 7);
+		CHECK(d[(unsigned short)    1].get<int>() == 7);
+		CHECK(d[(unsigned int)      1].get<int>() == 7);
+		CHECK(d[(unsigned long)     1].get<int>() == 7);
+		CHECK(d[(unsigned long long)1].get<int>() == 7);
+		CHECK(d[(std::size_t)       1].get<int>() == 7);
+		CHECK(d[(std::ptrdiff_t)    1].get<int>() == 7);
+		CHECK_THROWS_WITH(d[(std::size_t)-1].get<int>(), "Signed cast would loose data");
+	}
+	SECTION("access integer key with string key") {
+		Node d;
+		d[1] = 7;
+		d[2] = 8;
+		CHECK(d["1"].get<int>() == 7);
+	}
 	SECTION("dict with dict with int") {
 		Node root;
 		auto& child = root["j"];
