@@ -12,25 +12,26 @@
 
 namespace rrv {
 
-struct KeyType {
-	KeyType(const char* s) : KeyType(std::string_view(s)) {}
-	KeyType(std::string_view sv) : impl(sv) {}
-	KeyType(int i) : impl(i) {}
-	KeyType(long long i) : impl(i) {}
-	KeyType(float d) = delete;
-	KeyType(double d) = delete;
+struct KeyReference {
+	template<std::size_t N>
+	KeyReference(const char (&s)[N]) : KeyReference(std::string_view(s)) {}
+	KeyReference(std::string_view sv) : impl(sv) {}
+	KeyReference(int i) : impl(i) {}
+	KeyReference(long long i) : impl(i) {}
+	KeyReference(float d) = delete;
+	KeyReference(double d) = delete;
 
-	KeyType(const KeyType&) = default;
-	KeyType(KeyType&&) = default;
-	KeyType& operator=(const KeyType&) = default;
-	KeyType& operator=(KeyType&&) = default;
+	KeyReference(const KeyReference&) = default;
+	KeyReference(KeyReference&&) = default;
+	KeyReference& operator=(const KeyReference&) = default;
+	KeyReference& operator=(KeyReference&&) = default;
 
-	std::strong_ordering operator<=>(const KeyType&) const = default;
+	std::strong_ordering operator<=>(const KeyReference&) const = default;
 
 	template<typename F> decltype(auto) visit(F f)       { return std::visit(std::forward<F>(f), impl); }
 	template<typename F> decltype(auto) visit(F f) const { return std::visit(std::forward<F>(f), impl); }
 
-	friend std::string to_string(KeyType key) {
+	friend std::string to_string(KeyReference key) {
 		return key.visit([](auto& k) {
 			if constexpr(std::is_same_v<decltype(k), std::string_view&>) {
 				return std::string(k);
@@ -44,35 +45,35 @@ struct KeyType {
 	std::variant<std::string_view, long long> impl;
 };
 
-struct KeyTypeOwning {
-	KeyTypeOwning(const char* s) : KeyTypeOwning(std::string(s)) {}
-	KeyTypeOwning(std::string s) : impl(s) {}
-	KeyTypeOwning(int i) : impl(i) {}
-	KeyTypeOwning(long long i) : impl(i) {}
-	KeyTypeOwning(float d) = delete;
-	KeyTypeOwning(double d) = delete;
+struct Key {
+	Key(const char* s) : Key(std::string(s)) {}
+	Key(std::string s) : impl(s) {}
+	Key(int i) : impl(i) {}
+	Key(long long i) : impl(i) {}
+	Key(float d) = delete;
+	Key(double d) = delete;
 
-	explicit KeyTypeOwning(const KeyType& src) : impl(0) {
+	explicit Key(const KeyReference& src) : impl(0) {
 		struct V {
-			KeyTypeOwning* self;
+			Key* self;
 			void operator()(long long i) { self->impl = i; }
 			void operator()(std::string_view s) { self->impl = std::string(s); }
 		};
 		src.visit(V{this});
 	}
 
-	KeyTypeOwning(const KeyTypeOwning&) = default;
-	KeyTypeOwning(KeyTypeOwning&&) = default;
-	KeyTypeOwning& operator=(const KeyTypeOwning&) = default;
-	KeyTypeOwning& operator=(KeyTypeOwning&&) = default;
+	Key(const Key&) = default;
+	Key(Key&&) = default;
+	Key& operator=(const Key&) = default;
+	Key& operator=(Key&&) = default;
 
-	std::strong_ordering operator<=>(const KeyTypeOwning&) const = default;
+	std::strong_ordering operator<=>(const Key&) const = default;
 
 	template<typename F> decltype(auto) visit(F f)       { return std::visit(std::forward<F>(f), impl); }
 	template<typename F> decltype(auto) visit(F f) const { return std::visit(std::forward<F>(f), impl); }
 
-	operator KeyType() const { return visit([](auto& e) { return KeyType(e); }); }
-	bool operator<(const KeyType& rhs) const { return (bool)((KeyType)(*this) < rhs); }
+	operator KeyReference() const { return visit([](auto& e) { return KeyReference(e); }); }
+	bool operator<(const KeyReference& rhs) const { return (bool)((KeyReference)(*this) < rhs); }
 
 // private:
 	std::variant<std::string, long long> impl;
@@ -111,7 +112,7 @@ namespace errors {
 template<typename Source, typename Target>
 using SameConstAs = std::conditional_t<std::is_const_v<Source>, const Target, Target>;
 
-using DictBase = std::map<KeyTypeOwning, std::unique_ptr<Node>, std::less<>>;
+using DictBase = std::map<Key, std::unique_ptr<Node>, std::less<>>;
 
 template<bool const_iter>
 struct MemberIteratorImplBase {
@@ -165,12 +166,12 @@ struct Dict  {
 	Dict& operator=(Dict&&) = default;
 
 	Node toScalars() const;
-	const Node& operator[](KeyType key) const {
+	const Node& operator[](KeyReference key) const {
 		auto lookup = impl.find(key);
 		if (lookup == impl.end()) throw std::logic_error("Cannot find member of Dict: " + to_string(key));
 		return *lookup->second;
 	}
-	Node& operator[](KeyType key);
+	Node& operator[](KeyReference key);
 
 	bool empty() const { return impl.empty(); }
 	std::size_t size() const { return impl.size(); }
@@ -204,11 +205,11 @@ private:
 };
 
 using NodeConcreteMemberInfo = std::unique_ptr<Node>;
-using NodeConcreteMemberCache = std::map<KeyTypeOwning, NodeConcreteMemberInfo, std::less<>>;
+using NodeConcreteMemberCache = std::map<Key, NodeConcreteMemberInfo, std::less<>>;
 
 struct NodeConcreteBase {
-	virtual const Node& operator[](KeyType key) const = 0;
-	virtual       Node& operator[](KeyType key) = 0;
+	virtual const Node& operator[](KeyReference key) const = 0;
+	virtual       Node& operator[](KeyReference key) = 0;
 	virtual Node toScalars() const = 0;
 	MemberIterator<false> begin()       { return memberIteratorPair().first; }
 	MemberIterator<true>  begin() const { return memberIteratorPair().first; }
@@ -240,8 +241,8 @@ struct NodeConcrete : NodeConcreteBase {
 	NodeConcrete& operator=(const NodeConcrete&) = default;
 	NodeConcrete& operator=(NodeConcrete&&) = default;
 
-	const Node& operator[](KeyType key) const override { return *getMember(key).second; }
-	      Node& operator[](KeyType key)       override { return *getMember(key).second; }
+	const Node& operator[](KeyReference key) const override { return *getMember(key).second; }
+	      Node& operator[](KeyReference key)       override { return *getMember(key).second; }
 
 	Node toScalars() const override;
 
@@ -275,7 +276,7 @@ protected:
 
 	mutable NodeConcreteMemberCache member_cache = {};
 
-	NodeConcreteMemberCache::reference getMember(KeyType key) const;
+	NodeConcreteMemberCache::reference getMember(KeyReference key) const;
 	template<typename TT = T> auto initMemberCacheForStaticMembers() const -> std::enable_if_t<kIsStaticMemberType<TT>>;
 	template<typename Self>
 	MemberIteratorPair<std::is_const_v<Self>> friend nodeConcreteGetIterators(Self& self);
@@ -436,10 +437,10 @@ public:
 
 	template<typename T> explicit operator const T&() const { return get<T>(); }
 
-	const Node& operator[](KeyType key) const { auto l = [&](auto& obj_or_dict) -> const Node& { return obj_or_dict[key]; }; return visitImpl(*this, l, l); }
-	      Node& operator[](KeyType key)       { auto l = [&](auto& obj_or_dict) ->       Node& { return obj_or_dict[key]; }; return visitImpl(*this, l, l); }
-	const Node& at(KeyType key) const { return (*this)[key]; }
-	      Node& at(KeyType key)       { return (*this)[key]; }
+	const Node& operator[](KeyReference key) const { auto l = [&](auto& obj_or_dict) -> const Node& { return obj_or_dict[key]; }; return visitImpl(*this, l, l); }
+	      Node& operator[](KeyReference key)       { auto l = [&](auto& obj_or_dict) ->       Node& { return obj_or_dict[key]; }; return visitImpl(*this, l, l); }
+	const Node& at(KeyReference key) const { return (*this)[key]; }
+	      Node& at(KeyReference key)       { return (*this)[key]; }
 
 	Node toScalars() const { auto l = [](auto& obj_or_dict) { return obj_or_dict.toScalars(); }; return visitImpl(*this, l, l); }
 
@@ -504,7 +505,7 @@ template<typename Obj> constexpr static bool kIsStaticMemberType<Obj, decltype(r
 namespace detail {
 
 template <typename F>
-decltype(auto) callWithString(F&& f, const KeyType& key) {
+decltype(auto) callWithString(F&& f, const KeyReference& key) {
 	struct V {
 		F& f;
 		decltype(auto) operator()(std::string_view s) {
@@ -526,7 +527,7 @@ decltype(auto) callWithString(F&& f, const KeyType& key) {
 }
 
 template <typename F>
-decltype(auto) callWithInt(F&& f, const KeyType& key) {
+decltype(auto) callWithInt(F&& f, const KeyReference& key) {
 	struct V {
 		F& f;
 		decltype(auto) operator()(long long i) {
@@ -545,10 +546,10 @@ decltype(auto) callWithInt(F&& f, const KeyType& key) {
 	return std::visit(V{f}, key.impl);
 }
 
-template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyType& key) -> decltype(rrvMember(obj, std::declval<std::string_view>())) {
+template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyReference& key) -> decltype(rrvMember(obj, std::declval<std::string_view>())) {
 	return callWithString([&](std::string_view sv) { return rrvMember(obj, sv); }, key);
 }
-template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyType& key) -> decltype(rrvMember(obj, std::declval<long long>())) {
+template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyReference& key) -> decltype(rrvMember(obj, std::declval<long long>())) {
 	return callWithInt([&](long long i) { return rrvMember(obj, i); }, key);
 }
 
@@ -593,7 +594,7 @@ void Dict::synchronizeKeys(const DictBase& src) {
 
 Node Dict::toScalars() const { return Node(*this); }
 
-Node& Dict::operator[](KeyType key) {
+Node& Dict::operator[](KeyReference key) {
 	auto lookup = impl.lower_bound(key);
 	if (lookup == impl.end() or lookup->first != key) {
 		lookup = impl.emplace_hint(lookup, to_string(key), DictBase::mapped_type{new Node()});
@@ -616,7 +617,7 @@ struct NodeIndirectAcess : NodeConcrete<T> {
 	NodeIndirectAcess(NodeIndirectAcess&&) = default;
 	NodeIndirectAcess& operator=(const NodeIndirectAcess&) = default;
 	NodeIndirectAcess& operator=(NodeIndirectAcess&&) = default;
-	explicit NodeIndirectAcess(Container* container_, KeyType key_) : container(container_), key(key_) {}
+	explicit NodeIndirectAcess(Container* container_, KeyReference key_) : container(container_), key(key_) {}
 
 protected:
 	T& getObj() const override {
@@ -625,11 +626,11 @@ protected:
 
 private:
 	Container* container;
-	KeyTypeOwning key;
+	Key key;
 };
 
 template<typename T>
-NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(KeyType key) const {
+NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(KeyReference key) const {
 	static_assert(kIsScalarType<T> + kIsDynamicMemberType<T> + kIsStaticMemberType<T> == 1, "Internal error");
 	if constexpr (kIsDynamicMemberType<T>) {
 		return std::visit(
@@ -653,7 +654,7 @@ NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(KeyType key) const
 		auto lookup = member_cache.find(key);
 		if (lookup == member_cache.end()) {
 			auto set_lookup = [&lookup, this](auto e) mutable {
-				lookup = member_cache.find(KeyType(e));
+				lookup = member_cache.find(KeyReference(e));
 			};
 			if (std::holds_alternative<long long>(key.impl)) {
 				callWithString(set_lookup, key);
@@ -717,7 +718,7 @@ struct NodeConcreteDynamicMemberIter : MemberIteratorImplBase<const_iter> {
 	NodeConcreteDynamicMemberIter& operator=(const NodeConcreteDynamicMemberIter&) = default;
 	NodeConcreteDynamicMemberIter& operator=(NodeConcreteDynamicMemberIter&&) = default;
 
-	value_type* deref() override { return &self->getMember(KeyTypeOwning(derefImpl<Impl>())); }
+	value_type* deref() override { return &self->getMember(Key(derefImpl<Impl>())); }
 	void advance() override { incrementImpl<Impl>(); }
 	OwningPtr clone() const& override { return OwningPtr{new NodeConcreteDynamicMemberIter(*this)}; }
 	bool equalTo(const BaseClass& rhs) const override { auto* downcasted = dynamic_cast<const NodeConcreteDynamicMemberIter*>(&rhs); return downcasted && equalImpl(downcasted->impl); }
