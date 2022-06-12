@@ -91,6 +91,8 @@ struct Dict;
 template<bool> struct MemberIterator;
 template<bool> struct MemberIteratorImplBase;
 
+template<typename Obj, typename = void> constexpr static bool kIsDynamicMemberTypeByString = false;
+template<typename Obj, typename = void> constexpr static bool kIsDynamicMemberTypeByInt = false;
 template<typename Obj, typename = void> constexpr static bool kIsDynamicMemberType = false;
 template<typename Obj, typename = void> constexpr static bool kIsStaticMemberType = false;
 template<typename Obj> constexpr static bool kIsScalarType = not kIsStaticMemberType<Obj> and not kIsDynamicMemberType<Obj>;
@@ -228,6 +230,7 @@ struct NodeConcrete : NodeConcreteBase {
 	static_assert(std::is_copy_constructible_v<T>, "Require copy-constructible types so cloning will generally work");
 	static_assert(not std::is_const_v<T>, "NodeConcrete enforces constness itself");
 	static_assert(kIsDynamicMemberType<T> + kIsStaticMemberType<T> <= 1, "Types should define at most one of rrvMember and rrvMembers");
+	static_assert(kIsDynamicMemberTypeByString<T> + kIsDynamicMemberTypeByInt<T> <= 1, "Types should define at most one rrvMember overload");
 
 	using ContainedType = T;
 
@@ -487,13 +490,9 @@ template<typename T> auto rrvEnd(std::vector<T>& v) { return IntIter{(int)v.size
 
 // Dynamic member test
 template<typename Obj> auto rrvMemberTestString() -> decltype(rrvMember(std::declval<Obj&>(), std::declval<std::string_view>()), void()) {}
-template<typename Obj, typename = void> constexpr static bool kIsDynamicMemberTypeByString = false;
-template<typename Obj> constexpr static bool kIsDynamicMemberTypeByString<Obj, decltype(rrvMemberTestString<Obj>())> = true;
-
 template<typename Obj> auto rrvMemberTestInt() -> decltype(rrvMember(std::declval<Obj&>(), std::declval<long long>()), void()) {}
-template<typename Obj, typename = void> constexpr static bool kIsDynamicMemberTypeByInt = false;
+template<typename Obj> constexpr static bool kIsDynamicMemberTypeByString<Obj, decltype(rrvMemberTestString<Obj>())> = true;
 template<typename Obj> constexpr static bool kIsDynamicMemberTypeByInt<Obj, decltype(rrvMemberTestInt<Obj>())> = true;
-
 template<typename Obj> constexpr static bool kIsDynamicMemberType<Obj, std::enable_if_t<kIsDynamicMemberTypeByString<Obj> || kIsDynamicMemberTypeByInt<Obj>>> = true;
 
 // Static member test
