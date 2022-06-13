@@ -13,12 +13,12 @@
 namespace rrv {
 
 struct KeyReference {
-	template<std::size_t N>
-	KeyReference(const char  (&s)[N]) : KeyReference(std::string_view(s)) {}
-	KeyReference(std::string_view sv) : impl(sv) {}
-	KeyReference(int               i) : impl(i) {}
-	KeyReference(long              i) : impl(i) {}
-	KeyReference(long long         i) : impl(i) {}
+	KeyReference(std::string_view s) : impl(s) {}
+	KeyReference(const char*      s) : impl(s) {}
+
+	KeyReference(int       i) : impl(i) {}
+	KeyReference(long      i) : impl(i) {}
+	KeyReference(long long i) : impl(i) {}
 
 	// questionable, but convenient
 	KeyReference(unsigned int       i) : KeyReference(static_cast<unsigned long>(i)) {}
@@ -49,13 +49,34 @@ struct KeyReference {
 		});
 	}
 
-// private:
+	friend std::ostream& operator<<(std::ostream& os, const KeyReference& key) {
+		key.visit([&](auto& k) { os << k; });
+		return os;
+	}
+
+private:
 	std::variant<std::string_view, long long> impl;
 };
 
 struct Key {
-	Key(std::string s) : impl(s) {}
-	Key(const KeyReference& src) : impl(0) {
+	Key(std::string      s) : impl(std::move(s)) {}
+	Key(std::string_view s) : impl(std::string(s)) {}
+	Key(const char*      s) : impl(std::string(s)) {}
+
+	Key(int       i) : impl(i) {}
+	Key(long      i) : impl(i) {}
+	Key(long long i) : impl(i) {}
+
+	// questionable, but convenient
+	Key(unsigned int       i) : Key(static_cast<unsigned long>(i)) {}
+	Key(unsigned long      i) : Key(static_cast<unsigned long long>(i)) {}
+	Key(unsigned long long i) : Key(static_cast<long long>(i)) { if (std::numeric_limits<long long>::max() < i) { throw std::runtime_error("Signed cast would loose data"); } }
+
+	// ban implicit conversions from floating point types
+	Key(float  d) = delete;
+	Key(double d) = delete;
+
+	explicit Key(const KeyReference& src) : impl(0) {
 		struct V {
 			Key* self;
 			void operator()(long long i) { self->impl = i; }
@@ -80,7 +101,9 @@ struct Key {
 	friend bool operator<(const KeyReference& lhs, const Key& rhs) { return (bool)(lhs < KeyReference(rhs)); }
 	friend bool operator==(const KeyReference& lhs, const Key& rhs) { return (bool)(lhs < KeyReference(rhs)); }
 
-// private:
+	friend std::ostream& operator<<(std::ostream& os, const Key& key) { return os << KeyReference(key); }
+
+private:
 	std::variant<std::string, long long> impl;
 };
 
@@ -481,18 +504,17 @@ template<typename Obj> auto rrvEnd(Obj& t) -> decltype(t.rrvEnd()) { return t.rr
 
 // Specializations (must be before static/dynamic tests)
 // std::vector
-struct IntIter {
-	int i;
-	IntIter& operator++() { ++i; return *this; }
-	auto operator*() { return std::to_string(i); }
-	int operator<=>(const IntIter&) const = default;
+struct SizeTypeIter {
+	std::size_t i;
+	SizeTypeIter& operator++() { ++i; return *this; }
+	auto operator*() { return i; }
+	std::strong_ordering operator<=>(const SizeTypeIter&) const = default;
 };
-template<typename T> std::variant<T*, std::monostate> rrvMember(std::vector<T>& obj, std::string_view key) {
-	const auto i = std::stoi(std::string(key));
-	if (i>=0 && (size_t)i<obj.size()) return &obj.at(i); else return std::monostate{};
+template<typename T> std::variant<T*, std::monostate> rrvMember(std::vector<T>& obj, long long key) {
+	if (key>=0 && (size_t)key<obj.size()) return &obj.at(key); else return std::monostate{};
 }
-template<typename T> auto rrvBegin(std::vector<T>&) { return IntIter{0}; }
-template<typename T> auto rrvEnd(std::vector<T>& v) { return IntIter{(int)v.size()}; }
+template<typename T> auto rrvBegin(std::vector<T>&) { return SizeTypeIter{0}; }
+template<typename T> auto rrvEnd(std::vector<T>& v) { return SizeTypeIter{v.size()}; }
 
 // Dynamic member test
 template<typename Obj> auto rrvMemberTestString() -> decltype(rrvMember(std::declval<Obj&>(), std::declval<std::string_view>()), void()) {}
@@ -528,7 +550,7 @@ decltype(auto) callWithString(F&& f, const KeyReference& key) {
 			}
 		}
 	};
-	return std::visit(V{f}, key.impl);
+	return key.visit(V{f});
 }
 
 template <typename F>
@@ -548,7 +570,7 @@ decltype(auto) callWithInt(F&& f, const KeyReference& key) {
 			}
 		}
 	};
-	return std::visit(V{f}, key.impl);
+	return key.visit(V{f});
 }
 
 template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyReference& key) -> decltype(rrvMember(obj, std::declval<std::string_view>())) {
@@ -657,16 +679,15 @@ NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(KeyReference key) 
 	} else if constexpr (kIsStaticMemberType<T>) {
 		initMemberCacheForStaticMembers();
 		auto lookup = member_cache.find(key);
+		// change operator< instead? cache the conversion?
+		auto set_lookup = [&lookup, this](auto e) mutable {
+			lookup = member_cache.find(KeyReference(e));
+		};
 		if (lookup == member_cache.end()) {
-			auto set_lookup = [&lookup, this](auto e) mutable {
-				lookup = member_cache.find(KeyReference(e));
-			};
-			if (std::holds_alternative<long long>(key.impl)) {
-				callWithString(set_lookup, key);
-			}
-			if (std::holds_alternative<std::string_view>(key.impl)) {
-				callWithInt(set_lookup, key);
-			}
+			callWithString(set_lookup, key);
+		}
+		if (lookup == member_cache.end()) {
+			callWithInt(set_lookup, key);
 		}
 		if (lookup == member_cache.end()) {
 			throw std::logic_error("Member not found");
@@ -684,7 +705,7 @@ auto NodeConcrete<T>::initMemberCacheForStaticMembers() const -> std::enable_if_
 	const auto add_elem = [this](auto&& elem) {
 		using MemberType = std::remove_reference_t<decltype(*elem.second)>;
 		static_assert(not std::is_const_v<MemberType>, "rrvMembers should not return pointers to const. Perhaps 'this' is const in the implementation of rrvMembers.");
-		this->member_cache.emplace(elem.first, NodeConcreteMemberInfo(new Node(Node::ObjectImpl(new NodeReference<MemberType>(elem.second)))));
+		this->member_cache.emplace(Key(elem.first), NodeConcreteMemberInfo(new Node(Node::ObjectImpl(new NodeReference<MemberType>(elem.second)))));
 	};
 
 	const auto add_all = [&add_elem](auto&&... elems) {

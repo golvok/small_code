@@ -44,6 +44,7 @@
 		- Convert NodeValue, RodeReference NodeIndirectAcess to static polymorphism
 		- make classes final
 		- 'at' throw if not exist
+		- member not found error constant
 		- Catch exceptions to add context. Eg. what member names are being accessed
 		- moving from a NodeReference seems sketchy (tryAssign, clone)
 		- can cut-down vtables by having a single virtual method with a dispatch enum
@@ -432,43 +433,42 @@ TEST_CASE("iteration") {
 		CHECK(saw_i == 1);
 	}
 	SECTION("vector<int>") {
-		Node n = std::vector{1, 2, 3, 4};
-		std::vector<int> saw_it(4);
+		Node n = std::vector{1, 2};
+		std::map<rrv::Key, int> saw_it;
 		for (const auto& [k, v] : n) {
-			auto i = stoi(std::string(std::get<std::string>(k.impl)));
-			++saw_it.at(i);
-			CHECK(v->get<int>() == i+1);
+			++saw_it[k];
+			CHECK((k == 0 || k == 1));
+			if (k == 0) CHECK(v->get<int>() == 1);
+			if (k == 1) CHECK(v->get<int>() == 2);
 		}
-		for (auto saw : saw_it) {
-			CHECK(saw == 1);
-		}
+		CHECK(saw_it.at(rrv::Key(0)) == 1);
+		CHECK(saw_it.at(rrv::Key(1)) == 1);
+		CHECK(saw_it.size() == 2);
 	}
 	SECTION("custom dynamic type - via member") {
 		Node n = StructWithDynamicMembersViaMember{11,22};
-		std::map<std::string, int> saw_it;
+		std::map<rrv::Key, int> saw_it;
 		for (const auto& [k, v] : n) {
-			++saw_it[std::get<std::string>(k.impl)];
+			++saw_it[k];
 			CHECK((k == "i" || k == "j"));
 			if (k == "i") CHECK(v->get<int>() == 11);
 			if (k == "j") CHECK(v->get<int>() == 22);
 		}
-		for (const auto& [k, count] : saw_it) {
-			CHECK(count == 1);
-		}
+		CHECK(saw_it.at(rrv::Key("i")) == 1);;
+		CHECK(saw_it.at(rrv::Key("j")) == 1);;
 		CHECK(saw_it.size() == 2);
 	}
 	SECTION("custom dynamic type - via friend") {
 		Node n = StructWithDynamicMembersViaFriend{11,22};
-		std::map<std::string, int> saw_it;
+		std::map<rrv::Key, int> saw_it;
 		for (const auto& [k, v] : n) {
-			++saw_it[std::get<std::string>(k.impl)];
+			++saw_it[k];
 			CHECK((k == "i" || k == "j"));
 			if (k == "i") CHECK(v->get<int>() == 11);
 			if (k == "j") CHECK(v->get<int>() == 22);
 		}
-		for (const auto& [k, count] : saw_it) {
-			CHECK(count == 1); (void)k;
-		}
+		CHECK(saw_it.at(rrv::Key("i")) == 1);;
+		CHECK(saw_it.at(rrv::Key("j")) == 1);;
 		CHECK(saw_it.size() == 2);
 	}
 }
