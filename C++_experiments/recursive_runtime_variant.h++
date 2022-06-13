@@ -18,11 +18,10 @@ using namespace detail;
 using Key = std::string;
 using KeyReference = std::string_view;
 
-template <typename F>
-decltype(auto) callWithString(F&& f, long long i) {
+template <typename F, typename TInt>
+decltype(auto) callWithString(F&& f, TInt i) {
 	// -2**63 = -9223372036854775808
-	static_assert(std::numeric_limits<long long>::digits10 <= 19);
-	std::array<char, 19 + 1> s; // +1 for the sign
+	std::array<char, std::numeric_limits<TInt>::digits10 + 1> s; // +1 for the sign
 	auto [ptr, ec] = std::to_chars(s.data(), s.data() + s.size(), i);
 	if (ec == std::errc()) {
 		return std::forward<F>(f)({s.data(), ptr});
@@ -30,6 +29,43 @@ decltype(auto) callWithString(F&& f, long long i) {
 		throw std::logic_error("failed to convert integer to string");
 	}
 }
+
+struct ConvertableFromIntKeyReference {
+	ConvertableFromIntKeyReference(Key          k) : impl(std::move(k)) {}
+	ConvertableFromIntKeyReference(KeyReference k) : impl(k) {}
+	ConvertableFromIntKeyReference(const char*  s) : impl(KeyReference(s)) {}
+
+	ConvertableFromIntKeyReference(int       i) : impl() { callWithString([this](Key k) { impl = k; }, i); }
+	ConvertableFromIntKeyReference(long      i) : impl() { callWithString([this](Key k) { impl = k; }, i); }
+	ConvertableFromIntKeyReference(long long i) : impl() { callWithString([this](Key k) { impl = k; }, i); }
+
+	// questionable, but convenient
+	ConvertableFromIntKeyReference(unsigned int       i) : ConvertableFromIntKeyReference(static_cast<unsigned long>(i)) {}
+	ConvertableFromIntKeyReference(unsigned long      i) : ConvertableFromIntKeyReference(static_cast<unsigned long long>(i)) {}
+	ConvertableFromIntKeyReference(unsigned long long i) : ConvertableFromIntKeyReference(static_cast<long long>(i)) { if (std::numeric_limits<long long>::max() < i) { throw std::runtime_error("Signed cast would loose data"); } }
+
+	// ban implicit conversions from floating point types
+	ConvertableFromIntKeyReference(float  d) = delete;
+	ConvertableFromIntKeyReference(double d) = delete;
+
+	ConvertableFromIntKeyReference(const ConvertableFromIntKeyReference&) = default;
+	ConvertableFromIntKeyReference(ConvertableFromIntKeyReference&&) = default;
+	ConvertableFromIntKeyReference& operator=(const ConvertableFromIntKeyReference&) = default;
+	ConvertableFromIntKeyReference& operator=(ConvertableFromIntKeyReference&&) = default;
+
+	operator KeyReference() const {
+		if (auto kr = std::get_if<KeyReference>(&impl)) { return *kr; }
+		else return std::get<Key>(impl);
+	}
+
+	operator Key() && {
+		if (auto kr = std::get_if<KeyReference>(&impl)) { return Key(*kr); }
+		else return std::move(std::get<Key>(impl));
+	}
+
+private:
+	std::variant<Key, KeyReference> impl;
+};
 
 struct Node;
 struct NodeConcreteBase;
@@ -225,7 +261,7 @@ protected:
 
 	mutable NodeConcreteMemberCache member_cache = {};
 
-	NodeConcreteMemberCache::reference getMember(KeyReference key) const;
+	NodeConcreteMemberCache::reference getMember(ConvertableFromIntKeyReference key) const;
 	template<typename TT = T> auto initMemberCacheForStaticMembers() const -> std::enable_if_t<kIsStaticMemberType<TT>>;
 	template<typename Self>
 	MemberIteratorPair<std::is_const_v<Self>> friend nodeConcreteGetIterators(Self& self);
@@ -386,30 +422,10 @@ public:
 
 	template<typename T> explicit operator const T&() const { return get<T>(); }
 
-	const Node& operator[](KeyReference key) const { auto l = [&](auto& obj_or_dict) -> const Node& { return obj_or_dict[key]; }; return visitImpl(*this, l, l); }
-	      Node& operator[](KeyReference key)       { auto l = [&](auto& obj_or_dict) ->       Node& { return obj_or_dict[key]; }; return visitImpl(*this, l, l); }
-	const Node& at(KeyReference key) const { return (*this)[key]; }
-	      Node& at(KeyReference key)       { return (*this)[key]; }
-
-	const Node& operator[](int       i) const { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
-	      Node& operator[](int       i)       { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
-	const Node& operator[](long      i) const { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
-	      Node& operator[](long      i)       { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
-	const Node& operator[](long long i) const { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
-	      Node& operator[](long long i)       { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
-
-	// questionable, but convenient
-	const Node& operator[](unsigned int       i) const { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
-	      Node& operator[](unsigned int       i)       { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
-	const Node& operator[](unsigned long      i) const { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
-	      Node& operator[](unsigned long      i)       { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
-	const Node& operator[](unsigned long long i) const { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
-	      Node& operator[](unsigned long long i)       { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
-
-	// ban implicit conversions from floating point types
-	const Node& operator[](float  d) const = delete;
-	const Node& operator[](double d) const = delete;
-
+	const Node& operator[](ConvertableFromIntKeyReference key) const { auto l = [&](auto& obj_or_dict) -> const Node& { return obj_or_dict[key]; }; return visitImpl(*this, l, l); }
+	      Node& operator[](ConvertableFromIntKeyReference key)       { auto l = [&](auto& obj_or_dict) ->       Node& { return obj_or_dict[key]; }; return visitImpl(*this, l, l); }
+	const Node& at(ConvertableFromIntKeyReference key) const { return (*this)[key]; }
+	      Node& at(ConvertableFromIntKeyReference key)       { return (*this)[key]; }
 
 	Node toScalars() const { auto l = [](auto& obj_or_dict) { return obj_or_dict.toScalars(); }; return visitImpl(*this, l, l); }
 
@@ -448,7 +464,7 @@ template<typename Obj> auto rrvEnd(Obj& t) -> decltype(t.rrvEnd()) { return t.rr
 struct SizeTypeIter {
 	std::size_t i;
 	SizeTypeIter& operator++() { ++i; return *this; }
-	auto operator*() { return std::to_string(i); }
+	auto operator*() { return i; }
 	std::strong_ordering operator<=>(const SizeTypeIter&) const = default;
 };
 template<typename T> std::variant<T*, std::monostate> rrvMember(std::vector<T>& obj, long long key) {
@@ -568,7 +584,7 @@ private:
 };
 
 template<typename T>
-NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(KeyReference key) const {
+NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(ConvertableFromIntKeyReference key) const {
 	static_assert(kIsScalarType<T> + kIsDynamicMemberType<T> + kIsStaticMemberType<T> == 1, "Internal error");
 	if constexpr (kIsDynamicMemberType<T>) {
 		return std::visit(
@@ -577,10 +593,10 @@ NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(KeyReference key) 
 					throw std::logic_error("Member not found");
 				} else {
 					using Member = std::remove_pointer_t<decltype(member)>;
-					auto [lookup, is_new] = this->member_cache.emplace(key, NodeConcreteMemberInfo{});
+					auto [lookup, is_new] = this->member_cache.emplace(std::move(key), NodeConcreteMemberInfo{});
 					auto& member_info = lookup->second;
 					if (is_new) {
-						member_info = NodeConcreteMemberInfo(new Node(Node::ObjectImpl(new NodeIndirectAcess<T, Member>(&getObj(), key))));
+						member_info = NodeConcreteMemberInfo(new Node(Node::ObjectImpl(new NodeIndirectAcess<T, Member>(&getObj(), lookup->first))));
 					}
 					return *lookup;
 				}
@@ -589,7 +605,7 @@ NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(KeyReference key) 
 		);
 	} else if constexpr (kIsStaticMemberType<T>) {
 		initMemberCacheForStaticMembers();
-		auto lookup = member_cache.find(key);
+		auto lookup = member_cache.find(KeyReference(key));
 		if (lookup == member_cache.end()) {
 			throw std::logic_error("Member not found");
 		}
@@ -606,7 +622,7 @@ auto NodeConcrete<T>::initMemberCacheForStaticMembers() const -> std::enable_if_
 	const auto add_elem = [this](auto&& elem) {
 		using MemberType = std::remove_reference_t<decltype(*elem.second)>;
 		static_assert(not std::is_const_v<MemberType>, "rrvMembers should not return pointers to const. Perhaps 'this' is const in the implementation of rrvMembers.");
-		this->member_cache.emplace(Key(elem.first), NodeConcreteMemberInfo(new Node(Node::ObjectImpl(new NodeReference<MemberType>(elem.second)))));
+		this->member_cache.emplace(ConvertableFromIntKeyReference(elem.first), NodeConcreteMemberInfo(new Node(Node::ObjectImpl(new NodeReference<MemberType>(elem.second)))));
 	};
 
 	const auto add_all = [&add_elem](auto&&... elems) {
@@ -645,7 +661,7 @@ struct NodeConcreteDynamicMemberIter : MemberIteratorImplBase<const_iter> {
 	NodeConcreteDynamicMemberIter& operator=(const NodeConcreteDynamicMemberIter&) = default;
 	NodeConcreteDynamicMemberIter& operator=(NodeConcreteDynamicMemberIter&&) = default;
 
-	value_type* deref() override { return &self->getMember(KeyReference(derefImpl<Impl>())); }
+	value_type* deref() override { return &self->getMember(derefImpl<Impl>()); }
 	void advance() override { incrementImpl<Impl>(); }
 	OwningPtr clone() const& override { return OwningPtr{new NodeConcreteDynamicMemberIter(*this)}; }
 	bool equalTo(const BaseClass& rhs) const override { auto* downcasted = dynamic_cast<const NodeConcreteDynamicMemberIter*>(&rhs); return downcasted && equalImpl(downcasted->impl); }
