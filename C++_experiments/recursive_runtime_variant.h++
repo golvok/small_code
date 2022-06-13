@@ -34,10 +34,41 @@ struct KeyReference {
 	KeyReference& operator=(const KeyReference&) = default;
 	KeyReference& operator=(KeyReference&&) = default;
 
-	std::strong_ordering operator<=>(const KeyReference&) const = default;
+	bool operator==(const KeyReference& rhs) const {
+		const auto& lhs = *this;
+		auto rhs_int = rhs.asInt();
+		auto lhs_int = lhs.asInt();
+		if (rhs_int && lhs_int) return *rhs_int == *lhs_int;
+		return rhs.impl == lhs.impl;
+	}
+	bool operator!=(const KeyReference& rhs) const { return not (rhs == *this); }
+
+	bool operator<(const KeyReference& rhs) const {
+		const auto& lhs = *this;
+		auto rhs_int = rhs.asInt();
+		auto lhs_int = lhs.asInt();
+		if (rhs_int && lhs_int) return *rhs_int < *lhs_int;
+		return rhs.impl < lhs.impl;
+	}
 
 	template<typename F> decltype(auto) visit(F f)       { return std::visit(std::forward<F>(f), impl); }
 	template<typename F> decltype(auto) visit(F f) const { return std::visit(std::forward<F>(f), impl); }
+
+	std::optional<long long> asInt() const {
+		struct V {
+			std::optional<long long> operator()(long long i) { return i; }
+			std::optional<long long> operator()(std::string_view s) {
+				long long i;
+				auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), i);
+				if (ec == std::errc() && ptr == s.end()) {
+					return i;
+				} else {
+					return std::nullopt;
+				}
+			}
+		};
+		return std::visit(V{}, impl);
+	}
 
 	friend std::string to_string(KeyReference key) {
 		return key.visit([](auto& k) {
@@ -90,16 +121,13 @@ struct Key {
 	Key& operator=(const Key&) = default;
 	Key& operator=(Key&&) = default;
 
-	std::strong_ordering operator<=>(const Key&) const = default;
-
 	template<typename F> decltype(auto) visit(F f)       { return std::visit(std::forward<F>(f), impl); }
 	template<typename F> decltype(auto) visit(F f) const { return std::visit(std::forward<F>(f), impl); }
 
 	operator KeyReference() const { return visit([](auto& e) { return KeyReference(e); }); }
 	bool operator< (const KeyReference& rhs) const { return (bool)(KeyReference(*this)  < rhs); }
 	bool operator==(const KeyReference& rhs) const { return (bool)(KeyReference(*this) == rhs); }
-	friend bool operator<(const KeyReference& lhs, const Key& rhs) { return (bool)(lhs < KeyReference(rhs)); }
-	friend bool operator==(const KeyReference& lhs, const Key& rhs) { return (bool)(lhs < KeyReference(rhs)); }
+	bool operator!=(const KeyReference& rhs) const { return (bool)(KeyReference(*this) != rhs); }
 
 	friend std::ostream& operator<<(std::ostream& os, const Key& key) { return os << KeyReference(key); }
 
@@ -553,31 +581,13 @@ decltype(auto) callWithString(F&& f, const KeyReference& key) {
 	return key.visit(V{f});
 }
 
-template <typename F>
-decltype(auto) callWithInt(F&& f, const KeyReference& key) {
-	struct V {
-		F& f;
-		decltype(auto) operator()(long long i) {
-			return std::forward<F>(f)(i);
-		}
-		decltype(auto) operator()(std::string_view s) {
-			long long i;
-			auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), i);
-			if (ec == std::errc() && ptr == s.end()) {
-				return (*this)(i);
-			} else {
-				throw std::logic_error("Could not convert " + std::string(s) + " to an integer, and this type does not accept strings for rrvMember");
-			}
-		}
-	};
-	return key.visit(V{f});
-}
-
 template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyReference& key) -> decltype(rrvMember(obj, std::declval<std::string_view>())) {
 	return callWithString([&](std::string_view sv) { return rrvMember(obj, sv); }, key);
 }
 template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyReference& key) -> decltype(rrvMember(obj, std::declval<long long>())) {
-	return callWithInt([&](long long i) { return rrvMember(obj, i); }, key);
+	auto maybe_int = key.asInt();
+	if (not maybe_int) throw std::logic_error("Could not convert " + to_string(key) + " to an integer, and this type does not accept strings for rrvMember");
+	return rrvMember(obj, *maybe_int);
 }
 
 }
@@ -679,16 +689,6 @@ NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(KeyReference key) 
 	} else if constexpr (kIsStaticMemberType<T>) {
 		initMemberCacheForStaticMembers();
 		auto lookup = member_cache.find(key);
-		// change operator< instead? cache the conversion?
-		auto set_lookup = [&lookup, this](auto e) mutable {
-			lookup = member_cache.find(KeyReference(e));
-		};
-		if (lookup == member_cache.end()) {
-			callWithString(set_lookup, key);
-		}
-		if (lookup == member_cache.end()) {
-			callWithInt(set_lookup, key);
-		}
 		if (lookup == member_cache.end()) {
 			throw std::logic_error("Member not found");
 		}
