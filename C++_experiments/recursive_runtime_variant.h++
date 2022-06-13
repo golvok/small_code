@@ -12,131 +12,24 @@
 
 namespace rrv {
 
-struct KeyReference {
-	KeyReference(std::string_view s) : impl(s) {}
-	KeyReference(const char*      s) : impl(s) {}
-
-	KeyReference(int       i) : impl(i) {}
-	KeyReference(long      i) : impl(i) {}
-	KeyReference(long long i) : impl(i) {}
-
-	// questionable, but convenient
-	KeyReference(unsigned int       i) : KeyReference(static_cast<unsigned long>(i)) {}
-	KeyReference(unsigned long      i) : KeyReference(static_cast<unsigned long long>(i)) {}
-	KeyReference(unsigned long long i) : KeyReference(static_cast<long long>(i)) { if (std::numeric_limits<long long>::max() < i) { throw std::runtime_error("Signed cast would loose data"); } }
-
-	// ban implicit conversions from floating point types
-	KeyReference(float  d) = delete;
-	KeyReference(double d) = delete;
-
-	KeyReference(const KeyReference&) = default;
-	KeyReference(KeyReference&&) = default;
-	KeyReference& operator=(const KeyReference&) = default;
-	KeyReference& operator=(KeyReference&&) = default;
-
-	bool operator==(const KeyReference& rhs) const {
-		const auto& lhs = *this;
-		auto rhs_int = rhs.asInt();
-		auto lhs_int = lhs.asInt();
-		if (rhs_int && lhs_int) return *rhs_int == *lhs_int;
-		return rhs.impl == lhs.impl;
-	}
-	bool operator!=(const KeyReference& rhs) const { return not (rhs == *this); }
-
-	bool operator<(const KeyReference& rhs) const {
-		const auto& lhs = *this;
-		auto rhs_int = rhs.asInt();
-		auto lhs_int = lhs.asInt();
-		if (rhs_int && lhs_int) return *rhs_int < *lhs_int;
-		return rhs.impl < lhs.impl;
-	}
-
-	template<typename F> decltype(auto) visit(F f)       { return std::visit(std::forward<F>(f), impl); }
-	template<typename F> decltype(auto) visit(F f) const { return std::visit(std::forward<F>(f), impl); }
-
-	std::optional<long long> asInt() const {
-		struct V {
-			std::optional<long long> operator()(long long i) { return i; }
-			std::optional<long long> operator()(std::string_view s) {
-				long long i;
-				auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), i);
-				if (ec == std::errc() && ptr == s.end()) {
-					return i;
-				} else {
-					return std::nullopt;
-				}
-			}
-		};
-		return std::visit(V{}, impl);
-	}
-
-	friend std::string to_string(KeyReference key) {
-		return key.visit([](auto& k) {
-			if constexpr(std::is_same_v<decltype(k), std::string_view&>) {
-				return std::string(k);
-			} else {
-				return std::to_string(k);
-			}
-		});
-	}
-
-	friend std::ostream& operator<<(std::ostream& os, const KeyReference& key) {
-		key.visit([&](auto& k) { os << k; });
-		return os;
-	}
-
-private:
-	std::variant<std::string_view, long long> impl;
-};
-
-struct Key {
-	Key(std::string      s) : impl(std::move(s)) {}
-	Key(std::string_view s) : impl(std::string(s)) {}
-	Key(const char*      s) : impl(std::string(s)) {}
-
-	Key(int       i) : impl(i) {}
-	Key(long      i) : impl(i) {}
-	Key(long long i) : impl(i) {}
-
-	// questionable, but convenient
-	Key(unsigned int       i) : Key(static_cast<unsigned long>(i)) {}
-	Key(unsigned long      i) : Key(static_cast<unsigned long long>(i)) {}
-	Key(unsigned long long i) : Key(static_cast<long long>(i)) { if (std::numeric_limits<long long>::max() < i) { throw std::runtime_error("Signed cast would loose data"); } }
-
-	// ban implicit conversions from floating point types
-	Key(float  d) = delete;
-	Key(double d) = delete;
-
-	explicit Key(const KeyReference& src) : impl(0) {
-		struct V {
-			Key* self;
-			void operator()(long long i) { self->impl = i; }
-			void operator()(std::string_view s) { self->impl = std::string(s); }
-		};
-		src.visit(V{this});
-	}
-
-	Key(const Key&) = default;
-	Key(Key&&) = default;
-	Key& operator=(const Key&) = default;
-	Key& operator=(Key&&) = default;
-
-	template<typename F> decltype(auto) visit(F f)       { return std::visit(std::forward<F>(f), impl); }
-	template<typename F> decltype(auto) visit(F f) const { return std::visit(std::forward<F>(f), impl); }
-
-	operator KeyReference() const { return visit([](auto& e) { return KeyReference(e); }); }
-	bool operator< (const KeyReference& rhs) const { return (bool)(KeyReference(*this)  < rhs); }
-	bool operator==(const KeyReference& rhs) const { return (bool)(KeyReference(*this) == rhs); }
-	bool operator!=(const KeyReference& rhs) const { return (bool)(KeyReference(*this) != rhs); }
-
-	friend std::ostream& operator<<(std::ostream& os, const Key& key) { return os << KeyReference(key); }
-
-private:
-	std::variant<std::string, long long> impl;
-};
-
 namespace detail {}
 using namespace detail;
+
+using Key = std::string;
+using KeyReference = std::string_view;
+
+template <typename F>
+decltype(auto) callWithString(F&& f, long long i) {
+	// -2**63 = -9223372036854775808
+	static_assert(std::numeric_limits<long long>::digits10 <= 19);
+	std::array<char, 19 + 1> s; // +1 for the sign
+	auto [ptr, ec] = std::to_chars(s.data(), s.data() + s.size(), i);
+	if (ec == std::errc()) {
+		return std::forward<F>(f)({s.data(), ptr});
+	} else {
+		throw std::logic_error("failed to convert integer to string");
+	}
+}
 
 struct Node;
 struct NodeConcreteBase;
@@ -224,7 +117,7 @@ struct Dict  {
 	Node toScalars() const;
 	const Node& operator[](KeyReference key) const {
 		auto lookup = impl.find(key);
-		if (lookup == impl.end()) throw std::logic_error("Cannot find member of Dict: " + to_string(key));
+		if (lookup == impl.end()) throw std::logic_error("Cannot find member of Dict: " + Key(key));
 		return *lookup->second;
 	}
 	Node& operator[](KeyReference key);
@@ -498,6 +391,26 @@ public:
 	const Node& at(KeyReference key) const { return (*this)[key]; }
 	      Node& at(KeyReference key)       { return (*this)[key]; }
 
+	const Node& operator[](int       i) const { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
+	      Node& operator[](int       i)       { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
+	const Node& operator[](long      i) const { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
+	      Node& operator[](long      i)       { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
+	const Node& operator[](long long i) const { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
+	      Node& operator[](long long i)       { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
+
+	// questionable, but convenient
+	const Node& operator[](unsigned int       i) const { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
+	      Node& operator[](unsigned int       i)       { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
+	const Node& operator[](unsigned long      i) const { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
+	      Node& operator[](unsigned long      i)       { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
+	const Node& operator[](unsigned long long i) const { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
+	      Node& operator[](unsigned long long i)       { return callWithString([this](KeyReference key) -> decltype(auto) { return (*this)[key]; }, i); }
+
+	// ban implicit conversions from floating point types
+	const Node& operator[](float  d) const = delete;
+	const Node& operator[](double d) const = delete;
+
+
 	Node toScalars() const { auto l = [](auto& obj_or_dict) { return obj_or_dict.toScalars(); }; return visitImpl(*this, l, l); }
 
 	MemberIterator<false> begin()       { auto l = [](auto& obj_or_dict) { return obj_or_dict.begin(); }; return visitImpl(*this, l, l); }
@@ -535,7 +448,7 @@ template<typename Obj> auto rrvEnd(Obj& t) -> decltype(t.rrvEnd()) { return t.rr
 struct SizeTypeIter {
 	std::size_t i;
 	SizeTypeIter& operator++() { ++i; return *this; }
-	auto operator*() { return i; }
+	auto operator*() { return std::to_string(i); }
 	std::strong_ordering operator<=>(const SizeTypeIter&) const = default;
 };
 template<typename T> std::variant<T*, std::monostate> rrvMember(std::vector<T>& obj, long long key) {
@@ -559,34 +472,22 @@ template<typename Obj> constexpr static bool kIsStaticMemberType<Obj, decltype(r
 // Internal dispatch
 namespace detail {
 
-template <typename F>
-decltype(auto) callWithString(F&& f, const KeyReference& key) {
-	struct V {
-		F& f;
-		decltype(auto) operator()(std::string_view s) {
-			return std::forward<F>(f)(s);
-		}
-		decltype(auto) operator()(long long i) {
-			// -2**63 = -9223372036854775808
-			static_assert(std::numeric_limits<long long>::digits10 <= 19);
-			std::array<char, 19 + 1> s; // +1 for the sign
-			auto [ptr, ec] = std::to_chars(s.data(), s.data() + s.size(), i);
-			if (ec == std::errc()) {
-				return (*this)({s.data(), ptr});
-			} else {
-				throw std::logic_error("failed to convert integer to string");
-			}
-		}
-	};
-	return key.visit(V{f});
-}
 
 template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyReference& key) -> decltype(rrvMember(obj, std::declval<std::string_view>())) {
-	return callWithString([&](std::string_view sv) { return rrvMember(obj, sv); }, key);
+	return rrvMember(obj, key);
+}
+std::optional<long long> asInt(std::string_view s) {
+	long long i;
+	auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), i);
+	if (ec == std::errc() && ptr == s.end()) {
+		return i;
+	} else {
+		return std::nullopt;
+	}
 }
 template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyReference& key) -> decltype(rrvMember(obj, std::declval<long long>())) {
-	auto maybe_int = key.asInt();
-	if (not maybe_int) throw std::logic_error("Could not convert " + to_string(key) + " to an integer, and this type does not accept strings for rrvMember");
+	auto maybe_int = asInt(key);
+	if (not maybe_int) throw std::logic_error("Could not convert " + Key(key) + " to an integer, and this type does not accept strings for rrvMember");
 	return rrvMember(obj, *maybe_int);
 }
 
@@ -634,7 +535,7 @@ Node Dict::toScalars() const { return Node(*this); }
 Node& Dict::operator[](KeyReference key) {
 	auto lookup = impl.lower_bound(key);
 	if (lookup == impl.end() or lookup->first != key) {
-		lookup = impl.emplace_hint(lookup, to_string(key), DictBase::mapped_type{new Node()});
+		lookup = impl.emplace_hint(lookup, Key(key), DictBase::mapped_type{new Node()});
 	}
 	return *lookup->second;
 }

@@ -273,7 +273,6 @@ TEST_CASE("basic use") {
 		CHECK(d[(unsigned long long)1].get<int>() == 7);
 		CHECK(d[(std::size_t)       1].get<int>() == 7);
 		CHECK(d[(std::ptrdiff_t)    1].get<int>() == 7);
-		CHECK_THROWS_WITH(d[(std::size_t)-1].get<int>(), "Signed cast would loose data");
 	}
 	SECTION("access integer key with string key") {
 		Node d;
@@ -437,12 +436,12 @@ TEST_CASE("iteration") {
 		std::map<rrv::Key, int> saw_it;
 		for (const auto& [k, v] : n) {
 			++saw_it[k];
-			CHECK((k == 0 || k == 1));
-			if (k == 0) CHECK(v->get<int>() == 1);
-			if (k == 1) CHECK(v->get<int>() == 2);
+			CHECK((k == "0" || k == "1"));
+			if (k == "0") CHECK(v->get<int>() == 1);
+			if (k == "1") CHECK(v->get<int>() == 2);
 		}
-		CHECK(saw_it.at(rrv::Key(0)) == 1);
-		CHECK(saw_it.at(rrv::Key(1)) == 1);
+		CHECK(saw_it.at("0") == 1);
+		CHECK(saw_it.at("1") == 1);
 		CHECK(saw_it.size() == 2);
 	}
 	SECTION("custom dynamic type - via member") {
@@ -454,8 +453,8 @@ TEST_CASE("iteration") {
 			if (k == "i") CHECK(v->get<int>() == 11);
 			if (k == "j") CHECK(v->get<int>() == 22);
 		}
-		CHECK(saw_it.at(rrv::Key("i")) == 1);;
-		CHECK(saw_it.at(rrv::Key("j")) == 1);;
+		CHECK(saw_it.at("i") == 1);;
+		CHECK(saw_it.at("j") == 1);;
 		CHECK(saw_it.size() == 2);
 	}
 	SECTION("custom dynamic type - via friend") {
@@ -467,8 +466,8 @@ TEST_CASE("iteration") {
 			if (k == "i") CHECK(v->get<int>() == 11);
 			if (k == "j") CHECK(v->get<int>() == 22);
 		}
-		CHECK(saw_it.at(rrv::Key("i")) == 1);;
-		CHECK(saw_it.at(rrv::Key("j")) == 1);;
+		CHECK(saw_it.at("i") == 1);;
+		CHECK(saw_it.at("j") == 1);;
 		CHECK(saw_it.size() == 2);
 	}
 }
@@ -477,8 +476,8 @@ struct StructWithStaticMembersViaMemberIntAccess {
 	int i, j;
 	auto rrvMembers() {
 		return std::make_tuple(
-			std::make_pair(0, &i),
-			std::make_pair(1, &j)
+			std::make_pair("0", &i),
+			std::make_pair("1", &j)
 		);
 	}
 };
@@ -488,7 +487,7 @@ struct StructWithDynamicMembersViaMemberIntAccess {
 	std::variant<int*> rrvMember(long long key) {
 		if (key == 0) return &i; else return &j;
 	}
-	constexpr static auto names = std::array{0, 1};
+	constexpr static auto names = std::array{"0", "1"};
 	auto rrvBegin() { return names.begin(); }
 	auto rrvEnd() { return names.end(); }
 };
@@ -497,8 +496,8 @@ struct StructWithStaticMembersViaFriendIntAccess {
 	int i, j;
 	friend auto rrvMembers(StructWithStaticMembersViaFriendIntAccess& s) {
 		return std::make_tuple(
-			std::make_pair(0, &s.i),
-			std::make_pair(1, &s.j)
+			std::make_pair("0", &s.i),
+			std::make_pair("1", &s.j)
 		);
 	}
 };
@@ -508,7 +507,7 @@ struct StructWithDynamicMembersViaFriendIntAccess {
 	friend std::variant<int*> rrvMember(StructWithDynamicMembersViaFriendIntAccess& s, long long key) {
 		if (key == 0) return &s.i; else return &s.j;
 	}
-	constexpr static auto names = std::array{0, 1};
+	constexpr static auto names = std::array{"0", "1"};
 	friend auto rrvBegin(StructWithDynamicMembersViaFriendIntAccess&) { return names.begin(); }
 	friend auto rrvEnd(StructWithDynamicMembersViaFriendIntAccess&) { return names.end(); }
 };
@@ -554,34 +553,24 @@ TEST_CASE("member access") {
 	}
 	SECTION("custom dynamic type - via member") {
 		Node n = StructWithDynamicMembersViaMemberIntAccess{11,22};
-		CHECK(n.at(0).get<int>() == 11);
 		CHECK(n.at("0").get<int>() == 11);
-		CHECK(n.at(1).get<int>() == 22);
 		CHECK(n.at("1").get<int>() == 22);
-		CHECK(n.at(7).get<int>() == 22);
 		CHECK(n.at("7").get<int>() == 22);
 	}
 	SECTION("custom dynamic type - via member") {
 		Node n = StructWithStaticMembersViaMemberIntAccess{11,22};
-		CHECK(n.at(0).get<int>() == 11);
 		CHECK(n.at("0").get<int>() == 11);
-		CHECK(n.at(1).get<int>() == 22);
 		CHECK(n.at("1").get<int>() == 22);
 	}
 	SECTION("custom dynamic type - via friend") {
 		Node n = StructWithDynamicMembersViaFriendIntAccess{11,22};
-		CHECK(n.at(0).get<int>() == 11);
 		CHECK(n.at("0").get<int>() == 11);
-		CHECK(n.at(1).get<int>() == 22);
 		CHECK(n.at("1").get<int>() == 22);
-		CHECK(n.at(7).get<int>() == 22);
 		CHECK(n.at("7").get<int>() == 22);
 	}
 	SECTION("custom dynamic type - via friend") {
 		Node n = StructWithStaticMembersViaFriendIntAccess{11,22};
-		CHECK(n.at(0).get<int>() == 11);
 		CHECK(n.at("0").get<int>() == 11);
-		CHECK(n.at(1).get<int>() == 22);
 		CHECK(n.at("1").get<int>() == 22);
 	}
 	SECTION("custom dynamic type - via friend") {
