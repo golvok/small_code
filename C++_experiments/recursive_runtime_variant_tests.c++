@@ -33,6 +33,7 @@
 	Next:
 		- avoid member lookup when iterating by passing returned MemberIterator to rrvMember?
 			- types probably shouldn't store actual iterators to avoid invalidation? or say screw it, and just use existing rules for type(s)
+			- forcing the conversion ensures that operator* is consistent with the normal rrvMember
 		- non-string_view arguments for operator[]?
 			- maybe take a variant of a couple stdlib types - long long, string_view
 			- YAML does it by taking a Node as as argument... could do this too
@@ -441,8 +442,8 @@ TEST_CASE("iteration") {
 			if (k == "0") CHECK(v->get<int>() == 1);
 			if (k == "1") CHECK(v->get<int>() == 2);
 		}
-		CHECK(saw_it.at("0") == 1);
-		CHECK(saw_it.at("1") == 1);
+		CHECK(saw_it.at(rrv::Key::from("0")) == 1);
+		CHECK(saw_it.at(rrv::Key::from("1")) == 1);
 		CHECK(saw_it.size() == 2);
 	}
 	SECTION("custom dynamic type - via member") {
@@ -454,8 +455,8 @@ TEST_CASE("iteration") {
 			if (k == "i") CHECK(v->get<int>() == 11);
 			if (k == "j") CHECK(v->get<int>() == 22);
 		}
-		CHECK(saw_it.at("i") == 1);;
-		CHECK(saw_it.at("j") == 1);;
+		CHECK(saw_it.at(rrv::Key::from("i")) == 1);;
+		CHECK(saw_it.at(rrv::Key::from("j")) == 1);;
 		CHECK(saw_it.size() == 2);
 	}
 	SECTION("custom dynamic type - via friend") {
@@ -467,8 +468,8 @@ TEST_CASE("iteration") {
 			if (k == "i") CHECK(v->get<int>() == 11);
 			if (k == "j") CHECK(v->get<int>() == 22);
 		}
-		CHECK(saw_it.at("i") == 1);;
-		CHECK(saw_it.at("j") == 1);;
+		CHECK(saw_it.at(rrv::Key::from("i")) == 1);;
+		CHECK(saw_it.at(rrv::Key::from("j")) == 1);;
 		CHECK(saw_it.size() == 2);
 	}
 }
@@ -1144,6 +1145,12 @@ TEST_CASE("basic dict operations") {
 		CHECK(d.size() == 2);
 		CHECK(d["k"].get<int>() == 1);
 		CHECK(d["l"].get<int>() == 2);
+	}
+	SECTION("assign elements - int key") {
+		d[2] = 2;
+		CHECK(d.size() == 2);
+		CHECK(d["k"].get<int>() == 1);
+		CHECK(d[2].get<int>() == 2);
 	}
 	SECTION("copy-construct") {
 		Dict cpy = d;

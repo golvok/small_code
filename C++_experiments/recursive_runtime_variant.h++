@@ -15,9 +15,6 @@ namespace rrv {
 namespace detail {}
 using namespace detail;
 
-using Key = std::string;
-using KeyReference = std::string_view;
-
 template <typename F, typename TInt>
 decltype(auto) callWithString(F&& f, TInt i) {
 	// -2**63 = -9223372036854775808
@@ -30,14 +27,63 @@ decltype(auto) callWithString(F&& f, TInt i) {
 	}
 }
 
-struct ConvertableFromIntKeyReference {
-	ConvertableFromIntKeyReference(Key          k) : impl(std::move(k)) {}
-	ConvertableFromIntKeyReference(KeyReference k) : impl(k) {}
-	ConvertableFromIntKeyReference(const char*  s) : impl(KeyReference(s)) {}
+std::string asString(long long i) {
+	return callWithString([](std::string_view s) { return std::string(s); }, i);
+}
 
-	ConvertableFromIntKeyReference(int       i) : impl() { callWithString([this](Key k) { impl = k; }, i); }
-	ConvertableFromIntKeyReference(long      i) : impl() { callWithString([this](Key k) { impl = k; }, i); }
-	ConvertableFromIntKeyReference(long long i) : impl() { callWithString([this](Key k) { impl = k; }, i); }
+std::optional<long long> asInt(std::string_view s) {
+	long long i;
+	auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), i);
+	if (ec == std::errc() && ptr == s.end()) {
+		return i;
+	} else {
+		return std::nullopt;
+	}
+}
+
+struct KeyReference;
+struct Key {
+	static Key from(long long i) { return Key{.i=i, .s=asString(i)}; }
+	static Key from(std::string s) { return Key{.i=asInt(s), .s=std::move(s)}; }
+	static Key from(std::string_view s) { return Key{.i=asInt(s), .s=std::string(s)}; }
+	static Key from(const char* s) { return from(std::string_view(s)); }
+
+	std::optional<long long> i;
+	std::string s;
+
+	explicit operator KeyReference() const&;
+	bool operator==(std::string_view rhs) const { return s == rhs; }
+	bool operator<(const Key& rhs) const { return s < rhs.s; }
+	bool operator<(const KeyReference& rhs) const;
+};
+
+struct KeyReference {
+	static KeyReference from(long long i) = delete;
+	static KeyReference from(std::string_view s) { return KeyReference{.i=asInt(s), .s=s}; }
+	static KeyReference from(const char* s) { return from(std::string_view(s)); }
+
+	std::optional<long long> i;
+	std::string_view s;
+
+	explicit operator Key() const { return Key{.i=i, .s=std::string(s)}; }
+	bool operator<(const Key& rhs) const { return s < rhs.s; }
+	// bool operator==(std::string_view rhs) const { return s == rhs; }
+};
+
+Key::operator KeyReference() const& { return KeyReference{.i=i, .s=s}; }
+bool Key::operator<(const KeyReference& rhs) const { return s < rhs.s; }
+
+
+struct ConvertableFromIntKeyReference {
+	ConvertableFromIntKeyReference(Key              k) : impl(std::move(k)) {}
+	ConvertableFromIntKeyReference(KeyReference     k) : impl(k) {}
+	ConvertableFromIntKeyReference(std::string      s) : impl(Key::from(std::move(s))) {}
+	ConvertableFromIntKeyReference(std::string_view s) : impl(KeyReference::from(s)) {}
+	ConvertableFromIntKeyReference(const char*      s) : impl(KeyReference::from(s)) {}
+
+	ConvertableFromIntKeyReference(int       i) : ConvertableFromIntKeyReference(static_cast<long long>(i)) {}
+	ConvertableFromIntKeyReference(long      i) : ConvertableFromIntKeyReference(static_cast<long long>(i)) {}
+	ConvertableFromIntKeyReference(long long i) : impl(Key::from(i)) {}
 
 	// questionable, but convenient
 	ConvertableFromIntKeyReference(unsigned int       i) : ConvertableFromIntKeyReference(static_cast<unsigned long>(i)) {}
@@ -55,7 +101,7 @@ struct ConvertableFromIntKeyReference {
 
 	operator KeyReference() const {
 		if (auto kr = std::get_if<KeyReference>(&impl)) { return *kr; }
-		else return std::get<Key>(impl);
+		else return KeyReference(std::get<Key>(impl));
 	}
 
 	operator Key() && {
@@ -63,6 +109,13 @@ struct ConvertableFromIntKeyReference {
 		else return std::move(std::get<Key>(impl));
 	}
 
+	operator Key() const& {
+		if (auto kr = std::get_if<KeyReference>(&impl)) { return Key(*kr); }
+		else return std::get<Key>(impl);
+	}
+
+	friend bool operator==(const KeyReference& lhs, const ConvertableFromIntKeyReference& rhs) { return lhs.s == KeyReference(rhs).s; }
+	friend bool operator<(const Key& lhs, const ConvertableFromIntKeyReference& rhs) { return lhs.s < KeyReference(rhs).s; }
 private:
 	std::variant<Key, KeyReference> impl;
 };
@@ -151,12 +204,12 @@ struct Dict  {
 	Dict& operator=(Dict&&) = default;
 
 	Node toScalars() const;
-	const Node& operator[](KeyReference key) const {
+	const Node& operator[](ConvertableFromIntKeyReference key) const {
 		auto lookup = impl.find(key);
-		if (lookup == impl.end()) throw std::logic_error("Cannot find member of Dict: " + Key(key));
+		if (lookup == impl.end()) throw std::logic_error("Cannot find member of Dict: " + Key(key).s);
 		return *lookup->second;
 	}
-	Node& operator[](KeyReference key);
+	Node& operator[](ConvertableFromIntKeyReference key);
 
 	bool empty() const { return impl.empty(); }
 	std::size_t size() const { return impl.size(); }
@@ -490,20 +543,11 @@ namespace detail {
 
 
 template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyReference& key) -> decltype(rrvMember(obj, std::declval<std::string_view>())) {
-	return rrvMember(obj, key);
-}
-std::optional<long long> asInt(std::string_view s) {
-	long long i;
-	auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), i);
-	if (ec == std::errc() && ptr == s.end()) {
-		return i;
-	} else {
-		return std::nullopt;
-	}
+	return rrvMember(obj, key.s);
 }
 template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyReference& key) -> decltype(rrvMember(obj, std::declval<long long>())) {
-	auto maybe_int = asInt(key);
-	if (not maybe_int) throw std::logic_error("Could not convert " + Key(key) + " to an integer, and this type does not accept strings for rrvMember");
+	auto maybe_int = key.i;
+	if (not maybe_int) throw std::logic_error("Could not convert " + std::string(key.s) + " to an integer, and this type does not accept strings for rrvMember");
 	return rrvMember(obj, *maybe_int);
 }
 
@@ -548,7 +592,7 @@ void Dict::synchronizeKeys(const DictBase& src) {
 
 Node Dict::toScalars() const { return Node(*this); }
 
-Node& Dict::operator[](KeyReference key) {
+Node& Dict::operator[](ConvertableFromIntKeyReference key) {
 	auto lookup = impl.lower_bound(key);
 	if (lookup == impl.end() or lookup->first != key) {
 		lookup = impl.emplace_hint(lookup, Key(key), DictBase::mapped_type{new Node()});
@@ -575,7 +619,7 @@ struct NodeIndirectAcess : NodeConcrete<T> {
 
 protected:
 	T& getObj() const override {
-		return *std::get<T*>(rrvMemberFromKey(*container, key));
+		return *std::get<T*>(rrvMemberFromKey(*container, KeyReference(key)));
 	}
 
 private:
@@ -596,12 +640,12 @@ NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(ConvertableFromInt
 					auto [lookup, is_new] = this->member_cache.emplace(std::move(key), NodeConcreteMemberInfo{});
 					auto& member_info = lookup->second;
 					if (is_new) {
-						member_info = NodeConcreteMemberInfo(new Node(Node::ObjectImpl(new NodeIndirectAcess<T, Member>(&getObj(), lookup->first))));
+						member_info = NodeConcreteMemberInfo(new Node(Node::ObjectImpl(new NodeIndirectAcess<T, Member>(&getObj(), KeyReference(lookup->first)))));
 					}
 					return *lookup;
 				}
 			},
-			rrvMemberFromKey(getObj(), key)
+			rrvMemberFromKey(getObj(), KeyReference(key))
 		);
 	} else if constexpr (kIsStaticMemberType<T>) {
 		initMemberCacheForStaticMembers();
