@@ -45,34 +45,30 @@ struct KeyReference;
 struct Key {
 	static Key from(long long i) { return Key{.i=i, .s=asString(i)}; }
 	static Key from(std::string s) { return Key{.i=asInt(s), .s=std::move(s)}; }
-	static Key from(std::string_view s) { return Key{.i=asInt(s), .s=std::string(s)}; }
-	static Key from(const char* s) { return from(std::string_view(s)); }
 
 	std::optional<long long> i;
 	std::string s;
 
-	explicit operator KeyReference() const&;
-	bool operator==(std::string_view rhs) const { return s == rhs; }
-	bool operator<(const Key& rhs) const { return s < rhs.s; }
-	bool operator<(const KeyReference& rhs) const;
+	operator KeyReference() const&;
 };
 
 struct KeyReference {
 	static KeyReference from(long long i) = delete;
 	static KeyReference from(std::string_view s) { return KeyReference{.i=asInt(s), .s=s}; }
-	static KeyReference from(const char* s) { return from(std::string_view(s)); }
 
 	std::optional<long long> i;
 	std::string_view s;
 
 	explicit operator Key() const { return Key{.i=i, .s=std::string(s)}; }
-	bool operator<(const Key& rhs) const { return s < rhs.s; }
-	// bool operator==(std::string_view rhs) const { return s == rhs; }
 };
 
 Key::operator KeyReference() const& { return KeyReference{.i=i, .s=s}; }
-bool Key::operator<(const KeyReference& rhs) const { return s < rhs.s; }
-
+bool operator==(const KeyReference& lhs, std::string_view rhs) { return lhs.s == rhs; };
+bool operator<(const KeyReference& lhs, std::string_view rhs) { return lhs.s < rhs; };
+bool operator==(std::string_view lhs, const KeyReference& rhs) { return lhs == rhs.s; };
+bool operator<(std::string_view lhs, const KeyReference& rhs) { return lhs < rhs.s; };
+bool operator==(const KeyReference& lhs, const KeyReference& rhs) { return lhs.s == rhs.s; };
+bool operator<(const KeyReference& lhs, const KeyReference& rhs) { return lhs.s < rhs.s; };
 
 struct ConvertableFromIntKeyReference {
 	ConvertableFromIntKeyReference(Key              k) : impl(std::move(k)) {}
@@ -99,9 +95,9 @@ struct ConvertableFromIntKeyReference {
 	ConvertableFromIntKeyReference& operator=(const ConvertableFromIntKeyReference&) = default;
 	ConvertableFromIntKeyReference& operator=(ConvertableFromIntKeyReference&&) = default;
 
-	operator KeyReference() const {
+	operator KeyReference() const& {
 		if (auto kr = std::get_if<KeyReference>(&impl)) { return *kr; }
-		else return KeyReference(std::get<Key>(impl));
+		else return std::get<Key>(impl);
 	}
 
 	operator Key() && {
@@ -109,13 +105,11 @@ struct ConvertableFromIntKeyReference {
 		else return std::move(std::get<Key>(impl));
 	}
 
-	operator Key() const& {
+	explicit operator Key() const& {
 		if (auto kr = std::get_if<KeyReference>(&impl)) { return Key(*kr); }
 		else return std::get<Key>(impl);
 	}
 
-	friend bool operator==(const KeyReference& lhs, const ConvertableFromIntKeyReference& rhs) { return lhs.s == KeyReference(rhs).s; }
-	friend bool operator<(const Key& lhs, const ConvertableFromIntKeyReference& rhs) { return lhs.s < KeyReference(rhs).s; }
 private:
 	std::variant<Key, KeyReference> impl;
 };
@@ -595,7 +589,7 @@ Node Dict::toScalars() const { return Node(*this); }
 Node& Dict::operator[](ConvertableFromIntKeyReference key) {
 	auto lookup = impl.lower_bound(key);
 	if (lookup == impl.end() or lookup->first != key) {
-		lookup = impl.emplace_hint(lookup, Key(key), DictBase::mapped_type{new Node()});
+		lookup = impl.emplace_hint(lookup, Key(std::move(key)), DictBase::mapped_type{new Node()});
 	}
 	return *lookup->second;
 }
@@ -619,7 +613,7 @@ struct NodeIndirectAcess : NodeConcrete<T> {
 
 protected:
 	T& getObj() const override {
-		return *std::get<T*>(rrvMemberFromKey(*container, KeyReference(key)));
+		return *std::get<T*>(rrvMemberFromKey(*container, key));
 	}
 
 private:
@@ -640,12 +634,12 @@ NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(ConvertableFromInt
 					auto [lookup, is_new] = this->member_cache.emplace(std::move(key), NodeConcreteMemberInfo{});
 					auto& member_info = lookup->second;
 					if (is_new) {
-						member_info = NodeConcreteMemberInfo(new Node(Node::ObjectImpl(new NodeIndirectAcess<T, Member>(&getObj(), KeyReference(lookup->first)))));
+						member_info = NodeConcreteMemberInfo(new Node(Node::ObjectImpl(new NodeIndirectAcess<T, Member>(&getObj(), lookup->first))));
 					}
 					return *lookup;
 				}
 			},
-			rrvMemberFromKey(getObj(), KeyReference(key))
+			rrvMemberFromKey(getObj(), key)
 		);
 	} else if constexpr (kIsStaticMemberType<T>) {
 		initMemberCacheForStaticMembers();
