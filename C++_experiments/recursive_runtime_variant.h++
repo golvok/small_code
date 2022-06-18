@@ -121,7 +121,7 @@ struct NodeConcreteBase;
 template<typename T> struct NodeConcrete;
 template<typename T> struct NodeReference;
 template<typename T> struct NodeValue;
-template <typename Container, typename T> struct NodeIndirectAcess;
+template<typename Container, typename T> struct NodeIndirectAcess;
 struct Dict;
 template<bool> struct MemberIterator;
 template<bool> struct MemberIteratorImplBase;
@@ -242,8 +242,8 @@ using NodeConcreteMemberInfo = std::unique_ptr<Node>;
 using NodeConcreteMemberCache = std::map<Key, NodeConcreteMemberInfo, std::less<>>;
 
 struct NodeConcreteBase {
-	virtual const Node& operator[](KeyReference key) const = 0;
-	virtual       Node& operator[](KeyReference key) = 0;
+	virtual const Node& operator[](InterfaceKey key) const = 0;
+	virtual       Node& operator[](InterfaceKey key) = 0;
 	virtual Node toScalars() const = 0;
 	MemberIterator<false> begin()       { return memberIteratorPair().first; }
 	MemberIterator<true>  begin() const { return memberIteratorPair().first; }
@@ -275,8 +275,8 @@ struct NodeConcrete : NodeConcreteBase {
 	NodeConcrete& operator=(const NodeConcrete&) = default;
 	NodeConcrete& operator=(NodeConcrete&&) = default;
 
-	const Node& operator[](KeyReference key) const override { return *getMember(key).second; }
-	      Node& operator[](KeyReference key)       override { return *getMember(key).second; }
+	const Node& operator[](InterfaceKey key) const override { return *getMember(key).second; }
+	      Node& operator[](InterfaceKey key)       override { return *getMember(key).second; }
 
 	Node toScalars() const override;
 
@@ -611,7 +611,7 @@ struct NodeIndirectAcess : NodeConcrete<T> {
 	NodeIndirectAcess(NodeIndirectAcess&&) = default;
 	NodeIndirectAcess& operator=(const NodeIndirectAcess&) = default;
 	NodeIndirectAcess& operator=(NodeIndirectAcess&&) = default;
-	explicit NodeIndirectAcess(Container* container_, KeyReference key_) : container(container_), key(key_) {}
+	explicit NodeIndirectAcess(Container* container_, Key key_) : container(container_), key(key_) {}
 
 protected:
 	T& getObj() const override {
