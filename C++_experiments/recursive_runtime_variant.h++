@@ -349,29 +349,33 @@ private:
 
 struct Node {
 public:
-	using DictImpl = Dict;
+	using DictImpl = std::unique_ptr<Dict>;
 	using ObjectImpl = std::unique_ptr<NodeConcreteBase>;
 	using Impl = std::variant<DictImpl, ObjectImpl>;
 
-	template<bool unwrap_obj_impl = true, typename Self, typename DictF, typename ObjF>
+	template<bool unwrap_impl = true, typename Self, typename DictF, typename ObjF>
 	friend decltype(auto) visitImpl(Self& self, DictF&& dict_f, ObjF&& obj_f) {
 		static_assert(std::variant_size_v<Impl> == 2);
 		auto* dict_impl = std::get_if<DictImpl>(&self.impl);
 		if (dict_impl) {
-			return std::forward<DictF>(dict_f)(*dict_impl);
-		} else {
-			auto& obj_impl = *std::get_if<ObjectImpl>(&self.impl);
-			if constexpr (unwrap_obj_impl) {
-				using ObjectPtr = std::conditional_t<std::is_const_v<Self>, const NodeConcreteBase*, NodeConcreteBase*>;
-				ObjectPtr obj = obj_impl.get();
-				return std::forward<ObjF>(obj_f)(*obj);
+			if constexpr (unwrap_impl) {
+				using DictPtr = std::conditional_t<std::is_const_v<Self>, const Dict*, Dict*>;
+				return std::forward<DictF>(dict_f)(*DictPtr(dict_impl->get()));
 			} else {
-				return std::forward<ObjF>(obj_f)(obj_impl);
+				return std::forward<DictF>(dict_f)(*dict_impl);
+			}
+		} else {
+			auto* obj_impl = std::get_if<ObjectImpl>(&self.impl);
+			if constexpr (unwrap_impl) {
+				using ObjectPtr = std::conditional_t<std::is_const_v<Self>, const NodeConcreteBase*, NodeConcreteBase*>;
+				return std::forward<ObjF>(obj_f)(*ObjectPtr(obj_impl->get()));
+			} else {
+				return std::forward<ObjF>(obj_f)(*obj_impl);
 			}
 		}
 	}
 
-	Node() : impl(DictImpl()) {}
+	Node() : impl(DictImpl(new Dict())) {}
 	Node(const Node&  src) : Node() { assign(src); }
 	Node(      Node&& src) : Node() { assign(std::move(src)); }
 	explicit Node(ObjectImpl ri) : impl(std::move(ri)) {}
@@ -400,12 +404,22 @@ public:
 		if constexpr (std::is_base_of_v<Node, PlainT>) {
 			if constexpr (is_copy_assignment) {
 				visitImpl(rhs,
-					[this](auto& rhs_dict) { impl = rhs_dict; }, // just copy the dict (may assign through)
+					[this](auto& rhs_dict) {
+						visitImpl(*this,
+							[&, this](auto& this_dict) { this_dict = rhs_dict; }, // move underlying dict into us
+							[&, this](auto& /*this_obj*/) { impl = DictImpl(new Dict(rhs_dict)); } // copy the dict
+						);
+					},
 					[this](auto& rhs_obj)  { *this = rhs_obj; } // recurse on held object
 				);
 			} else {
 				visitImpl<false>(rhs,
-					[this](auto& rhs_dict) { impl = std::move(rhs_dict); }, // just move the dict (may assign through)
+					[this](auto& rhs_dict) {
+						visitImpl(*this,
+							[&, this](auto& this_dict) { this_dict = std::move(*rhs_dict); }, // move underlying dict into us
+							[&, this](auto& /*this_obj*/) { impl = std::move(rhs_dict); } // move dict ptr into us
+						);
+					},
 					[this](auto& rhs_obj)  {
 						visitImpl<false>(*this,
 							[&, this](auto& /*this_dict*/) { impl = std::move(rhs_obj); }, // move rhs into us
@@ -419,7 +433,7 @@ public:
 				);
 			}
 		} else if constexpr (std::is_base_of_v<Dict, PlainT>) {
-			impl = fwd(rhs); // (variant assigns through if same alternative)
+			impl = DictImpl(new Dict(fwd(rhs))); // (variant assigns through if same alternative)
 		} else if constexpr (std::is_base_of_v<NodeConcreteBase, PlainT>) {
 			visitImpl<false>(*this,
 				[&, this](auto&& /*dict*/) { impl = fwd(rhs).clone(); }, // just overwrite the dict
