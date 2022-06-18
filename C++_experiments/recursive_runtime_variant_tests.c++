@@ -442,8 +442,8 @@ TEST_CASE("iteration") {
 			if (k == "0") CHECK(v->get<int>() == 1);
 			if (k == "1") CHECK(v->get<int>() == 2);
 		}
-		CHECK(saw_it.at(rrv::Key::from("0")) == 1);
-		CHECK(saw_it.at(rrv::Key::from("1")) == 1);
+		CHECK(saw_it.at(rrv::Key("0")) == 1);
+		CHECK(saw_it.at(rrv::Key("1")) == 1);
 		CHECK(saw_it.size() == 2);
 	}
 	SECTION("custom dynamic type - via member") {
@@ -455,8 +455,8 @@ TEST_CASE("iteration") {
 			if (k == "i") CHECK(v->get<int>() == 11);
 			if (k == "j") CHECK(v->get<int>() == 22);
 		}
-		CHECK(saw_it.at(rrv::Key::from("i")) == 1);;
-		CHECK(saw_it.at(rrv::Key::from("j")) == 1);;
+		CHECK(saw_it.at(rrv::Key("i")) == 1);;
+		CHECK(saw_it.at(rrv::Key("j")) == 1);;
 		CHECK(saw_it.size() == 2);
 	}
 	SECTION("custom dynamic type - via friend") {
@@ -468,8 +468,8 @@ TEST_CASE("iteration") {
 			if (k == "i") CHECK(v->get<int>() == 11);
 			if (k == "j") CHECK(v->get<int>() == 22);
 		}
-		CHECK(saw_it.at(rrv::Key::from("i")) == 1);;
-		CHECK(saw_it.at(rrv::Key::from("j")) == 1);;
+		CHECK(saw_it.at(rrv::Key("i")) == 1);;
+		CHECK(saw_it.at(rrv::Key("j")) == 1);;
 		CHECK(saw_it.size() == 2);
 	}
 }

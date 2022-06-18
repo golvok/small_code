@@ -43,26 +43,24 @@ std::optional<long long> asInt(std::string_view s) {
 
 struct KeyReference;
 struct Key {
-	static Key from(long long i) { return Key{.i=i, .s=asString(i)}; }
-	static Key from(std::string s) { return Key{.i=asInt(s), .s=std::move(s)}; }
+	explicit Key(long long i) : i(i), s(asString(i)) {}
+	explicit Key(std::string s) : i(asInt(s)), s(std::move(s)) {}
+	explicit Key(const KeyReference&);
 
 	std::optional<long long> i;
 	std::string s;
-
-	operator KeyReference() const&;
 };
 
 struct KeyReference {
-	static KeyReference from(long long i) = delete;
-	static KeyReference from(std::string_view s) { return KeyReference{.i=asInt(s), .s=s}; }
+	explicit KeyReference(long long i) = delete;
+	explicit KeyReference(std::string_view s) : i(asInt(s)), s(s) {}
+	KeyReference(const Key& k) : i(k.i), s(k.s) {}
 
 	std::optional<long long> i;
 	std::string_view s;
-
-	explicit operator Key() const { return Key{.i=i, .s=std::string(s)}; }
 };
 
-Key::operator KeyReference() const& { return KeyReference{.i=i, .s=s}; }
+Key::Key(const KeyReference& k) : i(k.i), s(std::string(k.s)) {}
 bool operator==(const KeyReference& lhs, std::string_view rhs) { return lhs.s == rhs; };
 bool operator<(const KeyReference& lhs, std::string_view rhs) { return lhs.s < rhs; };
 bool operator==(std::string_view lhs, const KeyReference& rhs) { return lhs == rhs.s; };
@@ -73,13 +71,13 @@ bool operator<(const KeyReference& lhs, const KeyReference& rhs) { return lhs.s 
 struct ConvertableFromIntKeyReference {
 	ConvertableFromIntKeyReference(Key              k) : impl(std::move(k)) {}
 	ConvertableFromIntKeyReference(KeyReference     k) : impl(k) {}
-	ConvertableFromIntKeyReference(std::string      s) : impl(Key::from(std::move(s))) {}
-	ConvertableFromIntKeyReference(std::string_view s) : impl(KeyReference::from(s)) {}
-	ConvertableFromIntKeyReference(const char*      s) : impl(KeyReference::from(s)) {}
+	ConvertableFromIntKeyReference(std::string      s) : impl(Key(std::move(s))) {}
+	ConvertableFromIntKeyReference(std::string_view s) : impl(KeyReference(s)) {}
+	ConvertableFromIntKeyReference(const char*      s) : impl(KeyReference(s)) {}
 
 	ConvertableFromIntKeyReference(int       i) : ConvertableFromIntKeyReference(static_cast<long long>(i)) {}
 	ConvertableFromIntKeyReference(long      i) : ConvertableFromIntKeyReference(static_cast<long long>(i)) {}
-	ConvertableFromIntKeyReference(long long i) : impl(Key::from(i)) {}
+	ConvertableFromIntKeyReference(long long i) : impl(Key(i)) {}
 
 	// questionable, but convenient
 	ConvertableFromIntKeyReference(unsigned int       i) : ConvertableFromIntKeyReference(static_cast<unsigned long>(i)) {}
