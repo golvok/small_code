@@ -439,11 +439,13 @@ TEST_CASE("iteration") {
 		for (const auto& [k, v] : n) {
 			++saw_it[k];
 			CHECK((k == "0" || k == "1"));
-			if (k == "0") CHECK(v->get<int>() == 1);
-			if (k == "1") CHECK(v->get<int>() == 2);
+			if (k == 0) CHECK(v->get<int>() == 1);
+			if (k == 1) CHECK(v->get<int>() == 2);
 		}
 		CHECK(saw_it.at(rrv::Key("0")) == 1);
 		CHECK(saw_it.at(rrv::Key("1")) == 1);
+		CHECK(saw_it.at(rrv::Key(0)) == 1);
+		CHECK(saw_it.at(rrv::Key(1)) == 1);
 		CHECK(saw_it.size() == 2);
 	}
 	SECTION("custom dynamic type - via member") {

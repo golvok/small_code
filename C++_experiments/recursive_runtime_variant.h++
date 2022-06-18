@@ -58,21 +58,18 @@ struct KeyReference {
 
 	std::optional<long long> i;
 	std::string_view s;
+
+	bool operator<(const KeyReference& rhs) const { if (this->i || rhs.i) return this->i < rhs.i; else return this->s < rhs.s; }
+	bool operator==(const KeyReference& rhs) const { if (this->i || rhs.i) return this->i == rhs.i; else return this->s == rhs.s; }
 };
 
 Key::Key(const KeyReference& k) : i(k.i), s(std::string(k.s)) {}
-bool operator==(const KeyReference& lhs, std::string_view rhs) { return lhs.s == rhs; };
-bool operator<(const KeyReference& lhs, std::string_view rhs) { return lhs.s < rhs; };
-bool operator==(std::string_view lhs, const KeyReference& rhs) { return lhs == rhs.s; };
-bool operator<(std::string_view lhs, const KeyReference& rhs) { return lhs < rhs.s; };
-bool operator==(const KeyReference& lhs, const KeyReference& rhs) { return lhs.s == rhs.s; };
-bool operator<(const KeyReference& lhs, const KeyReference& rhs) { return lhs.s < rhs.s; };
 
 /** @brief A type for function parameters. Accepts many implicit conversions and easily forms non-owning references. */
 struct InterfaceKey {
-	explicit InterfaceKey(const Key&   k) : impl(k) {}
-	         InterfaceKey(Key&&        k) : impl(std::move(k)) {}
-	         InterfaceKey(KeyReference k) : impl(k) {}
+	InterfaceKey(const Key&   k) : InterfaceKey(KeyReference(k)) {}
+	InterfaceKey(Key&&        k) : impl(std::move(k)) {}
+	InterfaceKey(KeyReference k) : impl(k) {}
 
 	InterfaceKey(std::string&&      s) : impl(Key(std::move(s))) {}
 	InterfaceKey(const std::string& s) : impl(KeyReference(s)) {}
@@ -115,6 +112,9 @@ struct InterfaceKey {
 private:
 	std::variant<Key, KeyReference> impl;
 };
+
+bool operator==(const InterfaceKey& lhs, const InterfaceKey& rhs) { return KeyReference(lhs) == KeyReference(rhs); };
+bool operator<(const InterfaceKey& lhs, const InterfaceKey& rhs) { return KeyReference(lhs) < KeyReference(rhs); };
 
 struct Node;
 struct NodeConcreteBase;
