@@ -35,10 +35,14 @@
 			- types probably shouldn't store actual iterators to avoid invalidation? or say screw it, and just use existing rules for type(s)
 			- forcing the conversion ensures that operator* is consistent with the normal rrvMember
 		- non-string_view arguments for operator[]?
-			- maybe take a variant of a couple stdlib types - long long, string_view
-			- YAML does it by taking a Node as as argument... could do this too
-				- getMember will have to convert -- make sure to catch exceptions from it to add context
-			- Is it possible to use an overload set of rrvMember? - library automatically converts int<->string if only one
+			- maybe take a variant of a couple stdlib types - long long, string_view... anything else (no floats)?
+			- goal: pass an int from operator[] to getMember without converting to string
+			- I like that getMembers can now return an int for the key, and getMember can take an int
+			  - allow a type to provide multiple getMember overloads? And arg gets passed down
+			- make it lazier? - need to be careful that comparisons work correctly
+			  - may not be worth it for performance
+			  - canonicalization to str when including in the member cache simplifies things
+		- make Dict/NodeConcrete have just Node (no unique_ptr) for the mapped type? -- simplifies iteration interface
 		- setMember. Allows returning const& from getMember(s)?
 		   - can't: Node::get returns a plain reference
 		     - return NodeConcrete<T>&?
