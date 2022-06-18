@@ -33,16 +33,23 @@
 	Next:
 		- avoid member lookup when iterating by passing returned MemberIterator to rrvMember?
 			- types probably shouldn't store actual iterators to avoid invalidation? or say screw it, and just use existing rules for type(s)
+			- forcing the conversion ensures that operator* is consistent with the normal rrvMember
 		- non-string_view arguments for operator[]?
-			- maybe take a variant of a couple stdlib types - long long, string_view
-			- YAML does it by taking a Node as as argument... could do this too
-				- getMember will have to convert -- make sure to catch exceptions from it to add context
-			- Is it possible to use an overload set of rrvMember? - library automatically converts int<->string if only one
+			- maybe take a variant of a couple stdlib types - long long, string_view... anything else (no floats)?
+			- goal: pass an int from operator[] to getMember without converting to string
+			- I like that getMembers can now return an int for the key, and getMember can take an int
+			  - allow a type to provide multiple getMember overloads? And arg gets passed down
+			- make it lazier? - need to be careful that comparisons work correctly
+			  - may not be worth it for performance
+			  - canonicalization to str when including in the member cache simplifies things
+		- make Dict/NodeConcrete have just Node (no unique_ptr) for the mapped type? -- simplifies iteration interface
 		- setMember. Allows returning const& from getMember(s)?
 		   - can't: Node::get returns a plain reference
 		     - return NodeConcrete<T>&?
 		- Convert NodeValue, RodeReference NodeIndirectAcess to static polymorphism
 		- make classes final
+		- 'at' throw if not exist
+		- member not found error constant
 		- Catch exceptions to add context. Eg. what member names are being accessed
 		- moving from a NodeReference seems sketchy (tryAssign, clone)
 		- can cut-down vtables by having a single virtual method with a dispatch enum
@@ -255,6 +262,30 @@ TEST_CASE("basic use") {
 		static_assert(std::is_same_v<decltype(non_const_get), const int&>, "const access should return const");
 		REQUIRE(d.get<const int>() == 7);
 	}
+	SECTION("access string key with integer keys") {
+		Node d;
+		d["1"] = 7;
+		d["2"] = 8;
+		CHECK(d[(signed char)       1].get<int>() == 7);
+		CHECK(d[(short)             1].get<int>() == 7);
+		CHECK(d[(int)               1].get<int>() == 7);
+		CHECK(d[(long)              1].get<int>() == 7);
+		CHECK(d[(long long)         1].get<int>() == 7);
+		CHECK(d[(unsigned char)     1].get<int>() == 7);
+		CHECK(d[(unsigned short)    1].get<int>() == 7);
+		CHECK(d[(unsigned int)      1].get<int>() == 7);
+		CHECK(d[(unsigned long)     1].get<int>() == 7);
+		CHECK(d[(unsigned long long)1].get<int>() == 7);
+		CHECK(d[(std::size_t)       1].get<int>() == 7);
+		CHECK(d[(std::ptrdiff_t)    1].get<int>() == 7);
+		CHECK_THROWS_WITH(d[(std::size_t)-1].get<int>(), "Signed cast would loose data");
+	}
+	SECTION("access integer key with string key") {
+		Node d;
+		d[1] = 7;
+		d[2] = 8;
+		CHECK(d["1"].get<int>() == 7);
+	}
 	SECTION("dict with dict with int") {
 		Node root;
 		auto& child = root["j"];
@@ -407,46 +438,87 @@ TEST_CASE("iteration") {
 		CHECK(saw_i == 1);
 	}
 	SECTION("vector<int>") {
-		Node n = std::vector{1, 2, 3, 4};
-		std::vector<int> saw_it(4);
+		Node n = std::vector{1, 2};
+		std::map<rrv::Key, int> saw_it;
 		for (const auto& [k, v] : n) {
-			auto i = stoi(k);
-			++saw_it.at(i);
-			CHECK(v->get<int>() == i+1);
+			++saw_it[k];
+			CHECK((k == "0" || k == "1"));
+			if (k == 0) CHECK(v->get<int>() == 1);
+			if (k == 1) CHECK(v->get<int>() == 2);
 		}
-		for (auto saw : saw_it) {
-			CHECK(saw == 1);
-		}
+		CHECK(saw_it.at(rrv::Key("0")) == 1);
+		CHECK(saw_it.at(rrv::Key("1")) == 1);
+		CHECK(saw_it.at(rrv::Key(0)) == 1);
+		CHECK(saw_it.at(rrv::Key(1)) == 1);
+		CHECK(saw_it.size() == 2);
 	}
 	SECTION("custom dynamic type - via member") {
 		Node n = StructWithDynamicMembersViaMember{11,22};
-		std::map<std::string, int> saw_it;
+		std::map<rrv::Key, int> saw_it;
 		for (const auto& [k, v] : n) {
 			++saw_it[k];
 			CHECK((k == "i" || k == "j"));
 			if (k == "i") CHECK(v->get<int>() == 11);
 			if (k == "j") CHECK(v->get<int>() == 22);
 		}
-		for (const auto& [k, count] : saw_it) {
-			CHECK(count == 1);
-		}
+		CHECK(saw_it.at(rrv::Key("i")) == 1);;
+		CHECK(saw_it.at(rrv::Key("j")) == 1);;
 		CHECK(saw_it.size() == 2);
 	}
 	SECTION("custom dynamic type - via friend") {
 		Node n = StructWithDynamicMembersViaFriend{11,22};
-		std::map<std::string, int> saw_it;
+		std::map<rrv::Key, int> saw_it;
 		for (const auto& [k, v] : n) {
 			++saw_it[k];
 			CHECK((k == "i" || k == "j"));
 			if (k == "i") CHECK(v->get<int>() == 11);
 			if (k == "j") CHECK(v->get<int>() == 22);
 		}
-		for (const auto& [k, count] : saw_it) {
-			CHECK(count == 1); (void)k;
-		}
+		CHECK(saw_it.at(rrv::Key("i")) == 1);;
+		CHECK(saw_it.at(rrv::Key("j")) == 1);;
 		CHECK(saw_it.size() == 2);
 	}
 }
+
+struct StructWithStaticMembersViaMemberIntAccess {
+	int i, j;
+	auto rrvMembers() {
+		return std::make_tuple(
+			std::make_pair(0, &i),
+			std::make_pair(1, &j)
+		);
+	}
+};
+
+struct StructWithDynamicMembersViaMemberIntAccess {
+	int i, j;
+	std::variant<int*> rrvMember(long long key) {
+		if (key == 0) return &i; else return &j;
+	}
+	constexpr static auto names = std::array{0, 1};
+	auto rrvBegin() { return names.begin(); }
+	auto rrvEnd() { return names.end(); }
+};
+
+struct StructWithStaticMembersViaFriendIntAccess {
+	int i, j;
+	friend auto rrvMembers(StructWithStaticMembersViaFriendIntAccess& s) {
+		return std::make_tuple(
+			std::make_pair(0, &s.i),
+			std::make_pair(1, &s.j)
+		);
+	}
+};
+
+struct StructWithDynamicMembersViaFriendIntAccess {
+	int i, j;
+	friend std::variant<int*> rrvMember(StructWithDynamicMembersViaFriendIntAccess& s, long long key) {
+		if (key == 0) return &s.i; else return &s.j;
+	}
+	constexpr static auto names = std::array{0, 1};
+	friend auto rrvBegin(StructWithDynamicMembersViaFriendIntAccess&) { return names.begin(); }
+	friend auto rrvEnd(StructWithDynamicMembersViaFriendIntAccess&) { return names.end(); }
+};
 
 TEST_CASE("member access") {
 	SECTION("multi-type") {
@@ -488,10 +560,36 @@ TEST_CASE("member access") {
 		CHECK(n2.get<int>() == 44);
 	}
 	SECTION("custom dynamic type - via member") {
-		Node n = StructWithDynamicMembersViaMember{11,22};
-		CHECK(n.at("i").get<int>() == 11);
-		CHECK(n.at("j").get<int>() == 22);
-		CHECK(n.at("e").get<int>() == 22);
+		Node n = StructWithDynamicMembersViaMemberIntAccess{11,22};
+		CHECK(n.at(0).get<int>() == 11);
+		CHECK(n.at("0").get<int>() == 11);
+		CHECK(n.at(1).get<int>() == 22);
+		CHECK(n.at("1").get<int>() == 22);
+		CHECK(n.at(7).get<int>() == 22);
+		CHECK(n.at("7").get<int>() == 22);
+	}
+	SECTION("custom dynamic type - via member") {
+		Node n = StructWithStaticMembersViaMemberIntAccess{11,22};
+		CHECK(n.at(0).get<int>() == 11);
+		CHECK(n.at("0").get<int>() == 11);
+		CHECK(n.at(1).get<int>() == 22);
+		CHECK(n.at("1").get<int>() == 22);
+	}
+	SECTION("custom dynamic type - via friend") {
+		Node n = StructWithDynamicMembersViaFriendIntAccess{11,22};
+		CHECK(n.at(0).get<int>() == 11);
+		CHECK(n.at("0").get<int>() == 11);
+		CHECK(n.at(1).get<int>() == 22);
+		CHECK(n.at("1").get<int>() == 22);
+		CHECK(n.at(7).get<int>() == 22);
+		CHECK(n.at("7").get<int>() == 22);
+	}
+	SECTION("custom dynamic type - via friend") {
+		Node n = StructWithStaticMembersViaFriendIntAccess{11,22};
+		CHECK(n.at(0).get<int>() == 11);
+		CHECK(n.at("0").get<int>() == 11);
+		CHECK(n.at(1).get<int>() == 22);
+		CHECK(n.at("1").get<int>() == 22);
 	}
 	SECTION("custom dynamic type - via friend") {
 		Node n = StructWithDynamicMembersViaFriend{11,22};
@@ -1053,6 +1151,12 @@ TEST_CASE("basic dict operations") {
 		CHECK(d.size() == 2);
 		CHECK(d["k"].get<int>() == 1);
 		CHECK(d["l"].get<int>() == 2);
+	}
+	SECTION("assign elements - int key") {
+		d[2] = 2;
+		CHECK(d.size() == 2);
+		CHECK(d["k"].get<int>() == 1);
+		CHECK(d[2].get<int>() == 2);
 	}
 	SECTION("copy-construct") {
 		Dict cpy = d;
