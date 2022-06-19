@@ -42,7 +42,6 @@
 			- make it lazier? - need to be careful that comparisons work correctly
 			  - may not be worth it for performance
 			  - canonicalization to str when including in the member cache simplifies things
-		- make Dict/NodeConcrete have just Node (no unique_ptr) for the mapped type? -- simplifies iteration interface
 		- setMember. Allows returning const& from getMember(s)?
 		   - can't: Node::get returns a plain reference
 		     - return NodeConcrete<T>&?
@@ -416,7 +415,7 @@ TEST_CASE("iteration") {
 		d["k"] = 4;
 		for (const auto& [k, v] : d) {
 			REQUIRE(k == "k");
-			REQUIRE(v->get<int>() == 4);
+			REQUIRE(v.get<int>() == 4);
 		}
 	}
 	SECTION("basic on Node") {
@@ -424,15 +423,15 @@ TEST_CASE("iteration") {
 		no["k"] = 4;
 		for (const auto& [k, v] : no) {
 			REQUIRE(k == "k");
-			REQUIRE(v->get<int>() == 4);
+			REQUIRE(v.get<int>() == 4);
 		}
 	}
 	SECTION("just one") {
 		Node n = HasNested{44, {444}};
 		int saw_m = 0, saw_i = 0;
 		for (const auto& [k, v] : n) {
-			if (k == "m") { ++saw_m; CHECK(v->get<TheNested>() == TheNested{444}); }
-			if (k == "i") { ++saw_i; CHECK(v->get<int>() == 44); }
+			if (k == "m") { ++saw_m; CHECK(v.get<TheNested>() == TheNested{444}); }
+			if (k == "i") { ++saw_i; CHECK(v.get<int>() == 44); }
 		}
 		CHECK(saw_m == 1);
 		CHECK(saw_i == 1);
@@ -443,8 +442,8 @@ TEST_CASE("iteration") {
 		for (const auto& [k, v] : n) {
 			++saw_it[k];
 			CHECK((k == "0" || k == "1"));
-			if (k == 0) CHECK(v->get<int>() == 1);
-			if (k == 1) CHECK(v->get<int>() == 2);
+			if (k == 0) CHECK(v.get<int>() == 1);
+			if (k == 1) CHECK(v.get<int>() == 2);
 		}
 		CHECK(saw_it.at(rrv::Key("0")) == 1);
 		CHECK(saw_it.at(rrv::Key("1")) == 1);
@@ -458,8 +457,8 @@ TEST_CASE("iteration") {
 		for (const auto& [k, v] : n) {
 			++saw_it[k];
 			CHECK((k == "i" || k == "j"));
-			if (k == "i") CHECK(v->get<int>() == 11);
-			if (k == "j") CHECK(v->get<int>() == 22);
+			if (k == "i") CHECK(v.get<int>() == 11);
+			if (k == "j") CHECK(v.get<int>() == 22);
 		}
 		CHECK(saw_it.at(rrv::Key("i")) == 1);;
 		CHECK(saw_it.at(rrv::Key("j")) == 1);;
@@ -471,8 +470,8 @@ TEST_CASE("iteration") {
 		for (const auto& [k, v] : n) {
 			++saw_it[k];
 			CHECK((k == "i" || k == "j"));
-			if (k == "i") CHECK(v->get<int>() == 11);
-			if (k == "j") CHECK(v->get<int>() == 22);
+			if (k == "i") CHECK(v.get<int>() == 11);
+			if (k == "j") CHECK(v.get<int>() == 22);
 		}
 		CHECK(saw_it.at(rrv::Key("i")) == 1);;
 		CHECK(saw_it.at(rrv::Key("j")) == 1);;

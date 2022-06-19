@@ -146,7 +146,7 @@ namespace errors {
 template<typename Source, typename Target>
 using SameConstAs = std::conditional_t<std::is_const_v<Source>, const Target, Target>;
 
-using DictBase = std::map<Key, std::unique_ptr<Node>, std::less<>>;
+using DictBase = std::map<Key, Node, std::less<>>;
 
 template<bool const_iter>
 struct MemberIteratorImplBase {
@@ -200,11 +200,7 @@ struct Dict  {
 	Dict& operator=(Dict&&) = default;
 
 	Node toScalars() const;
-	const Node& operator[](InterfaceKey key) const {
-		auto lookup = impl.find(key);
-		if (lookup == impl.end()) throw std::logic_error("Cannot find member of Dict: " + Key(key).s);
-		return *lookup->second;
-	}
+	const Node& operator[](InterfaceKey key) const;
 	Node& operator[](InterfaceKey key);
 
 	bool empty() const { return impl.empty(); }
@@ -220,7 +216,7 @@ struct Dict  {
 		Iter(Impl impl_) : impl(impl_) {}
 		Iter(const Iter&) = default;
 		Iter(Iter&&) = default;
-		// static auto create(Impl impl) { return MemberIterator<const_iter>{OwningPtr{new Iter{impl}}}; }
+
 		value_type* deref() override { return &*impl; }
 		void advance() override { ++impl; }
 		OwningPtr clone() const& override { return OwningPtr{new Iter(*this)}; }
@@ -238,9 +234,7 @@ private:
 	void synchronizeKeys(const DictBase& src);
 };
 
-using NodeConcreteMemberInfo = std::unique_ptr<Node>;
-using NodeConcreteMemberCache = std::map<Key, NodeConcreteMemberInfo, std::less<>>;
-
+using NodeConcreteMemberCache = std::map<Key, Node, std::less<>>;
 struct NodeConcreteBase {
 	virtual const Node& operator[](InterfaceKey key) const = 0;
 	virtual       Node& operator[](InterfaceKey key) = 0;
@@ -275,8 +269,8 @@ struct NodeConcrete : NodeConcreteBase {
 	NodeConcrete& operator=(const NodeConcrete&) = default;
 	NodeConcrete& operator=(NodeConcrete&&) = default;
 
-	const Node& operator[](InterfaceKey key) const override { return *getMember(key).second; }
-	      Node& operator[](InterfaceKey key)       override { return *getMember(key).second; }
+	const Node& operator[](InterfaceKey key) const override { return getMember(key).second; }
+	      Node& operator[](InterfaceKey key)       override { return getMember(key).second; }
 
 	Node toScalars() const override;
 
@@ -378,13 +372,22 @@ public:
 	Node() : impl(DictImpl(new Dict())) {}
 	Node(const Node&  src) : Node() { assign(src); }
 	Node(      Node&& src) : Node() { assign(std::move(src)); }
-	explicit Node(ObjectImpl ri) : impl(std::move(ri)) {}
+	explicit Node(ObjectImpl oi) : impl(std::move(oi)) {}
 	explicit Node(DictImpl   di) : impl(std::move(di)) {}
 	Node(const NodeConcreteBase&  nb) : Node() { assign(nb); }
 	Node(      NodeConcreteBase&& nb) : Node() { assign(std::move(nb)); }
 
 	template<typename T>
 	Node(T&& t) : Node() { assign(std::forward<T>(t)); }
+
+	Node& operator=(const Node& rhs) { assign(rhs); return *this; }
+	Node& operator=(Node&& rhs     ) { assign(std::move(rhs)); return *this; }
+	Node& operator=(ObjectImpl&& oi) { impl = std::move(oi); return *this; }
+	Node& operator=(DictImpl&&   di) { impl = std::move(di); return *this; }
+
+	Node& operator=(const Node*      ) = delete; // don't select general case
+	Node& operator=(const ObjectImpl&) = delete; // don't select general case
+	Node& operator=(const DictImpl&  ) = delete; // don't select general case
 
 	template<typename T>
 	Node& operator=(T&& rhs) { assign(std::forward<T>(rhs)); return *this; }
@@ -591,10 +594,10 @@ void Dict::synchronizeKeys(const DictBase& src) {
 	DictBase new_impl;
 	for (const auto& [k, src_v] : src) {
 		if (auto old_node = impl.extract(k)) {
-			*old_node.mapped() = *src_v;
+			old_node.mapped() = src_v;
 			new_impl.insert(std::move(old_node));
 		} else {
-			new_impl.emplace(k, DictBase::mapped_type(new Node(*src_v)));
+			new_impl.emplace(k, src_v);
 		}
 	}
 	impl = std::move(new_impl);
@@ -602,19 +605,25 @@ void Dict::synchronizeKeys(const DictBase& src) {
 
 Node Dict::toScalars() const { return Node(*this); }
 
+const Node& Dict::operator[](InterfaceKey key) const {
+	auto lookup = impl.find(key);
+	if (lookup == impl.end()) throw std::logic_error("Cannot find member of Dict: " + Key(key).s);
+	return lookup->second;
+}
+
 Node& Dict::operator[](InterfaceKey key) {
 	auto lookup = impl.lower_bound(key);
 	if (lookup == impl.end() or lookup->first != key) {
-		lookup = impl.emplace_hint(lookup, Key(std::move(key)), DictBase::mapped_type{new Node()});
+		lookup = impl.emplace_hint(lookup, Key(std::move(key)), Node{});
 	}
-	return *lookup->second;
+	return lookup->second;
 }
 
 template<typename T>
 Node NodeConcrete<T>::toScalars() const {
 	Node r;
 	for (const auto& name_and_member : *this) {
-		r[Key(name_and_member.first)] = *name_and_member.second;
+		r[Key(name_and_member.first)] = name_and_member.second;
 	}
 	return r;
 }
@@ -647,10 +656,10 @@ NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(InterfaceKey key) 
 					throw std::logic_error("Member not found");
 				} else {
 					using Member = std::remove_pointer_t<decltype(member)>;
-					auto [lookup, is_new] = this->member_cache.emplace(std::move(key), NodeConcreteMemberInfo{});
+					auto [lookup, is_new] = this->member_cache.emplace(std::move(key), Node{});
 					auto& member_info = lookup->second;
 					if (is_new) {
-						member_info = NodeConcreteMemberInfo(new Node(Node::ObjectImpl(new NodeIndirectAcess<T, Member>(&getObj(), lookup->first))));
+						member_info = Node::ObjectImpl(new NodeIndirectAcess<T, Member>(&getObj(), lookup->first));
 					}
 					return *lookup;
 				}
@@ -676,7 +685,7 @@ auto NodeConcrete<T>::initMemberCacheForStaticMembers() const -> std::enable_if_
 	const auto add_elem = [this](auto&& elem) {
 		using MemberType = std::remove_reference_t<decltype(*elem.second)>;
 		static_assert(not std::is_const_v<MemberType>, "rrvMembers should not return pointers to const. Perhaps 'this' is const in the implementation of rrvMembers.");
-		this->member_cache.emplace(InterfaceKey(elem.first), NodeConcreteMemberInfo(new Node(Node::ObjectImpl(new NodeReference<MemberType>(elem.second)))));
+		this->member_cache.emplace(InterfaceKey(elem.first), Node::ObjectImpl(new NodeReference<MemberType>(elem.second)));
 	};
 
 	const auto add_all = [&add_elem](auto&&... elems) {
