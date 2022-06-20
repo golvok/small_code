@@ -1140,6 +1140,19 @@ TEST_CASE("error paths") {
 		// };
 		// auto no = Node(NoCopy{}); (void)no;
 	}
+	SECTION("duplicate static member keys") {
+		struct HasDups {
+			int i, ii;
+			auto rrvMembers() {
+				return std::make_tuple(
+					std::make_pair("i", &i),
+					std::make_pair("i", &ii)
+				);
+			}
+		};
+		Node n = HasDups{1, 2};
+		CHECK_THROWS_WITH(n["i"].get<int>(), std::string(rrv::errors::kDuplicateStaticMemberKey) + "i");
+	}
 }
 
 TEST_CASE("basic dict operations") {

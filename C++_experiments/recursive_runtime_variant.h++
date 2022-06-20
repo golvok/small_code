@@ -141,6 +141,7 @@ namespace errors {
 	constexpr auto kCloneNotImplemented_ConstRef = "clone const& not implemented"sv;
 	constexpr auto kCloneNotImplemented_RvalRef = "clone && not implemented"sv;
 	constexpr auto kAccessMemberOfConcreteType = "Can't get member of concrete type"sv;
+	constexpr auto kDuplicateStaticMemberKey = "Member keys must be unique. Problematic key: "sv;
 }
 
 template<typename Source, typename Target>
@@ -683,9 +684,13 @@ auto NodeConcrete<T>::initMemberCacheForStaticMembers() const -> std::enable_if_
 	if (not member_cache.empty()) return;
 
 	const auto add_elem = [this](auto&& elem) {
-		using MemberType = std::remove_reference_t<decltype(*elem.second)>;
+		using Elem = decltype(elem);
+		using MemberType = std::remove_reference_t<decltype(*std::forward<Elem>(elem).second)>;
 		static_assert(not std::is_const_v<MemberType>, "rrvMembers should not return pointers to const. Perhaps 'this' is const in the implementation of rrvMembers.");
-		this->member_cache.emplace(InterfaceKey(elem.first), Node::ObjectImpl(new NodeReference<MemberType>(elem.second)));
+		auto key = InterfaceKey(std::forward<Elem>(elem).first);
+		auto node = Node::ObjectImpl(new NodeReference<MemberType>(std::forward<Elem>(elem).second));
+		auto [it, success] = this->member_cache.emplace(std::move(key), std::move(node));
+		if (not success) { throw std::logic_error(std::string(errors::kDuplicateStaticMemberKey) + it->first.s); }
 	};
 
 	const auto add_all = [&add_elem](auto&&... elems) {
