@@ -34,6 +34,11 @@
 		- avoid member lookup when iterating by passing returned MemberIterator to rrvMember?
 			- types probably shouldn't store actual iterators to avoid invalidation? or say screw it, and just use existing rules for type(s)
 			- forcing the conversion ensures that operator* is consistent with the normal rrvMember
+			- not a solution: store pointer to next in member cache/use linear data structure for the cache
+				- if Dict and member cache use same type, then don't need virtual iterator interface stuff
+				- since this is for dynamic types, can't use this because don't want to assume cache is up-to-date,
+				- and NodeIdirectAccess is used so we don't store pointers
+			- I think assuming O(1) access is not too bad...
 		- non-string_view arguments for operator[]?
 			- maybe take a variant of a couple stdlib types - long long, string_view... anything else (no floats)?
 			- goal: pass an int from operator[] to getMember without converting to string
@@ -54,6 +59,8 @@
 		- can cut-down vtables by having a single virtual method with a dispatch enum
 			- hard to avoid completely, since destructor doesn't know type -- unless a 'deleter' is stored
 				- NodeConcreteBase would be more unique_ptr wrapper?
+		- Only create static member nodes as needed? (instead of all on the first access)
+			- need to synchronize on the cache access anyway... per type mutex?
 */
 
 using rrv::Node;
