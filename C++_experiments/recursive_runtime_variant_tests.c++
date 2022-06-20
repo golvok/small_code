@@ -194,14 +194,36 @@ struct StructWithDynamicMembersViaFriend {
 struct TwoTypeVector {
 	std::vector<int> vecInt;
 	std::vector<float> vecFloat;
+
+	using MemberVariant = std::variant<int*, float*, std::monostate>;
 	struct MemberIter {
-		bool inVecInt;
-		std::size_t i = 0;
+		std::variant<std::vector<int>::iterator, std::vector<float>::iterator, std::monostate> it;
 		auto operator<=>(const MemberIter&) const = default;
-		void increment(const TwoTypeVector& mv) { ++i; if (inVecInt and i == mv.vecInt.size()) { i = 0; inVecInt = false; } }
-		// return pair<string, unique_ptr<Node>> ?
-		//   not clear how this avoids the O(n*n) iteration...
-		auto dereference(const TwoTypeVector&) { return (inVecInt ? "i" : "f") + std::to_string(i); }
+
+		void increment(const TwoTypeVector& ttv) {
+			struct V {
+				MemberIter* self;
+				const TwoTypeVector& ttv;
+				void operator()(std::vector<int>::iterator i) {
+					++i;
+					if (i == vecInt.end()) {
+						self.it = ttv.vecFloat.begin();
+					}
+				}
+				void operator()(std::vector<float>::iterator i) { ++i; }
+				void operator()(std::monostate) { throw "increment end"; }
+			};
+			return std::visit(V{this, ttv}, it);
+		}
+		auto dereference(const TwoTypeVector& ttv) {
+			struct V {
+				const TwoTypeVector& ttv;
+				std::pair<std::string, MemberIter> operator()(std::vector<int>::iterator i) { return {"i" + std::to_string(i - ttv.vecInt.begin()), &*i}; }
+				std::pair<std::string, MemberIter> operator()(std::vector<float>::iterator i) { return {"f" + std::to_string(i - ttv.vecFloat.begin()), &*i}; }
+				std::pair<std::string, MemberIter> operator()(std::monostate) { throw "deref end"; }
+			};
+			return std::visit(V{ttv}, it);
+		}
 		bool equals(const MemberIter& rhs, const TwoTypeVector&) const { return *this == rhs; }
 	};
 	friend std::variant<int*, float*, std::monostate> rrvMember(TwoTypeVector& s, std::string_view key) {
