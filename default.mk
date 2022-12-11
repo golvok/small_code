@@ -58,6 +58,9 @@ $(EXE_DIR)/%: $(OBJ_DIR)/%.o
 run__%: $(EXE_DIR)/%
 	$(RUN_UNDER) "$<"
 
+run__%: $(EXE_DIR)/tests/%
+	$(RUN_UNDER) "$<"
+
 clean:
 	rm -f $(EXES)
 	rm -f $(OBJECTS)
