@@ -1,4 +1,5 @@
 #include <list>
+#include <set>
 #include <vector>
 #include <cstddef>
 
@@ -6,11 +7,25 @@ namespace golvok::allocator {
 
 class Allocator {
 	struct Chunk {
-		std::byte* start;
-		std::size_t size;
-		bool is_free;
+		// wow...
+		mutable std::byte* start;
+		mutable std::size_t size;
+		mutable bool is_free;
 	};
-	using ChunkList = std::list<Chunk>;
+	struct ChunkCompare {
+		using is_transparent = std::true_type;
+		bool operator()(const Chunk& lhs, const Chunk& rhs) const {
+			return lhs.start < rhs.start;
+		}
+		bool operator()(const std::byte* lhs, const Chunk& rhs) const {
+			return lhs < rhs.start;
+		}
+		bool operator()(const Chunk& lhs, const std::byte* rhs) const {
+			return lhs.start < rhs;
+		}
+	};
+
+	using ChunkList = std::set<Chunk, ChunkCompare>;
 	using ChunkIter = typename ChunkList::iterator;
 
 	struct Bin {
@@ -34,8 +49,7 @@ public:
 
 	std::byte* alloc(std::size_t size) {
 		for (auto& bin : bins) {
-			if (size > bin.max_size || bin.chunks.empty())
-				continue;
+			if (size > bin.max_size) continue; // definitely no big enough chunks
 
 			// find in bin's chunks and remove it
 			auto big_enough_and_free = [&](auto& chunk_it) { return chunk_it->size >= size && chunk_it->is_free; };
@@ -61,34 +75,34 @@ public:
 
 	void free(std::byte* alloced_addr) {
 		// find chunk
-		// opt: better data structure to avoid linear search?
-		auto at_least_addr = [&](auto& chunk) { return chunk.start >= alloced_addr; };
-		auto chunk_it = std::find_if(chunks.begin(), chunks.end(), at_least_addr);
+		auto chunk_it = findChunkForAddr(alloced_addr);
 		if (chunk_it->start != alloced_addr) std::terminate();
 		if (chunk_it->is_free) std::terminate();
 
-		// merge the next into us?
-		if (std::next(chunk_it) != chunks.end() && std::next(chunk_it)->is_free) {
-			chunk_it->size += std::next(chunk_it)->size; // we're not in a bin so no bin to update
-			unBinChunk(std::next(chunk_it)); // next is now redundant
-			deleteChunk(std::next(chunk_it)); // next is now redundant
+		// maybe merge next into us
+		{
+			const auto next_chunk_it = std::next(chunk_it);
+			if (next_chunk_it != chunks.end() && next_chunk_it->is_free) {
+				unBinChunk(next_chunk_it);
+				chunk_it->size += next_chunk_it->size; // we're not in a bin so no bin to update
+				deleteChunk(next_chunk_it); // next is now redundant
+			}
 		}
 
-		// merge into prev?
-		if (chunk_it != chunks.begin() && std::prev(chunk_it)->is_free) {
+		// maybe merge prev into us
+		if (chunk_it != chunks.begin()) {
 			const auto prev_chunk_it = std::prev(chunk_it);
-			// resize prev. Must un-bin it before updating the size
-			// opt: if (prev_chunk_it->size + chunk_it->size < binForSize(prev_chuck_it->size).max_size) do_nothing();
-			unBinChunk(prev_chunk_it);
-			prev_chunk_it->size += chunk_it->size;
-			returnChunk(prev_chunk_it);
-			// we're now redundant, so remove us. we weren't in a bin no no need to unbin
-			deleteChunk(chunk_it);
-		} else {
-			// we're the good chunk if we didn't merge into prev, so return us to the pool
-			chunk_it->is_free = true;
-			returnChunk(chunk_it);
+			if (prev_chunk_it->is_free) {
+				unBinChunk(prev_chunk_it);
+				chunk_it->size += prev_chunk_it->size;
+				chunk_it->start = prev_chunk_it->start;
+				deleteChunk(prev_chunk_it);
+			}
 		}
+
+		// we're the good chunk if we didn't merge into prev, so return us to the pool
+		chunk_it->is_free = true;
+		returnChunk(chunk_it);
 	}
 
 private:
@@ -109,6 +123,15 @@ private:
 			if (size < bin.max_size) return bin;
 		}
 		std::terminate();
+	}
+
+	ChunkIter findChunkForAddr(std::byte* addr) {
+		// if constexpr (chunk_list) {
+		// 	auto at_least_addr = [&](auto& chunk) { return chunk.start >= alloced_addr; };
+		// 	return std::find_if(chunks.begin(), chunks.end(), at_least_addr);
+		// } else if constexpr (chunk_set) {
+		return chunks.find(addr);
+		// }
 	}
 
 	ChunkList chunks;
