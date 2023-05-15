@@ -140,7 +140,6 @@ void try_move(bool go = true) {
 		cout.flush();
 		throw std::runtime_error("solved!");
 	}
-	try_flip();
 	try_discard();
 	// dump();
 	try_transfer(true);
@@ -165,22 +164,21 @@ void reverted(std::string_view msg) {
 }
 
 /// flip hidden cards into stacks
-void try_flip() {
-	for (i64 i_stack = 0; i_stack < num_stacks; ++i_stack) {
-		auto& hidden = hiddens.at(i_stack);
-		auto& stack = stacks.at(i_stack);
-		if (hidden.empty()) continue;
-		if (not stack.empty()) continue;
+void try_flip_then_continue(i64 i_stack, std::string_view msg) {
+	auto& hidden = hiddens.at(i_stack);
+	auto& stack = stacks.at(i_stack);
+	bool const do_flip = not hidden.empty() && stack.empty();
 
+	if (do_flip) {
 		stack.push_back(hidden.back());
 		hidden.pop_back();
+	}
 
-		try_move_if_new_board("flip");
+	try_move_if_new_board(msg);
 
+	if (do_flip) {
 		hidden.push_back(stack.back());
 		stack.pop_back();
-
-		reverted("flip");
 	}
 }
 
@@ -199,7 +197,7 @@ void try_discard() {
 		dst_discard.push_back(tip);
 		s.pop_back();
 
-		try_move_if_new_board("discard from stack");
+		try_flip_then_continue(&s - stacks.data(), "discard from stack");
 
 		s.push_back(dst_discard.back());
 		dst_discard.pop_back();
@@ -224,8 +222,7 @@ void try_transfer(bool /*only_reveals*/) {
 				dst_stack.push_back(src_stack.back());
 				src_stack.pop_back();
 
-				// TODO: this is always a flip
-				try_move_if_new_board("king to empty");
+				try_flip_then_continue(i_src_stack, "king to empty");
 
 				src_stack.push_back(dst_stack.back());
 				dst_stack.pop_back();
@@ -240,7 +237,7 @@ void try_transfer(bool /*only_reveals*/) {
 				dst_stack.insert(dst_stack.end(), src_stack.begin() + src_pos, src_stack.end());
 				src_stack.erase(src_stack.begin() + src_pos, src_stack.end());
 
-				try_move_if_new_board("move stack");
+				try_flip_then_continue(i_src_stack, "move stack");
 
 				src_stack.insert(src_stack.end(), dst_stack.end() - num_moved, dst_stack.end());
 				dst_stack.erase(dst_stack.end() - num_moved, dst_stack.end());
