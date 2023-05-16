@@ -67,10 +67,11 @@ friend ostream& operator<<(ostream& os, vector<vector<Card>> const& vvc) {
 
 
 struct Tableau {
-	i64 num_stacks = 7;
+	static constexpr i64 num_stacks = 7;
+	static constexpr i64 num_draws = 3;
 
 	vector<Card> draw_pile{};
-	vector<Card> drawn{};
+	i64 play_pos = num_draws;
 	vector<vector<Card>> hiddens{unsigned(num_stacks)};
 	vector<vector<Card>> stacks{unsigned(num_stacks)};
 	vector<vector<Card>> discards{4};
@@ -80,9 +81,10 @@ struct Tableau {
 
 Tableau tableau{};
 
-i64& num_stacks = tableau.num_stacks;
+i64 const& num_stacks = tableau.num_stacks;
+i64 const& num_draws = tableau.num_draws;
 vector<Card>& draw_pile = tableau.draw_pile;
-vector<Card>& drawn = tableau.drawn;
+i64& play_pos = tableau.play_pos;
 vector<vector<Card>>& hiddens = tableau.hiddens;
 vector<vector<Card>>& stacks = tableau.stacks;
 vector<vector<Card>>& discards = tableau.discards;
@@ -121,7 +123,7 @@ void solve() {
 
 void dump() {
 	cout << "draw_pile=" << draw_pile << '\n';
-	cout << "drawn=" << drawn << '\n';
+	cout << "play_pos=" << play_pos << '\n';
 	cout << "hiddens=" << hiddens << '\n';
 	cout << "stacks=" << stacks << '\n';
 	cout << "discards=" << discards << '\n';
@@ -142,13 +144,14 @@ std::unordered_set<Tableau, TableauHasher> visited{};
 void try_move(bool go = true) {
 	if (not go) return;
 	auto is_empty = [](auto& v) { return v.empty(); };
-	if (draw_pile.empty() && drawn.empty() && std::ranges::all_of(hiddens, is_empty)) {
+	if (draw_pile.empty() && std::ranges::all_of(hiddens, is_empty)) {
 		cout.flush();
 		throw std::runtime_error("solved!");
 	}
 	try_discard();
 	try_transfer();
 	try_play();
+	try_quick_discard();
 	try_draw();
 }
 
@@ -248,11 +251,11 @@ void try_transfer() {
 	}
 }
 
-/// from drawn cards to the stacks or discards
+/// from drawn cards to the stacks
 void try_play() {
-	if (drawn.empty()) return;
+	if (draw_pile.empty()) return;
+	auto c = draw_pile.at(play_pos);
 
-	auto c = drawn.back();
 	for (i64 i_stack = 0; i_stack < num_stacks; ++i_stack) {
 		auto& stack = stacks.at(i_stack);
 		if (c.value() == kKing) {
@@ -262,62 +265,67 @@ void try_play() {
 			if (stack.back().colour() == c.colour() || stack.back().value() != c.value() + 1) continue;
 		}
 
-		stack.push_back(drawn.back());
-		drawn.pop_back();
+		stack.push_back(c);
+		draw_pile.erase(draw_pile.begin() + play_pos);
+		i64 tmp_play_pos = play_pos == 0 ? std::min<i64>(ssize(draw_pile) - 1, num_draws) : play_pos - 1;
+		std::swap(tmp_play_pos, play_pos);
 
 		try_move_if_new_board("play from drawn");
 
-		drawn.push_back(stack.back());
+		std::swap(play_pos, tmp_play_pos);
+		draw_pile.insert(draw_pile.begin() + play_pos, c);
 		stack.pop_back();
 
 		reverted("play from drawn");
 	}
+}
+
+/// from drawn cards to discards
+void try_quick_discard() {
+	if (draw_pile.empty()) return;
+	auto c = draw_pile.at(play_pos);
 
 	auto& dst_discard = discards.at(id(c.suite()));
 	const bool do_discard = dst_discard.empty()
 		? c.value() == kAce
 		: c.value() - 1 == dst_discard.back().value();
-	if (do_discard) {
-		dst_discard.push_back(drawn.back());
-		drawn.pop_back();
+	if (not do_discard) return;
 
-		try_move_if_new_board("discard from drawn");
+	dst_discard.push_back(c);
+	draw_pile.erase(draw_pile.begin() + play_pos);
+	i64 tmp_play_pos = play_pos == 0 ? std::min<i64>(ssize(draw_pile) - 1, num_draws) : play_pos - 1;
+	std::swap(tmp_play_pos, play_pos);
 
-		drawn.push_back(dst_discard.back());
-		dst_discard.pop_back();
+	try_move_if_new_board("discard from drawn");
 
-		reverted("discard from drawn");
-	}
+	std::swap(play_pos, tmp_play_pos);
+	draw_pile.insert(draw_pile.begin() + play_pos, dst_discard.back());
+	dst_discard.pop_back();
+
+	reverted("discard from drawn");
 }
 
 /// draw new cards
 void try_draw() {
-	if (draw_pile.empty()) {
-		std::swap(draw_pile, drawn);
-		std::ranges::reverse(draw_pile);
+	if (draw_pile.empty()) return;
+	bool const do_return = play_pos == ssize(draw_pile) - 1;
+	auto msg = do_return ? "returned drawn cards" : "drew cards";
+	i64 tmp_play_pos = 0;
 
-		try_move_if_new_board("returned drawn cards");
+	if (do_return) {
+		std::swap(tmp_play_pos, play_pos);
+	}
+	auto const num_to_draw = std::min<i64>(ssize(draw_pile) - play_pos - 1, num_draws);
+	play_pos += num_to_draw;
 
-		std::swap(drawn, draw_pile);
-		std::ranges::reverse(drawn);
+	try_move_if_new_board(msg);
 
-		return;
+	play_pos -= num_to_draw;
+	if (do_return) {
+		std::swap(play_pos, tmp_play_pos);
 	}
 
-	auto const num_to_draw = std::min<i64>(ssize(draw_pile), 3);
-	for (i64 i = 0; i < num_to_draw; ++i) {
-		drawn.push_back(draw_pile.back());
-		draw_pile.pop_back();
-	}
-
-	try_move_if_new_board("drew cards");
-
-	for (i64 i = 0; i < num_to_draw; ++i) {
-		draw_pile.push_back(drawn.back());
-		drawn.pop_back();
-	}
-
-	reverted("drew cards");
+	reverted(msg);
 }
 
 };
