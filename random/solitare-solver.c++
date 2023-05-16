@@ -127,6 +127,12 @@ void dump() {
 	cout << "discards=" << discards << '\n';
 }
 
+void log(std::string_view msg1, std::string_view msg2) {
+	(void)msg1, (void)msg2;
+	// cout << "\n" << msg1 << msg2 << '\n';
+	// dump();
+}
+
 struct TableauHasher {
 	std::size_t operator()(Tableau const&) const { return 0; }
 };
@@ -141,25 +147,19 @@ void try_move(bool go = true) {
 		throw std::runtime_error("solved!");
 	}
 	try_discard();
-	// dump();
-	try_transfer(true);
+	try_transfer();
 	try_play();
-	// try_transfer(false);
 	try_draw();
 }
 
 void try_move_if_new_board(std::string_view msg) {
 	if (not visited.insert(tableau).second) return;
-	(void)msg;
-	// cout << "\nnew tableau from: " << msg << '\n';
-	// dump();
+	log("new tableau from: ", msg);
 	try_move();
 }
 
 void reverted(std::string_view msg) {
-	(void)msg;
-	// cout << "\nreverted: " << msg << '\n';
-	// dump();
+	log("reverted: ", msg);
 	try_move(false);
 }
 
@@ -207,7 +207,7 @@ void try_discard() {
 }
 
 /// from stack to stack
-void try_transfer(bool /*only_reveals*/) {
+void try_transfer() {
 	for (i64 i_src_stack = 0; i_src_stack < num_stacks; ++i_src_stack) {
 		auto& src_hidden = hiddens.at(i_src_stack);
 		auto& src_stack = stacks.at(i_src_stack);
