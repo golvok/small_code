@@ -71,7 +71,7 @@ struct Tableau {
 	static constexpr i64 num_draws = 3;
 
 	vector<Card> draw_pile{};
-	i64 play_pos = num_draws;
+	vector<Card> drawn{};
 	vector<vector<Card>> hiddens{unsigned(num_stacks)};
 	vector<vector<Card>> stacks{unsigned(num_stacks)};
 	vector<vector<Card>> discards{4};
@@ -84,7 +84,7 @@ Tableau tableau{};
 i64 const& num_stacks = tableau.num_stacks;
 i64 const& num_draws = tableau.num_draws;
 vector<Card>& draw_pile = tableau.draw_pile;
-i64& play_pos = tableau.play_pos;
+vector<Card>& drawn = tableau.drawn;
 vector<vector<Card>>& hiddens = tableau.hiddens;
 vector<vector<Card>>& stacks = tableau.stacks;
 vector<vector<Card>>& discards = tableau.discards;
@@ -123,7 +123,7 @@ void solve() {
 
 void dump() {
 	cout << "draw_pile=" << draw_pile << '\n';
-	cout << "play_pos=" << play_pos << '\n';
+	cout << "drawn=" << drawn << '\n';
 	cout << "hiddens=" << hiddens << '\n';
 	cout << "stacks=" << stacks << '\n';
 	cout << "discards=" << discards << '\n';
@@ -144,7 +144,7 @@ std::unordered_set<Tableau, TableauHasher> visited{};
 void try_move(bool go = true) {
 	if (not go) return;
 	auto is_empty = [](auto& v) { return v.empty(); };
-	if (draw_pile.empty() && std::ranges::all_of(hiddens, is_empty)) {
+	if (draw_pile.empty() && drawn.empty() && std::ranges::all_of(hiddens, is_empty)) {
 		cout.flush();
 		throw std::runtime_error("solved!");
 	}
@@ -253,9 +253,9 @@ void try_transfer() {
 
 /// from drawn cards to the stacks
 void try_play() {
-	if (draw_pile.empty()) return;
-	auto c = draw_pile.at(play_pos);
+	if (drawn.empty()) return;
 
+	auto c = drawn.back();
 	for (i64 i_stack = 0; i_stack < num_stacks; ++i_stack) {
 		auto& stack = stacks.at(i_stack);
 		if (c.value() == kKing) {
@@ -265,15 +265,12 @@ void try_play() {
 			if (stack.back().colour() == c.colour() || stack.back().value() != c.value() + 1) continue;
 		}
 
-		stack.push_back(c);
-		draw_pile.erase(draw_pile.begin() + play_pos);
-		i64 tmp_play_pos = play_pos == 0 ? std::min<i64>(ssize(draw_pile) - 1, num_draws) : play_pos - 1;
-		std::swap(tmp_play_pos, play_pos);
+		stack.push_back(drawn.back());
+		drawn.pop_back();
 
 		try_move_if_new_board("play from drawn");
 
-		std::swap(play_pos, tmp_play_pos);
-		draw_pile.insert(draw_pile.begin() + play_pos, c);
+		drawn.push_back(stack.back());
 		stack.pop_back();
 
 		reverted("play from drawn");
@@ -282,24 +279,20 @@ void try_play() {
 
 /// from drawn cards to discards
 void try_quick_discard() {
-	if (draw_pile.empty()) return;
-	auto c = draw_pile.at(play_pos);
+	if (drawn.empty()) return;
+	auto c = drawn.back();
 
 	auto& dst_discard = discards.at(id(c.suite()));
 	const bool do_discard = dst_discard.empty()
 		? c.value() == kAce
 		: c.value() - 1 == dst_discard.back().value();
 	if (not do_discard) return;
-
-	dst_discard.push_back(c);
-	draw_pile.erase(draw_pile.begin() + play_pos);
-	i64 tmp_play_pos = play_pos == 0 ? std::min<i64>(ssize(draw_pile) - 1, num_draws) : play_pos - 1;
-	std::swap(tmp_play_pos, play_pos);
+	dst_discard.push_back(drawn.back());
+	drawn.pop_back();
 
 	try_move_if_new_board("discard from drawn");
 
-	std::swap(play_pos, tmp_play_pos);
-	draw_pile.insert(draw_pile.begin() + play_pos, dst_discard.back());
+	drawn.push_back(dst_discard.back());
 	dst_discard.pop_back();
 
 	reverted("discard from drawn");
@@ -307,22 +300,29 @@ void try_quick_discard() {
 
 /// draw new cards
 void try_draw() {
-	if (draw_pile.empty()) return;
-	bool const do_return = play_pos == ssize(draw_pile) - 1;
+	if (draw_pile.empty() && drawn.empty()) return;
+	bool const do_return = draw_pile.empty();
 	auto msg = do_return ? "returned drawn cards" : "drew cards";
-	i64 tmp_play_pos = 0;
 
 	if (do_return) {
-		std::swap(tmp_play_pos, play_pos);
+		std::swap(draw_pile, drawn);
+		std::ranges::reverse(draw_pile);
 	}
-	auto const num_to_draw = std::min<i64>(ssize(draw_pile) - play_pos - 1, num_draws);
-	play_pos += num_to_draw;
+	auto const num_to_draw = std::min<i64>(ssize(draw_pile), 3);
+	for (i64 i = 0; i < num_to_draw; ++i) {
+		drawn.push_back(draw_pile.back());
+		draw_pile.pop_back();
+	}
 
 	try_move_if_new_board(msg);
 
-	play_pos -= num_to_draw;
+	for (i64 i = 0; i < num_to_draw; ++i) {
+		draw_pile.push_back(drawn.back());
+		drawn.pop_back();
+	}
 	if (do_return) {
-		std::swap(play_pos, tmp_play_pos);
+		std::swap(drawn, draw_pile);
+		std::ranges::reverse(drawn);
 	}
 
 	reverted(msg);
