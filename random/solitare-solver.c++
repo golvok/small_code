@@ -19,8 +19,7 @@ struct App {
 
 static int main() {
 	App a;
-	a.solve();
-	return 0;
+	return a.solve() ? 0 : 1;
 }
 
 enum Colour { kRed = 0, kBlack = 1 };
@@ -89,7 +88,7 @@ vector<vector<Card>>& hiddens = tableau.hiddens;
 vector<vector<Card>>& stacks = tableau.stacks;
 vector<vector<Card>>& discards = tableau.discards;
 
-void solve() {
+bool solve() {
 	for (auto s : {kDiamonds, kClubs, kHearts, kSpades}) {
 		for (auto v = kAce; v <= kKing; v = Value(v + 1)) {
 			draw_pile.push_back({s, v});
@@ -110,15 +109,16 @@ void solve() {
 		draw_pile.pop_back();
 	}
 
-	dump();
 	cout.flush();
 	try {
 		try_move();
 	} catch (std::exception const& e) {
 		if (std::string_view(e.what()) != "solved!") throw;
 		cout << e.what() << '\n';
+		return true;
 	}
-	// dump();
+
+	return false;
 }
 
 void dump() {
