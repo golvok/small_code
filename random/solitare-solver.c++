@@ -29,7 +29,7 @@ enum Suite {
 	kHearts   = (2 << 1) | kRed,
 	kSpades   = (3 << 1) | kBlack,
 };
-enum Value { kAce = 1, kKing = 13 };
+enum Value { kBeforeAce = 0, kAce = 1, kKing = 13 };
 
 static size_t id(Suite s) { return s >> 1; }
 
@@ -73,7 +73,12 @@ struct Tableau {
 	vector<Card> drawn{};
 	vector<vector<Card>> hiddens{unsigned(num_stacks)};
 	vector<vector<Card>> stacks{unsigned(num_stacks)};
-	vector<vector<Card>> discards{4};
+	vector<Card> discards{
+		Card{kDiamonds, kBeforeAce},
+		Card{kClubs, kBeforeAce},
+		Card{kHearts, kBeforeAce},
+		Card{kSpades, kBeforeAce},
+	};
 
 	auto operator<=>(Tableau const&) const = default;
 };
@@ -86,7 +91,7 @@ vector<Card>& draw_pile = tableau.draw_pile;
 vector<Card>& drawn = tableau.drawn;
 vector<vector<Card>>& hiddens = tableau.hiddens;
 vector<vector<Card>>& stacks = tableau.stacks;
-vector<vector<Card>>& discards = tableau.discards;
+vector<Card>& discards = tableau.discards;
 
 bool solve() {
 	for (auto s : {kDiamonds, kClubs, kHearts, kSpades}) {
@@ -192,18 +197,15 @@ void try_discard() {
 
 		auto tip = s.back();
 		auto& dst_discard = discards.at(id(tip.suite()));
-		const bool do_discard = dst_discard.empty()
-			? tip.value() == kAce
-			: tip.value() - 1 == dst_discard.back().value();
-		if (not do_discard) continue;
+		if (tip.value() - 1 != dst_discard.value()) continue;
 
-		dst_discard.push_back(tip);
+		dst_discard._value = static_cast<Value>(dst_discard._value + 1);
 		s.pop_back();
 
 		try_flip_then_continue(&s - stacks.data(), "discard from stack");
 
-		s.push_back(dst_discard.back());
-		dst_discard.pop_back();
+		s.push_back(dst_discard);
+		dst_discard._value = static_cast<Value>(dst_discard._value - 1);
 
 		reverted("discard from stack");
 	}
@@ -283,17 +285,15 @@ void try_quick_discard() {
 	auto c = drawn.back();
 
 	auto& dst_discard = discards.at(id(c.suite()));
-	const bool do_discard = dst_discard.empty()
-		? c.value() == kAce
-		: c.value() - 1 == dst_discard.back().value();
-	if (not do_discard) return;
-	dst_discard.push_back(drawn.back());
+	if (c.value() - 1 != dst_discard.value()) return;
+
+	dst_discard._value = static_cast<Value>(dst_discard._value + 1);
 	drawn.pop_back();
 
 	try_move_if_new_board("discard from drawn");
 
-	drawn.push_back(dst_discard.back());
-	dst_discard.pop_back();
+	drawn.push_back(dst_discard);
+	dst_discard._value = static_cast<Value>(dst_discard._value - 1);
 
 	reverted("discard from drawn");
 }
