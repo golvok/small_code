@@ -151,7 +151,37 @@ void log(std::string_view msg1, std::string_view msg2) {
 }
 
 struct TableauHasher {
-	std::size_t operator()(Tableau const&) const { return 0; }
+	std::size_t operator()(Tableau const& tableau) const {
+		std::size_t hash = 0;
+		std::size_t next_bits = 0;
+		i64 num_cards_in_next_bits = 0;
+		i64 next_offset = 0;
+		constexpr i64 bits_in_card_data = 4 + 2;
+		constexpr i64 max_cards_in_next_bits = 64 / bits_in_card_data; // 6
+		constexpr i64 unused_next_bits_bits = 64 - bits_in_card_data - max_cards_in_next_bits; // 4
+		auto update = [&](Card c) {
+			next_bits <<= 2;
+			next_bits |= id(c.suite());
+			next_bits <<= 4;
+			next_bits |= c.value();
+			++num_cards_in_next_bits;
+			if (num_cards_in_next_bits == max_cards_in_next_bits) {
+				hash ^= (next_bits << next_offset);
+				next_offset = (next_offset + 1) % unused_next_bits_bits;
+				next_bits = 0;
+				num_cards_in_next_bits = 0;
+			}
+		};
+
+		std::ranges::for_each(tableau.draw_pile, update);
+		std::ranges::for_each(tableau.drawn, update);
+		for (auto& s : tableau.hiddens) std::ranges::for_each(s, update);
+		for (auto& s : tableau.stacks) std::ranges::for_each(s, update);
+		std::ranges::for_each(tableau.discards, update);
+
+		hash ^= next_bits;
+		return hash;
+	}
 };
 
 std::unordered_set<Tableau, TableauHasher> visited{};
