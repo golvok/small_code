@@ -56,10 +56,10 @@ $(EXE_DIR)/%: $(OBJ_DIR)/%.o
 	$(CXX) $^ -o $@ $(MY_LDFLAGS)
 
 run__%: $(EXE_DIR)/%
-	$(RUN_UNDER) "$<"
+	$(RUN_UNDER) "$<" $(RUN_ARGS)
 
 run__%: $(EXE_DIR)/tests/%
-	$(RUN_UNDER) "$<"
+	$(RUN_UNDER) "$<" $(RUN_ARGS)
 
 clean:
 	rm -f $(EXES)
