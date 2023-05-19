@@ -19,91 +19,16 @@ using u64 = std::uint64_t;
 namespace {
 struct App {
 
+struct Tableau;
+struct Card;
+enum Suite : std::uint8_t;
+enum Value : std::int8_t;
+
 static int main(std::span<std::string_view> args) {
 	App app;
 	u64 seed = args.size() < 2 ? std::random_device{}() : std::stoull(std::string(args[1]));
 	return app.solve(seed) ? 0 : 1;
 }
-
-enum Colour { kRed = 0, kBlack = 1 };
-enum Suite {
-	kDiamonds = (0 << 1) | kRed,
-	kClubs    = (1 << 1) | kBlack,
-	kHearts   = (2 << 1) | kRed,
-	kSpades   = (3 << 1) | kBlack,
-};
-enum Value { kBeforeAce = 0, kAce = 1, kKing = 13 };
-
-static size_t id(Suite s) { return s >> 1; }
-
-struct Card {
-	Suite _suite;
-	Value _value;
-	Colour colour() const { return Colour(_suite & 0b1); }
-	Suite suite() const { return _suite; }
-	Value value() const { return _value; }
-
-	friend ostream& operator<<(ostream& os, Card const& c) {
-		constexpr std::array<char, 4> suite_letter{'D', 'C', 'H', 'S'};
-		return os << suite_letter[i64(c.suite()) >> 1] << '-' << c.value();
-	}
-
-	auto operator<=>(Card const&) const = default;
-};
-
-friend ostream& operator<<(ostream& os, vector<Card> const& vc) {
-	os << '[';
-	for (auto const& c : vc) {
-		os << c << ' ';
-	}
-	return os << '(' << vc.size() << ")]";
-}
-
-template<std::size_t N>
-friend ostream& operator<<(ostream& os, std::array<Card, N> const& vc) {
-	os << '[';
-	for (auto const& c : vc) {
-		os << c << ' ';
-	}
-	return os << '(' << vc.size() << ")]";
-}
-
-friend ostream& operator<<(ostream& os, vector<vector<Card>> const& vvc) {
-	os << "[\n";
-	for (auto const& vc : vvc) {
-		os << "  " << vc << '\n';
-	}
-	return os << ']';
-}
-
-
-struct Tableau {
-	static constexpr i64 num_stacks = 7;
-	static constexpr i64 num_draws = 3;
-
-	vector<Card> draw_pile{};
-	vector<Card> drawn{};
-	vector<vector<Card>> hiddens{unsigned(num_stacks)};
-	vector<vector<Card>> stacks{unsigned(num_stacks)};
-	std::array<Card, 4> discards{
-		Card{kDiamonds, kBeforeAce},
-		Card{kClubs, kBeforeAce},
-		Card{kHearts, kBeforeAce},
-		Card{kSpades, kBeforeAce},
-	};
-
-	auto operator<=>(Tableau const&) const = default;
-};
-
-Tableau tableau{};
-
-i64 const& num_stacks = tableau.num_stacks;
-i64 const& num_draws = tableau.num_draws;
-vector<Card>& draw_pile = tableau.draw_pile;
-vector<Card>& drawn = tableau.drawn;
-vector<vector<Card>>& hiddens = tableau.hiddens;
-vector<vector<Card>>& stacks = tableau.stacks;
-std::array<Card, 4>& discards = tableau.discards;
 
 bool solve(u64 seed) {
 	for (auto s : {kDiamonds, kClubs, kHearts, kSpades}) {
@@ -126,14 +51,16 @@ bool solve(u64 seed) {
 	}
 
 	cout.flush();
+
+	bool solved = false;
 	try {
 		try_move("start", true);
 	} catch (std::exception const& e) {
 		if (std::string_view(e.what()) != "solved!") throw;
-		return true;
+		solved = true;
 	}
 
-	return false;
+	return solved;
 }
 
 void dump() {
@@ -363,6 +290,87 @@ void try_draw() {
 
 	reverted(msg);
 }
+
+enum Colour { kRed = 0, kBlack = 1 };
+enum Suite : std::uint8_t {
+	// even <=> red
+	kDiamonds = 0,
+	kClubs    = 1,
+	kHearts   = 2,
+	kSpades   = 3,
+};
+enum Value : std::int8_t { kBeforeAce = 0, kAce = 1, kKing = 13 };
+
+static size_t id(Suite s) { return s; }
+
+struct Card {
+	Suite _suite;
+	Value _value;
+	Colour colour() const { return Colour(_suite & 0b1); }
+	Suite suite() const { return _suite; }
+	Value value() const { return _value; }
+
+	friend ostream& operator<<(ostream& os, Card const& c) {
+		constexpr std::array<char, 4> suite_letter{'D', 'C', 'H', 'S'};
+		return os << suite_letter[c.suite()] << '-' << int(c.value());
+	}
+
+	auto operator<=>(Card const&) const = default;
+};
+
+friend ostream& operator<<(ostream& os, vector<Card> const& vc) {
+	os << '[';
+	for (auto const& c : vc) {
+		os << c << ' ';
+	}
+	return os << '(' << vc.size() << ")]";
+}
+
+template<std::size_t N>
+friend ostream& operator<<(ostream& os, std::array<Card, N> const& vc) {
+	os << '[';
+	for (auto const& c : vc) {
+		os << c << ' ';
+	}
+	return os << '(' << vc.size() << ")]";
+}
+
+friend ostream& operator<<(ostream& os, vector<vector<Card>> const& vvc) {
+	os << "[\n";
+	for (auto const& vc : vvc) {
+		os << "  " << vc << '\n';
+	}
+	return os << ']';
+}
+
+
+struct Tableau {
+	static constexpr i64 num_stacks = 7;
+	static constexpr i64 num_draws = 3;
+
+	vector<Card> draw_pile{};
+	vector<Card> drawn{};
+	vector<vector<Card>> hiddens{unsigned(num_stacks)};
+	vector<vector<Card>> stacks{unsigned(num_stacks)};
+	std::array<Card, 4> discards{
+		Card{kDiamonds, kBeforeAce},
+		Card{kClubs, kBeforeAce},
+		Card{kHearts, kBeforeAce},
+		Card{kSpades, kBeforeAce},
+	};
+
+	auto operator<=>(Tableau const&) const = default;
+};
+
+Tableau tableau{};
+
+i64 const& num_stacks = tableau.num_stacks;
+i64 const& num_draws = tableau.num_draws;
+vector<Card>& draw_pile = tableau.draw_pile;
+vector<Card>& drawn = tableau.drawn;
+vector<vector<Card>>& hiddens = tableau.hiddens;
+vector<vector<Card>>& stacks = tableau.stacks;
+std::array<Card, 4>& discards = tableau.discards;
 
 };
 }
