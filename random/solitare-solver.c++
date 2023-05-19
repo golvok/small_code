@@ -127,7 +127,7 @@ bool solve(u64 seed) {
 
 	cout.flush();
 	try {
-		try_move();
+		try_move("start", true);
 	} catch (std::exception const& e) {
 		if (std::string_view(e.what()) != "solved!") throw;
 		return true;
@@ -186,8 +186,11 @@ struct TableauHasher {
 
 std::unordered_set<Tableau, TableauHasher> visited{};
 
-void try_move(bool go = true) {
-	if (not go) return;
+void try_move(std::string_view msg, bool check_unique) {
+	if (check_unique) {
+		if (not visited.insert(tableau).second) return;
+	}
+	log("new tableau from: ", msg);
 	auto is_empty = [](auto& v) { return v.empty(); };
 	if (draw_pile.empty() && drawn.empty() && std::ranges::all_of(hiddens, is_empty)) {
 		cout.flush();
@@ -200,19 +203,12 @@ void try_move(bool go = true) {
 	try_draw();
 }
 
-void try_move_if_new_board(std::string_view msg) {
-	if (not visited.insert(tableau).second) return;
-	log("new tableau from: ", msg);
-	try_move();
-}
-
 void reverted(std::string_view msg) {
 	log("reverted: ", msg);
-	try_move(false);
 }
 
 /// flip hidden cards into stacks
-void try_flip_then_continue(i64 i_stack, std::string_view msg) {
+void try_flip_then_continue(i64 i_stack, std::string_view msg, bool check_unique) {
 	auto& hidden = hiddens.at(i_stack);
 	auto& stack = stacks.at(i_stack);
 	bool const do_flip = not hidden.empty() && stack.empty();
@@ -222,7 +218,7 @@ void try_flip_then_continue(i64 i_stack, std::string_view msg) {
 		hidden.pop_back();
 	}
 
-	try_move_if_new_board(msg);
+	try_move(msg, check_unique);
 
 	if (do_flip) {
 		hidden.push_back(stack.back());
@@ -242,7 +238,7 @@ void try_discard() {
 		dst_discard._value = static_cast<Value>(dst_discard._value + 1);
 		s.pop_back();
 
-		try_flip_then_continue(&s - stacks.data(), "discard from stack");
+		try_flip_then_continue(&s - stacks.data(), "discard from stack", true);
 
 		s.push_back(dst_discard);
 		dst_discard._value = static_cast<Value>(dst_discard._value - 1);
@@ -267,7 +263,7 @@ void try_transfer() {
 				dst_stack.push_back(src_stack.back());
 				src_stack.pop_back();
 
-				try_flip_then_continue(i_src_stack, "king to empty");
+				try_flip_then_continue(i_src_stack, "king to empty", true);
 
 				src_stack.push_back(dst_stack.back());
 				dst_stack.pop_back();
@@ -282,7 +278,7 @@ void try_transfer() {
 				dst_stack.insert(dst_stack.end(), src_stack.begin() + src_pos, src_stack.end());
 				src_stack.erase(src_stack.begin() + src_pos, src_stack.end());
 
-				try_flip_then_continue(i_src_stack, "move stack");
+				try_flip_then_continue(i_src_stack, "move stack", true);
 
 				src_stack.insert(src_stack.end(), dst_stack.end() - num_moved, dst_stack.end());
 				dst_stack.erase(dst_stack.end() - num_moved, dst_stack.end());
@@ -310,7 +306,7 @@ void try_play() {
 		stack.push_back(drawn.back());
 		drawn.pop_back();
 
-		try_move_if_new_board("play from drawn");
+		try_move("play from drawn", true);
 
 		drawn.push_back(stack.back());
 		stack.pop_back();
@@ -330,7 +326,7 @@ void try_quick_discard() {
 	dst_discard._value = static_cast<Value>(dst_discard._value + 1);
 	drawn.pop_back();
 
-	try_move_if_new_board("discard from drawn");
+	try_move("discard from drawn", true);
 
 	drawn.push_back(dst_discard);
 	dst_discard._value = static_cast<Value>(dst_discard._value - 1);
@@ -354,7 +350,7 @@ void try_draw() {
 		draw_pile.pop_back();
 	}
 
-	try_move_if_new_board(msg);
+	try_move(msg, true);
 
 	for (i64 i = 0; i < num_to_draw; ++i) {
 		draw_pile.push_back(drawn.back());
