@@ -21,7 +21,7 @@ struct App {
 
 struct Tableau;
 struct Card;
-enum Suite : std::uint8_t;
+enum Suit : std::uint8_t;
 enum Value : std::int8_t;
 
 static int main(std::span<std::string_view> args) {
@@ -88,7 +88,7 @@ struct TableauHasher {
 		constexpr i64 unused_next_bits_bits = 64 - bits_in_card_data - max_cards_in_next_bits; // 4
 		auto update = [&](Card c) {
 			next_bits <<= 2;
-			next_bits |= id(c.suite());
+			next_bits |= id(c.suit());
 			next_bits <<= 4;
 			next_bits |= c.value();
 			++num_cards_in_next_bits;
@@ -159,7 +159,7 @@ void try_discard() {
 		if (s.empty()) continue;
 
 		auto tip = s.back();
-		auto& dst_discard = discards.at(id(tip.suite()));
+		auto& dst_discard = discards.at(id(tip.suit()));
 		if (tip.value() - 1 != dst_discard.value()) continue;
 
 		dst_discard._value = static_cast<Value>(dst_discard._value + 1);
@@ -247,7 +247,7 @@ void try_quick_discard() {
 	if (drawn.empty()) return;
 	auto c = drawn.back();
 
-	auto& dst_discard = discards.at(id(c.suite()));
+	auto& dst_discard = discards.at(id(c.suit()));
 	if (c.value() - 1 != dst_discard.value()) return;
 
 	dst_discard._value = static_cast<Value>(dst_discard._value + 1);
@@ -292,7 +292,7 @@ void try_draw() {
 }
 
 enum Colour { kRed = 0, kBlack = 1 };
-enum Suite : std::uint8_t {
+enum Suit : std::uint8_t {
 	// even <=> red
 	kDiamonds = 0,
 	kClubs    = 1,
@@ -301,18 +301,18 @@ enum Suite : std::uint8_t {
 };
 enum Value : std::int8_t { kBeforeAce = 0, kAce = 1, kKing = 13 };
 
-static size_t id(Suite s) { return s; }
+static size_t id(Suit s) { return s; }
 
 struct Card {
-	Suite _suite;
+	Suit _suit;
 	Value _value;
-	Colour colour() const { return Colour(_suite & 0b1); }
-	Suite suite() const { return _suite; }
+	Colour colour() const { return Colour(_suit & 0b1); }
+	Suit suit() const { return _suit; }
 	Value value() const { return _value; }
 
 	friend ostream& operator<<(ostream& os, Card const& c) {
-		constexpr std::array<char, 4> suite_letter{'D', 'C', 'H', 'S'};
-		return os << suite_letter[c.suite()] << '-' << int(c.value());
+		constexpr std::array<char, 4> suit_letter{'D', 'C', 'H', 'S'};
+		return os << suit_letter[c.suit()] << '-' << int(c.value());
 	}
 
 	auto operator<=>(Card const&) const = default;
