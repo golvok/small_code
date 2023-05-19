@@ -59,6 +59,15 @@ friend ostream& operator<<(ostream& os, vector<Card> const& vc) {
 	return os << '(' << vc.size() << ")]";
 }
 
+template<std::size_t N>
+friend ostream& operator<<(ostream& os, std::array<Card, N> const& vc) {
+	os << '[';
+	for (auto const& c : vc) {
+		os << c << ' ';
+	}
+	return os << '(' << vc.size() << ")]";
+}
+
 friend ostream& operator<<(ostream& os, vector<vector<Card>> const& vvc) {
 	os << "[\n";
 	for (auto const& vc : vvc) {
@@ -76,7 +85,7 @@ struct Tableau {
 	vector<Card> drawn{};
 	vector<vector<Card>> hiddens{unsigned(num_stacks)};
 	vector<vector<Card>> stacks{unsigned(num_stacks)};
-	vector<Card> discards{
+	std::array<Card, 4> discards{
 		Card{kDiamonds, kBeforeAce},
 		Card{kClubs, kBeforeAce},
 		Card{kHearts, kBeforeAce},
@@ -94,7 +103,7 @@ vector<Card>& draw_pile = tableau.draw_pile;
 vector<Card>& drawn = tableau.drawn;
 vector<vector<Card>>& hiddens = tableau.hiddens;
 vector<vector<Card>>& stacks = tableau.stacks;
-vector<Card>& discards = tableau.discards;
+std::array<Card, 4>& discards = tableau.discards;
 
 bool solve(u64 seed) {
 	for (auto s : {kDiamonds, kClubs, kHearts, kSpades}) {
