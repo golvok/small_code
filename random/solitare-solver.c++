@@ -4,6 +4,7 @@
 #include <map>
 #include <random>
 #include <set>
+#include <span>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -13,13 +14,15 @@ using std::ostream;
 using std::cout;
 
 using i64 = std::int64_t;
+using u64 = std::uint64_t;
 
 namespace {
 struct App {
 
-static int main() {
-	App a;
-	return a.solve() ? 0 : 1;
+static int main(std::span<std::string_view> args) {
+	App app;
+	u64 seed = args.size() < 2 ? std::random_device{}() : std::stoull(std::string(args[1]));
+	return app.solve(seed) ? 0 : 1;
 }
 
 enum Colour { kRed = 0, kBlack = 1 };
@@ -93,14 +96,13 @@ vector<vector<Card>>& hiddens = tableau.hiddens;
 vector<vector<Card>>& stacks = tableau.stacks;
 vector<Card>& discards = tableau.discards;
 
-bool solve() {
+bool solve(u64 seed) {
 	for (auto s : {kDiamonds, kClubs, kHearts, kSpades}) {
 		for (auto v = kAce; v <= kKing; v = Value(v + 1)) {
 			draw_pile.push_back({s, v});
 		}
 	}
 
-	std::size_t seed = std::random_device{}();
 	cout << "seed = " << seed << std::endl;
 	auto g  = std::mt19937{seed};
 	std::ranges::shuffle(draw_pile, g);
@@ -119,7 +121,6 @@ bool solve() {
 		try_move();
 	} catch (std::exception const& e) {
 		if (std::string_view(e.what()) != "solved!") throw;
-		cout << e.what() << '\n';
 		return true;
 	}
 
@@ -331,4 +332,10 @@ void try_draw() {
 };
 }
 
-int main() { return App::main(); }
+int main(int argc, char* argv[]) {
+	std::vector<std::string_view> args;
+	for (int i = 0; i < argc; ++i) {
+		args.push_back(argv[i]);
+	}
+	return App::main(args);
+}
