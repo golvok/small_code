@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <iostream>
 #include <map>
 #include <random>
@@ -31,24 +32,26 @@ static int main(std::span<std::string_view> args) {
 }
 
 bool solve(u64 seed) {
+	std::vector<Card> deck;
 	for (auto s : {kDiamonds, kClubs, kHearts, kSpades}) {
 		for (auto v = kAce; v <= kKing; v = Value(v + 1)) {
-			draw_pile.push_back({s, v});
+			deck.push_back({s, v});
 		}
 	}
 
 	cout << "seed = " << seed << std::endl;
 	auto g  = std::mt19937{seed};
-	std::ranges::shuffle(draw_pile, g);
+	std::ranges::shuffle(deck, g);
 
 	for (i64 i_stack = 0; i_stack != num_stacks; ++i_stack) {
 		for (i64 i_draw = 0; i_draw != i_stack; ++i_draw) {
-			hiddens[i_stack].push_back(draw_pile.back());
-			draw_pile.pop_back();
+			hiddens[i_stack].push_back(deck.back());
+			deck.pop_back();
 		}
-		stacks[i_stack].push_back(draw_pile.back());
-		draw_pile.pop_back();
+		stacks[i_stack].push_back(deck.back());
+		deck.pop_back();
 	}
+	std::ranges::copy(deck, std::back_inserter(draw_pile));
 
 	cout.flush();
 
@@ -318,6 +321,88 @@ struct Card {
 	auto operator<=>(Card const&) const = default;
 };
 
+template<typename T, std::size_t kMax>
+struct SmallVec {
+	using value_type = T;
+
+	std::size_t _size = 0;
+	std::array<T, kMax> _storage{};
+
+	void push_back(T t) { _storage[_size] = t; ++_size; assert(_size <= kMax); }
+	void pop_back() { --_size; }
+	T const* data() const { return _storage.data(); }
+	T*       data()       { return _storage.data(); }
+	T const* begin() const { return _storage.data(); }
+	T*       begin()       { return _storage.data(); }
+	T const* end() const { assert(_size <= kMax); return begin() + _size; }
+	T*       end()       { assert(_size <= kMax); return begin() + _size; }
+	std::size_t size() const { return _size; }
+	i64 ssize() const { assert(_size <= kMax); return _size; }
+	bool empty() const { return _size == 0; }
+	T const& front() const { return *begin(); }
+	T&       front()       { return *begin(); }
+	T const& back() const { assert(_size <= kMax); return *(end() - 1); }
+	T&       back()       { assert(_size <= kMax); return *(end() - 1); }
+	T& at(std::size_t i) { assert(i < _size); return _storage[i]; }
+	T& operator[](std::size_t i) { assert(i < _size); return _storage[i]; }
+
+	T* erase(T* from, T* to) {
+		std::copy(to, end(), from);
+		_size -= to - from;
+		assert(_size <= kMax);
+		return from + 1;
+	}
+
+	T* insert(T* here, T const* b, T const* e) {
+		auto n_elem = e - b;
+		std::copy(here, end(), here + n_elem);
+		std::copy(b, e, here);
+		_size += n_elem;
+		assert(_size <= kMax);
+		return here;
+	}
+
+	friend i64 ssize(const SmallVec& sv) { return sv.ssize(); }
+
+	std::span<T const> asSpan() const { return std::span(begin(), end()); }
+
+	bool operator==(const SmallVec& rhs) const {
+		return size() == rhs.size() && std::ranges::equal(asSpan(), rhs.asSpan());
+	}
+};
+
+using DrawPile = SmallVec<Card, 24>;
+// using DrawPile = vector<Card>;
+using Hidden = SmallVec<Card, 7>;
+// using Hidden = vector<Card>;
+using Stack = SmallVec<Card, kKing - kAce + 1>;
+// using Stack = vector<Card>;
+
+using Hiddens = SmallVec<Hidden, 7>;
+// using Hiddens = vector<Hidden>;
+using Stacks = SmallVec<Stack, 7>;
+// using Stacks = vector<Stack>;
+using Discards = std::array<Card, 4>;
+
+struct Tableau {
+	static constexpr i64 num_stacks = 7;
+	static constexpr i64 num_draws = 3;
+
+	DrawPile draw_pile{};
+	DrawPile drawn{};
+	Hiddens hiddens{unsigned(num_stacks)};
+	Stacks stacks{unsigned(num_stacks)};
+	Discards discards{
+		Card{kDiamonds, kBeforeAce},
+		Card{kClubs, kBeforeAce},
+		Card{kHearts, kBeforeAce},
+		Card{kSpades, kBeforeAce},
+	};
+
+	auto operator<=>(Tableau const&) const = default;
+};
+
+
 friend ostream& operator<<(ostream& os, vector<Card> const& vc) {
 	os << '[';
 	for (auto const& c : vc) {
@@ -335,6 +420,15 @@ friend ostream& operator<<(ostream& os, std::array<Card, N> const& vc) {
 	return os << '(' << vc.size() << ")]";
 }
 
+template<std::size_t N>
+friend ostream& operator<<(ostream& os, SmallVec<Card, N> const& vc) {
+	os << '[';
+	for (auto const& c : vc) {
+		os << c << ' ';
+	}
+	return os << '(' << vc.size() << ")]";
+}
+
 friend ostream& operator<<(ostream& os, vector<vector<Card>> const& vvc) {
 	os << "[\n";
 	for (auto const& vc : vvc) {
@@ -343,34 +437,33 @@ friend ostream& operator<<(ostream& os, vector<vector<Card>> const& vvc) {
 	return os << ']';
 }
 
+template<std::size_t N>
+friend ostream& operator<<(ostream& os, vector<SmallVec<Card, N>> const& vvc) {
+	os << "[\n";
+	for (auto const& vc : vvc) {
+		os << "  " << vc << '\n';
+	}
+	return os << ']';
+}
 
-struct Tableau {
-	static constexpr i64 num_stacks = 7;
-	static constexpr i64 num_draws = 3;
-
-	vector<Card> draw_pile{};
-	vector<Card> drawn{};
-	vector<vector<Card>> hiddens{unsigned(num_stacks)};
-	vector<vector<Card>> stacks{unsigned(num_stacks)};
-	std::array<Card, 4> discards{
-		Card{kDiamonds, kBeforeAce},
-		Card{kClubs, kBeforeAce},
-		Card{kHearts, kBeforeAce},
-		Card{kSpades, kBeforeAce},
-	};
-
-	auto operator<=>(Tableau const&) const = default;
-};
+template<std::size_t N, std::size_t M>
+friend ostream& operator<<(ostream& os, SmallVec<SmallVec<Card, M>, N> const& vvc) {
+	os << "[\n";
+	for (auto const& vc : vvc) {
+		os << "  " << vc << '\n';
+	}
+	return os << ']';
+}
 
 Tableau tableau{};
 
 i64 const& num_stacks = tableau.num_stacks;
 i64 const& num_draws = tableau.num_draws;
-vector<Card>& draw_pile = tableau.draw_pile;
-vector<Card>& drawn = tableau.drawn;
-vector<vector<Card>>& hiddens = tableau.hiddens;
-vector<vector<Card>>& stacks = tableau.stacks;
-std::array<Card, 4>& discards = tableau.discards;
+DrawPile& draw_pile = tableau.draw_pile;
+DrawPile& drawn = tableau.drawn;
+Hiddens& hiddens = tableau.hiddens;
+Stacks& stacks = tableau.stacks;
+Discards& discards = tableau.discards;
 
 };
 }
