@@ -53,7 +53,9 @@ bool solve(u64 seed) {
 	}
 	std::ranges::copy(deck, std::back_inserter(draw_pile));
 
+	dump();
 	cout.flush();
+	visited.reserve(1'200'000); // eg. for seed 3660738044 with kKing = 9, num_stacks = 7
 
 	bool solved = false;
 	try {
@@ -105,6 +107,7 @@ struct TableauHasher {
 
 		std::ranges::for_each(tableau.draw_pile, update);
 		std::ranges::for_each(tableau.drawn, update);
+		// hash ^= tableau.drawn.size();
 		for (auto& s : tableau.hiddens) std::ranges::for_each(s, update);
 		for (auto& s : tableau.stacks) std::ranges::for_each(s, update);
 		std::ranges::for_each(tableau.discards, update);
@@ -114,7 +117,20 @@ struct TableauHasher {
 	}
 };
 
-std::unordered_set<Tableau, TableauHasher> visited{};
+struct TableauEqualer {
+	bool operator()(Tableau const& lhs, Tableau const& rhs) const {
+		// return
+		// 	lhs.drawn.size() == rhs.drawn.size() &&
+		// 	lhs.draw_pile == rhs.draw_pile &&
+		// 	lhs.hiddens == rhs.hiddens &&
+		// 	lhs.stacks == rhs.stacks &&
+		// 	lhs.discards == rhs.discards;
+		return lhs == rhs;
+	}
+};
+
+using Visited = std::unordered_set<Tableau, TableauHasher, TableauEqualer>;
+static inline Visited& visited = *new Visited{};
 
 void try_move(std::string_view msg, bool check_unique) {
 	if (check_unique) {
