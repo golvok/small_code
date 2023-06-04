@@ -132,8 +132,15 @@ struct TableauEqualer {
 using Visited = std::unordered_set<Tableau, TableauHasher, TableauEqualer>;
 static inline Visited& visited = *new Visited{};
 
-void try_move(std::string_view msg, bool check_unique) {
-	if (check_unique) {
+struct TryMoveOpts {
+	bool check_unique = true;
+	bool allow_transfer_this_time = true;
+};
+
+void try_move(std::string_view msg, bool check_unique) { return try_move(msg, {.check_unique = check_unique}); }
+
+void try_move(std::string_view msg, TryMoveOpts opts) {
+	if (opts.check_unique) {
 		if (not visited.insert(tableau).second) return;
 	}
 	log("new tableau from: ", msg);
@@ -143,7 +150,8 @@ void try_move(std::string_view msg, bool check_unique) {
 		throw std::runtime_error("solved!");
 	}
 	try_discard();
-	try_transfer();
+	if (opts.allow_transfer_this_time)
+		try_transfer();
 	try_play();
 	try_quick_discard();
 	try_draw();
@@ -153,8 +161,10 @@ void reverted(std::string_view msg) {
 	log("reverted: ", msg);
 }
 
+void try_flip_then_continue(i64 i_stack, std::string_view msg, bool check_unique) { return try_flip_then_continue(i_stack, msg, {.check_unique = check_unique}); }
+
 /// flip hidden cards into stacks
-void try_flip_then_continue(i64 i_stack, std::string_view msg, bool check_unique) {
+void try_flip_then_continue(i64 i_stack, std::string_view msg, TryMoveOpts opts) {
 	auto& hidden = hiddens.at(i_stack);
 	auto& stack = stacks.at(i_stack);
 	bool const do_flip = not hidden.empty() && stack.empty();
@@ -164,7 +174,7 @@ void try_flip_then_continue(i64 i_stack, std::string_view msg, bool check_unique
 		hidden.pop_back();
 	}
 
-	try_move(msg, check_unique);
+	try_move(msg, opts);
 
 	if (do_flip) {
 		hidden.push_back(stack.back());
@@ -224,7 +234,7 @@ void try_transfer() {
 				dst_stack.insert(dst_stack.end(), src_stack.begin() + src_pos, src_stack.end());
 				src_stack.erase(src_stack.begin() + src_pos, src_stack.end());
 
-				try_flip_then_continue(i_src_stack, "move stack", true);
+				try_flip_then_continue(i_src_stack, "move stack", {.allow_transfer_this_time = false});
 
 				src_stack.insert(src_stack.end(), dst_stack.end() - num_moved, dst_stack.end());
 				dst_stack.erase(dst_stack.end() - num_moved, dst_stack.end());
