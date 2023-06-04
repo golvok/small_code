@@ -259,6 +259,7 @@ void try_transfer() {
 				dst_stack.pop_back();
 
 				reverted("king to empty");
+				break; // don't look at other empty slots -- it's pointless (symmetric)
 			} else {
 				i64 src_pos = src_stack.front().value() - dst_stack.back().value() + 1;
 				if (src_pos < 0 || src_pos >= ssize(src_stack)) continue;
@@ -274,6 +275,7 @@ void try_transfer() {
 				dst_stack.erase(dst_stack.end() - num_moved, dst_stack.end());
 
 				reverted("move stack");
+				break; // there is at most one place to move a stack
 			}
 		}
 	}
