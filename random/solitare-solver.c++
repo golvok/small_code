@@ -39,7 +39,7 @@ bool solve(u64 seed) {
 		}
 	}
 
-	cout << "seed = " << seed << std::endl;
+	cout << "kKing=" << (int)kKing << " ns=" << num_stacks << " nd=" << num_draws << " seed=" << seed << std::endl;
 	auto g  = std::mt19937{seed};
 	std::ranges::shuffle(deck, g);
 
@@ -65,6 +65,17 @@ bool solve(u64 seed) {
 		solved = true;
 	}
 
+	std::cout << "no. examined unique nodes: " << visited.size() << std::endl;
+
+	// std::unordered_map<i64, i64> visit_freqs;
+	// for (auto const& v : visited) {
+	// 	++visit_freqs[v.second];
+	// }
+	// for (auto& vf : visit_freqs) {
+	// 	std::cout << vf.first << ' ' << vf.second << '\n';
+	// }
+
+	std::cout << "solved=" << solved << std::endl;
 	return solved;
 }
 
@@ -76,10 +87,14 @@ void dump() {
 	cout << "discards=" << discards << '\n';
 }
 
-void log(std::string_view msg1, std::string_view msg2) {
+void log(std::string_view msg1, std::string_view msg2 = "") {
 	(void)msg1, (void)msg2;
-	// cout << "\n" << msg1 << msg2 << '\n';
-	// dump();
+	// always_log(msg1, msg2);
+}
+
+void always_log(std::string_view msg1, std::string_view msg2 = "") {
+	cout << "\n" << msg1 << msg2 << '\n';
+	dump();
 }
 
 struct TableauHasher {
@@ -129,8 +144,12 @@ struct TableauEqualer {
 	}
 };
 
-using Visited = std::unordered_set<Tableau, TableauHasher, TableauEqualer>;
+using Visited = std::unordered_map<Tableau, i64, TableauHasher, TableauEqualer>;
 static inline Visited& visited = *new Visited{};
+
+i64 max_depth = 0;
+i64 curr_depth = 0;
+std::vector<Tableau const*> parents = {&tableau};
 
 struct TryMoveOpts {
 	bool check_unique = true;
@@ -141,7 +160,19 @@ void try_move(std::string_view msg, bool check_unique) { return try_move(msg, {.
 
 void try_move(std::string_view msg, TryMoveOpts opts) {
 	if (opts.check_unique) {
-		if (not visited.insert(tableau).second) return;
+		auto& kv = *visited.try_emplace(tableau, 0).first;
+		auto const& lookup = kv.first;
+		auto& num_visits = kv.second;
+		// if (parents.back() == &lookup) {
+			// throw std::runtime_error("loop");
+		// }
+		++num_visits;
+		if (num_visits != 1) return;
+		parents.push_back(&lookup);
+	}
+	if (max_depth < curr_depth) {
+		max_depth = curr_depth;
+		// always_log("new depth reached");
 	}
 	log("new tableau from: ", msg);
 	auto is_empty = [](auto& v) { return v.empty(); };
@@ -149,12 +180,15 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 		cout.flush();
 		throw std::runtime_error("solved!");
 	}
+	++curr_depth;
 	try_discard();
 	if (opts.allow_transfer_this_time)
 		try_transfer();
 	try_play();
 	try_quick_discard();
 	try_draw();
+	--curr_depth;
+	if (opts.check_unique) parents.pop_back();
 }
 
 void reverted(std::string_view msg) {
