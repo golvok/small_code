@@ -104,8 +104,10 @@ struct TableauHasher {
 		i64 num_cards_in_next_bits = 0;
 		i64 next_offset = 0;
 		constexpr i64 bits_in_card_data = 4 + 2;
-		constexpr i64 max_cards_in_next_bits = 64 / bits_in_card_data; // 6
-		constexpr i64 unused_next_bits_bits = 64 - bits_in_card_data - max_cards_in_next_bits; // 4
+		constexpr i64 max_cards_in_next_bits = 64 / bits_in_card_data;
+		constexpr i64 unused_next_bits_bits = 64 - bits_in_card_data * max_cards_in_next_bits;
+		static_assert(max_cards_in_next_bits == 10, "sanity check");
+		static_assert(unused_next_bits_bits == 4, "sanity check");
 		auto update = [&](Card c) {
 			next_bits <<= 2;
 			next_bits |= id(c.suit());
@@ -114,7 +116,8 @@ struct TableauHasher {
 			++num_cards_in_next_bits;
 			if (num_cards_in_next_bits == max_cards_in_next_bits) {
 				hash ^= (next_bits << next_offset);
-				next_offset = (next_offset + 1) % unused_next_bits_bits;
+				if constexpr (unused_next_bits_bits != 0)
+					next_offset = (next_offset + 1) % unused_next_bits_bits;
 				next_bits = 0;
 				num_cards_in_next_bits = 0;
 			}
