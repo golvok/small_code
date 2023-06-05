@@ -151,6 +151,9 @@ i64 max_depth = 0;
 i64 curr_depth = 0;
 std::vector<Tableau const*> parents = {&tableau};
 
+/** has a card not been played or discareded from the drawn cards since the last return to the draw pile */
+bool drawn_are_fresh = true;
+
 struct TryMoveOpts {
 	bool check_unique = true;
 	bool allow_transfer_this_time = true;
@@ -297,9 +300,12 @@ void try_play() {
 
 		stack.push_back(drawn.back());
 		drawn.pop_back();
+		bool old_drawn_are_fresh = false;
+		std::swap(old_drawn_are_fresh, drawn_are_fresh);
 
 		try_move("play from drawn", true);
 
+		std::swap(drawn_are_fresh, old_drawn_are_fresh);
 		drawn.push_back(stack.back());
 		stack.pop_back();
 
@@ -317,9 +323,12 @@ void try_quick_discard() {
 
 	dst_discard._value = static_cast<Value>(dst_discard._value + 1);
 	drawn.pop_back();
+	bool old_drawn_are_fresh = false;
+	std::swap(old_drawn_are_fresh, drawn_are_fresh);
 
 	try_move("discard from drawn", true);
 
+	std::swap(drawn_are_fresh, old_drawn_are_fresh);
 	drawn.push_back(dst_discard);
 	dst_discard._value = static_cast<Value>(dst_discard._value - 1);
 
@@ -332,7 +341,10 @@ void try_draw() {
 	bool const do_return = draw_pile.empty();
 	auto msg = do_return ? "returned drawn cards" : "drew cards";
 
+	bool old_drawn_are_fresh = true;
 	if (do_return) {
+		if (drawn_are_fresh) return; // require doing something with at least one card per return
+		std::swap(old_drawn_are_fresh, drawn_are_fresh);
 		std::swap(draw_pile, drawn);
 		std::ranges::reverse(draw_pile);
 	}
@@ -351,6 +363,7 @@ void try_draw() {
 	if (do_return) {
 		std::swap(drawn, draw_pile);
 		std::ranges::reverse(drawn);
+		std::swap(drawn_are_fresh, old_drawn_are_fresh);
 	}
 
 	reverted(msg);
