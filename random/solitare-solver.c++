@@ -376,6 +376,7 @@ void try_draw(optional<i64> next_play_must_be_on_or_from_stack) {
 	bool old_drawn_are_fresh = true;
 	if (do_return) {
 		if (drawn_are_fresh) return; // require doing something with at least one card per return
+		if (ssize(drawn) <= num_draws) return; // don't bother returning card when the only cards are already drawn
 		std::swap(old_drawn_are_fresh, drawn_are_fresh);
 		std::swap(draw_pile, drawn);
 		std::ranges::reverse(draw_pile);
