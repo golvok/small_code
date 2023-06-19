@@ -3,6 +3,7 @@
 #include <cassert>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <random>
 #include <set>
 #include <span>
@@ -10,9 +11,10 @@
 #include <unordered_set>
 #include <vector>
 
-using std::vector;
-using std::ostream;
 using std::cout;
+using std::optional;
+using std::ostream;
+using std::vector;
 
 using i64 = std::int64_t;
 using u64 = std::uint64_t;
@@ -160,6 +162,7 @@ bool drawn_are_fresh = true;
 struct TryMoveOpts {
 	bool check_unique = true;
 	bool allow_transfer_this_time = true;
+	optional<i64> next_play_must_be_on_or_from_stack = std::nullopt;
 };
 
 void try_move(std::string_view msg, bool check_unique) { return try_move(msg, {.check_unique = check_unique}); }
@@ -187,12 +190,13 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 		throw std::runtime_error("solved!");
 	}
 	++curr_depth;
-	try_discard();
+	try_discard(opts.next_play_must_be_on_or_from_stack);
 	if (opts.allow_transfer_this_time)
-		try_transfer();
-	try_play();
-	try_quick_discard();
-	try_draw();
+		try_transfer(opts.next_play_must_be_on_or_from_stack);
+	try_play(opts.next_play_must_be_on_or_from_stack);
+	if (not opts.next_play_must_be_on_or_from_stack)
+		try_quick_discard();
+	try_draw(opts.next_play_must_be_on_or_from_stack);
 	--curr_depth;
 	if (opts.check_unique) parents.pop_back();
 }
@@ -222,34 +226,49 @@ void try_flip_then_continue(i64 i_stack, std::string_view msg, TryMoveOpts opts)
 	}
 }
 
+
 /// stack up from aces
-void try_discard() {
-	for (auto& s : stacks) {
-		if (s.empty()) continue;
+void try_discard(optional<i64> next_play_must_be_on_or_from_stack) {
+	if (next_play_must_be_on_or_from_stack)
+		return try_discard_from_stack(*next_play_must_be_on_or_from_stack);
 
-		auto tip = s.back();
-		auto& dst_discard = discards.at(id(tip.suit()));
-		if (tip.value() - 1 != dst_discard.value()) continue;
-
-		dst_discard._value = static_cast<Value>(dst_discard._value + 1);
-		s.pop_back();
-
-		try_flip_then_continue(&s - stacks.data(), "discard from stack", true);
-
-		s.push_back(dst_discard);
-		dst_discard._value = static_cast<Value>(dst_discard._value - 1);
-
-		reverted("discard from stack");
+	for (i64 i_stack = 0; i_stack < num_stacks; ++i_stack) {
+		try_discard_from_stack(i_stack);
 	}
 }
 
+/// stack up from aces from a specific stack
+void try_discard_from_stack(i64 i_stack) {
+	auto& s = stacks[i_stack];
+	if (s.empty()) return;
+
+	auto tip = s.back();
+	auto& dst_discard = discards.at(id(tip.suit()));
+	if (tip.value() - 1 != dst_discard.value()) return;
+
+	dst_discard._value = static_cast<Value>(dst_discard._value + 1);
+	s.pop_back();
+
+	try_flip_then_continue(&s - stacks.data(), "discard from stack", true);
+
+	s.push_back(dst_discard);
+	dst_discard._value = static_cast<Value>(dst_discard._value - 1);
+
+	reverted("discard from stack");
+}
+
 /// from stack to stack
-void try_transfer() {
+void try_transfer(optional<i64> next_play_must_be_on_or_from_stack) {
 	for (i64 i_src_stack = 0; i_src_stack < num_stacks; ++i_src_stack) {
 		auto& src_hidden = hiddens.at(i_src_stack);
 		auto& src_stack = stacks.at(i_src_stack);
 		if (src_stack.empty()) continue;
 		for (i64 i_dst_stack = 0; i_dst_stack < num_stacks; ++i_dst_stack) {
+			if (
+				next_play_must_be_on_or_from_stack
+				&& *next_play_must_be_on_or_from_stack != i_src_stack
+				&& *next_play_must_be_on_or_from_stack != i_dst_stack
+			) continue;
 			if (i_src_stack == i_dst_stack) continue;
 			auto& dst_hidden = hiddens.at(i_dst_stack);
 			auto& dst_stack = stacks.at(i_dst_stack);
@@ -271,49 +290,59 @@ void try_transfer() {
 				if (src_pos < 0 || src_pos >= ssize(src_stack)) continue;
 				if (src_stack.at(src_pos).colour() == dst_stack.back().colour()) continue;
 
-				auto num_moved = src_stack.size() - src_pos;
+				auto num_transferred = src_stack.size() - src_pos;
 				dst_stack.insert(dst_stack.end(), src_stack.begin() + src_pos, src_stack.end());
 				src_stack.erase(src_stack.begin() + src_pos, src_stack.end());
 
-				try_flip_then_continue(i_src_stack, "move stack", {.allow_transfer_this_time = false});
+				try_flip_then_continue(i_src_stack, "transfer stack", {.next_play_must_be_on_or_from_stack = i_src_stack});
 
-				src_stack.insert(src_stack.end(), dst_stack.end() - num_moved, dst_stack.end());
-				dst_stack.erase(dst_stack.end() - num_moved, dst_stack.end());
+				src_stack.insert(src_stack.end(), dst_stack.end() - num_transferred, dst_stack.end());
+				dst_stack.erase(dst_stack.end() - num_transferred, dst_stack.end());
 
-				reverted("move stack");
-				break; // there is at most one place to move a stack
+				reverted("transfer stack");
+				break; // there is at most one place to transfer a stack
 			}
 		}
 	}
 }
 
 /// from drawn cards to the stacks
-void try_play() {
+void try_play(optional<i64> next_play_must_be_on_or_from_stack) {
 	if (drawn.empty()) return;
 
-	auto c = drawn.back();
+	if (next_play_must_be_on_or_from_stack)
+		return try_play(*next_play_must_be_on_or_from_stack);
+
 	for (i64 i_stack = 0; i_stack < num_stacks; ++i_stack) {
-		auto& stack = stacks.at(i_stack);
-		if (c.value() == kKing) {
-			if (not stack.empty()) continue;
-		} else {
-			if (stack.empty()) continue;
-			if (stack.back().colour() == c.colour() || stack.back().value() != c.value() + 1) continue;
-		}
-
-		stack.push_back(drawn.back());
-		drawn.pop_back();
-		bool old_drawn_are_fresh = false;
-		std::swap(old_drawn_are_fresh, drawn_are_fresh);
-
-		try_move("play from drawn", true);
-
-		std::swap(drawn_are_fresh, old_drawn_are_fresh);
-		drawn.push_back(stack.back());
-		stack.pop_back();
-
-		reverted("play from drawn");
+		try_play(i_stack);
 	}
+}
+
+// from drawn cards to a particular stack
+void try_play(i64 i_stack) {
+	if (drawn.empty()) return;
+	auto c = drawn.back();
+
+	auto& stack = stacks.at(i_stack);
+	if (c.value() == kKing) {
+		if (not stack.empty()) return;
+	} else {
+		if (stack.empty()) return;
+		if (stack.back().colour() == c.colour() || stack.back().value() != c.value() + 1) return;
+	}
+
+	stack.push_back(drawn.back());
+	drawn.pop_back();
+	bool old_drawn_are_fresh = false;
+	std::swap(old_drawn_are_fresh, drawn_are_fresh);
+
+	try_move("play from drawn", true);
+
+	std::swap(drawn_are_fresh, old_drawn_are_fresh);
+	drawn.push_back(stack.back());
+	stack.pop_back();
+
+	reverted("play from drawn");
 }
 
 /// from drawn cards to discards
@@ -339,7 +368,7 @@ void try_quick_discard() {
 }
 
 /// draw new cards
-void try_draw() {
+void try_draw(optional<i64> next_play_must_be_on_or_from_stack) {
 	if (draw_pile.empty() && drawn.empty()) return;
 	bool const do_return = draw_pile.empty();
 	auto msg = do_return ? "returned drawn cards" : "drew cards";
@@ -357,7 +386,7 @@ void try_draw() {
 		draw_pile.pop_back();
 	}
 
-	try_move(msg, true);
+	try_move(msg, {.next_play_must_be_on_or_from_stack = next_play_must_be_on_or_from_stack});
 
 	for (i64 i = 0; i < num_to_draw; ++i) {
 		draw_pile.push_back(drawn.back());
