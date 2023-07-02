@@ -29,13 +29,18 @@ enum Value : std::int8_t;
 
 static int main(std::span<std::string_view> args) {
 	u64 seed = args.size() < 2 ? std::random_device{}() : std::stoull(std::string(args[1]));
-	auto app = App(13);
+	u64 king = args.size() < 3 ? 13 : std::stoull(std::string(args[2]));
+	auto app = App(true, king);
 	return app.solve(seed) ? 0 : 1;
 }
 
 Value kKing;
+int verbose;
 
-App(int kKing) : kKing(static_cast<Value>(kKing)) {
+App(int verbose, int kKing)
+	: kKing(static_cast<Value>(kKing))
+	, verbose(verbose)
+{
 	if (this->kKing < kAce || this->kKing > kMaxKing) throw std::logic_error("invalid kKing");
 }
 
@@ -61,7 +66,8 @@ bool solve(u64 seed) {
 	}
 	std::ranges::copy(deck, std::back_inserter(draw_pile));
 
-	dump();
+	if (verbose)
+		dump();
 	cout.flush();
 	visited.reserve(1'200'000); // eg. for seed 3660738044 with kKing = 9, num_stacks = 7
 
@@ -73,7 +79,8 @@ bool solve(u64 seed) {
 		solved = true;
 	}
 
-	std::cout << "no. examined unique nodes: " << visited.size() << std::endl;
+	if (verbose)
+		std::cout << "no. examined unique nodes: " << visited.size() << std::endl;
 
 	// std::unordered_map<i64, i64> visit_freqs;
 	// for (auto const& v : visited) {
@@ -83,8 +90,10 @@ bool solve(u64 seed) {
 	// 	std::cout << vf.first << ' ' << vf.second << '\n';
 	// }
 
-	std::cout << "max_depth=" << max_depth << " last_depth=" << curr_depth << '\n';
-	std::cout << "solved=" << solved << std::endl;
+	if (verbose) {
+		std::cout << "max_depth=" << max_depth << " last_depth=" << curr_depth << '\n';
+		std::cout << "solved=" << solved << std::endl;
+	}
 	return solved;
 }
 
@@ -167,7 +176,7 @@ struct TableauEqualer {
 };
 
 using Visited = std::unordered_map<Tableau, i64, TableauHasher, TableauEqualer>;
-static inline Visited& visited = *new Visited{};
+Visited visited = {};
 
 i64 max_depth = 0;
 i64 curr_depth = 0;
