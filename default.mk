@@ -31,7 +31,7 @@ ifneq (,$(EXISTING_DEP_FILES))
 include $(EXISTING_DEP_FILES)
 endif
 
-$(OBJ_DIR)/%.o: %.c++
+define cpp_to_obj
 	@mkdir -p $(dir $@)
 	@mkdir -p $(DEPS_DIR)/$(dir $*)
 	$(CXX) -c  '$(abspath $<)' -o  $@ $(MY_CXXFLAGS)
@@ -40,6 +40,13 @@ $(OBJ_DIR)/%.o: %.c++
 	@sed -e 's/.*://' -e 's/\\$$//' < $(DEPS_DIR)/$<.d.tmp| fmt -1 | \
 	 sed -e 's/^ *//' -e 's/$$/:/' >> $(DEPS_DIR)/$<.d
 	@rm -f $(DEPS_DIR)/$<.d.tmp
+endef
+
+$(OBJ_DIR)/%.o: %.c++
+	$(cpp_to_obj)
+
+$(OBJ_DIR)/%.o: ../%.c++
+	$(cpp_to_obj)
 
 $(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
