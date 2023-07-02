@@ -28,9 +28,15 @@ enum Suit : std::uint8_t;
 enum Value : std::int8_t;
 
 static int main(std::span<std::string_view> args) {
-	App app;
 	u64 seed = args.size() < 2 ? std::random_device{}() : std::stoull(std::string(args[1]));
+	auto app = App(13);
 	return app.solve(seed) ? 0 : 1;
+}
+
+Value kKing;
+
+App(int kKing) : kKing(static_cast<Value>(kKing)) {
+	if (this->kKing < kAce || this->kKing > kMaxKing) throw std::logic_error("invalid kKing");
 }
 
 bool solve(u64 seed) {
@@ -179,6 +185,11 @@ struct TryMoveOpts {
 void try_move(std::string_view msg, bool check_unique) { return try_move(msg, {.check_unique = check_unique}); }
 
 void try_move(std::string_view msg, TryMoveOpts opts) {
+	opts = TryMoveOpts{
+		.check_unique = opts.check_unique,
+		// .next_play_must_be_on_or_from_stack = opts.next_play_must_be_on_or_from_stack,
+		.if_transfer_is_next_must_be_from_stack = opts.if_transfer_is_next_must_be_from_stack,
+	};
 	if (opts.check_unique) {
 		auto& kv = *visited.try_emplace(tableau, 0).first;
 		auto const& lookup = kv.first;
@@ -424,7 +435,7 @@ enum Suit : std::uint8_t {
 	kHearts   = 2,
 	kSpades   = 3,
 };
-enum Value : std::int8_t { kBeforeAce = 0, kAce = 1, kKing = 13 };
+enum Value : std::int8_t { kBeforeAce = 0, kAce = 1, kMaxKing = 13 };
 
 static size_t id(Suit s) { return s; }
 
@@ -497,7 +508,7 @@ using DrawPile = SmallVec<Card, 24>;
 // using DrawPile = vector<Card>;
 using Hidden = SmallVec<Card, 7>;
 // using Hidden = vector<Card>;
-using Stack = SmallVec<Card, kKing - kAce + 1>;
+using Stack = SmallVec<Card, kMaxKing - kAce + 1>;
 // using Stack = vector<Card>;
 
 using Hiddens = SmallVec<Hidden, 7>;
@@ -588,12 +599,4 @@ Stacks& stacks = tableau.stacks;
 Discards& discards = tableau.discards;
 
 };
-}
-
-int main(int argc, char* argv[]) {
-	std::vector<std::string_view> args;
-	for (int i = 0; i < argc; ++i) {
-		args.push_back(argv[i]);
-	}
-	return App::main(args);
 }
