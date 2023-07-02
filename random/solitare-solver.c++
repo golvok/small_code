@@ -161,8 +161,8 @@ bool drawn_are_fresh = true;
 
 struct TryMoveOpts {
 	bool check_unique = true;
-	bool allow_transfer_this_time = true;
 	optional<i64> next_play_must_be_on_or_from_stack = std::nullopt;
+	optional<i64> if_transfer_is_next_must_be_from_stack = std::nullopt;
 };
 
 void try_move(std::string_view msg, bool check_unique) { return try_move(msg, {.check_unique = check_unique}); }
@@ -191,12 +191,11 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 	}
 	++curr_depth;
 	try_discard(opts.next_play_must_be_on_or_from_stack);
-	if (opts.allow_transfer_this_time)
-		try_transfer(opts.next_play_must_be_on_or_from_stack);
+	try_transfer(opts.next_play_must_be_on_or_from_stack, opts.if_transfer_is_next_must_be_from_stack);
 	try_play(opts.next_play_must_be_on_or_from_stack);
 	if (not opts.next_play_must_be_on_or_from_stack)
 		try_quick_discard();
-	try_draw(opts.next_play_must_be_on_or_from_stack);
+	try_draw(opts.next_play_must_be_on_or_from_stack, opts.if_transfer_is_next_must_be_from_stack);
 	--curr_depth;
 	if (opts.check_unique) parents.pop_back();
 }
@@ -217,6 +216,8 @@ void try_flip_then_continue(i64 i_stack, std::string_view msg, TryMoveOpts opts)
 		stack.push_back(hidden.back());
 		hidden.pop_back();
 	}
+	if (hidden.empty())
+		opts.if_transfer_is_next_must_be_from_stack = std::nullopt;
 
 	try_move(msg, opts);
 
@@ -258,8 +259,9 @@ void try_discard_from_stack(i64 i_stack) {
 }
 
 /// from stack to stack
-void try_transfer(optional<i64> next_play_must_be_on_or_from_stack) {
+void try_transfer(optional<i64> next_play_must_be_on_or_from_stack, optional<i64> if_transfer_is_next_must_be_from_stack) {
 	for (i64 i_src_stack = 0; i_src_stack < num_stacks; ++i_src_stack) {
+		if (if_transfer_is_next_must_be_from_stack && *if_transfer_is_next_must_be_from_stack != i_src_stack) continue;
 		auto& src_hidden = hiddens.at(i_src_stack);
 		auto& src_stack = stacks.at(i_src_stack);
 		if (src_stack.empty()) continue;
@@ -294,7 +296,7 @@ void try_transfer(optional<i64> next_play_must_be_on_or_from_stack) {
 				dst_stack.insert(dst_stack.end(), src_stack.begin() + src_pos, src_stack.end());
 				src_stack.erase(src_stack.begin() + src_pos, src_stack.end());
 
-				try_flip_then_continue(i_src_stack, "transfer stack", {.next_play_must_be_on_or_from_stack = i_src_stack});
+				try_flip_then_continue(i_src_stack, "transfer stack", {.next_play_must_be_on_or_from_stack = i_src_stack, .if_transfer_is_next_must_be_from_stack = i_src_stack});
 
 				src_stack.insert(src_stack.end(), dst_stack.end() - num_transferred, dst_stack.end());
 				dst_stack.erase(dst_stack.end() - num_transferred, dst_stack.end());
@@ -368,7 +370,7 @@ void try_quick_discard() {
 }
 
 /// draw new cards
-void try_draw(optional<i64> next_play_must_be_on_or_from_stack) {
+void try_draw(optional<i64> next_play_must_be_on_or_from_stack, optional<i64> if_transfer_is_next_must_be_from_stack) {
 	if (draw_pile.empty() && drawn.empty()) return;
 	bool const do_return = draw_pile.empty();
 	auto msg = do_return ? "returned drawn cards" : "drew cards";
@@ -387,7 +389,7 @@ void try_draw(optional<i64> next_play_must_be_on_or_from_stack) {
 		draw_pile.pop_back();
 	}
 
-	try_move(msg, {.next_play_must_be_on_or_from_stack = next_play_must_be_on_or_from_stack});
+	try_move(msg, {.next_play_must_be_on_or_from_stack = next_play_must_be_on_or_from_stack, .if_transfer_is_next_must_be_from_stack = if_transfer_is_next_must_be_from_stack});
 
 	for (i64 i = 0; i < num_to_draw; ++i) {
 		draw_pile.push_back(drawn.back());
