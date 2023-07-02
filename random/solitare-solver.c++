@@ -77,16 +77,19 @@ bool solve(u64 seed) {
 	// 	std::cout << vf.first << ' ' << vf.second << '\n';
 	// }
 
+	std::cout << "max_depth=" << max_depth << " last_depth=" << curr_depth << '\n';
 	std::cout << "solved=" << solved << std::endl;
 	return solved;
 }
 
-void dump() {
-	cout << "draw_pile=" << draw_pile << '\n';
-	cout << "drawn=" << drawn << '\n';
-	cout << "hiddens=" << hiddens << '\n';
-	cout << "stacks=" << stacks << '\n';
-	cout << "discards=" << discards << '\n';
+void dump() const { dump_tableau(tableau); }
+
+static void dump_tableau(Tableau const& t) {
+	cout << "draw_pile=" << t.draw_pile << '\n';
+	cout << "drawn=" << t.drawn << '\n';
+	cout << "hiddens=" << t.hiddens << '\n';
+	cout << "stacks=" << t.stacks << '\n';
+	cout << "discards=" << t.discards << '\n';
 }
 
 void log(std::string_view msg1, std::string_view msg2 = "") {
@@ -97,6 +100,14 @@ void log(std::string_view msg1, std::string_view msg2 = "") {
 void always_log(std::string_view msg1, std::string_view msg2 = "") {
 	cout << "\n" << msg1 << msg2 << '\n';
 	dump();
+}
+
+void dump_parents() {
+	for (auto& p : parents) {
+		std::cout << p.first << '\n';
+		dump_tableau(*p.second);
+		std::cout << '\n';
+	}
 }
 
 struct TableauHasher {
@@ -154,7 +165,7 @@ static inline Visited& visited = *new Visited{};
 
 i64 max_depth = 0;
 i64 curr_depth = 0;
-std::vector<Tableau const*> parents = {&tableau};
+std::vector<std::pair<std::string_view, Tableau const*>> parents = {{"base", &tableau}};
 
 /** has a card not been played or discareded from the drawn cards since the last return to the draw pile */
 bool drawn_are_fresh = true;
@@ -177,7 +188,8 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 		// }
 		++num_visits;
 		if (num_visits != 1) return;
-		parents.push_back(&lookup);
+		parents.emplace_back(msg, &lookup); // DANGER: storing string_view... for speed
+
 	}
 	if (max_depth < curr_depth) {
 		max_depth = curr_depth;
@@ -425,7 +437,7 @@ struct Card {
 
 	friend ostream& operator<<(ostream& os, Card const& c) {
 		constexpr std::array<char, 4> suit_letter{'D', 'C', 'H', 'S'};
-		return os << suit_letter[c.suit()] << '-' << int(c.value());
+		return os << suit_letter[c.suit()] << '_' << int(c.value());
 	}
 
 	auto operator<=>(Card const&) const = default;
@@ -438,8 +450,8 @@ struct SmallVec {
 	std::size_t _size = 0;
 	std::array<T, kMax> _storage{};
 
-	void push_back(T t) { _storage[_size] = t; ++_size; assert(_size <= kMax); }
-	void pop_back() { --_size; }
+	void push_back(T t) { assert(_size != kMax); _storage[_size] = t; ++_size; }
+	void pop_back() { assert(_size != 0); --_size; }
 	T const* data() const { return _storage.data(); }
 	T*       data()       { return _storage.data(); }
 	T const* begin() const { return _storage.data(); }
@@ -447,12 +459,12 @@ struct SmallVec {
 	T const* end() const { assert(_size <= kMax); return begin() + _size; }
 	T*       end()       { assert(_size <= kMax); return begin() + _size; }
 	std::size_t size() const { return _size; }
-	i64 ssize() const { assert(_size <= kMax); return _size; }
+	i64 ssize() const { return _size; }
 	bool empty() const { return _size == 0; }
-	T const& front() const { return *begin(); }
-	T&       front()       { return *begin(); }
-	T const& back() const { assert(_size <= kMax); return *(end() - 1); }
-	T&       back()       { assert(_size <= kMax); return *(end() - 1); }
+	T const& front() const { assert(_size != 0); return *begin(); }
+	T&       front()       { assert(_size != 0); return *begin(); }
+	T const& back() const { assert(_size != 0); return *(end() - 1); }
+	T&       back()       { assert(_size != 0); return *(end() - 1); }
 	T& at(std::size_t i) { assert(i < _size); return _storage[i]; }
 	T& operator[](std::size_t i) { assert(i < _size); return _storage[i]; }
 
