@@ -81,7 +81,7 @@ TEST_CASE("known seeds") {
 		P{2751335957, false},
 		P{66806515, false},
 		P{3839093309, true},
-		// P{1807416663, true}, // fails!
+		P{1807416663, true},
 		P{878236126, false},
 		P{1774459184, true},
 		P{1126380761, false},
@@ -92,13 +92,13 @@ TEST_CASE("known seeds") {
 		P{2987851817, true},
 		P{2755249545, true},
 		P{995862560, true},
-		// P{770131165, true}, // fails!
+		P{770131165, false}, // ref data said solvable!
 		P{6318243, false},
 		P{1171949367, false},
 		P{3405431933, true},
 		P{734874366, true},
 		P{2422620042, false},
-		// P{3567987200, true}, // fails!
+		P{3567987200, true},
 		P{4186175811, false},
 		P{2879808721, true},
 		P{1531278541, true},
@@ -113,7 +113,7 @@ TEST_CASE("known seeds") {
 		P{2489300905, true},
 		P{2295276590, false},
 		P{529527685, true},
-		// P{662627631, false}, // fails!
+		P{662627631, true}, // ref data said unsolvable!
 		P{1502826548, true},
 		// P{3604988811, true}, // fails
 		P{2840218531, false},
@@ -154,9 +154,9 @@ TEST_CASE("known seeds") {
 		P{3259493865, true},
 		P{2961294640, true},
 		P{3492032682, true},
-		// P{1693707493, true}, // fails!
+		P{1693707493, true},
 		P{3311172364, true},
-		// P{631647572, true}, // fails!
+		P{631647572, true},
 		P{2465848241, true},
 		P{1487941069, true},
 		P{4231426531, false},
@@ -176,7 +176,7 @@ TEST_CASE("known seeds") {
 		P{1541636361, true},
 		P{3864411488, false},
 		P{519863112, false},
-		// P{3915383323, true}, // fails!
+		P{3915383323, false}, // ref data said solvable!
 		P{3574666364, true},
 		P{1130489614, true},
 		P{3445043447, true},

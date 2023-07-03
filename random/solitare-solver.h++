@@ -194,11 +194,8 @@ struct TryMoveOpts {
 void try_move(std::string_view msg, bool check_unique) { return try_move(msg, {.check_unique = check_unique}); }
 
 void try_move(std::string_view msg, TryMoveOpts opts) {
-	opts = TryMoveOpts{
-		.check_unique = opts.check_unique,
-		// .next_play_must_be_on_or_from_stack = opts.next_play_must_be_on_or_from_stack,
-		.if_transfer_is_next_must_be_from_stack = opts.if_transfer_is_next_must_be_from_stack,
-	};
+	opts.next_play_must_be_on_or_from_stack = std::nullopt;
+	// opts.if_transfer_is_next_must_be_from_stack = std::nullopt;
 	if (opts.check_unique) {
 		auto& kv = *visited.try_emplace(tableau, 0).first;
 		auto const& lookup = kv.first;
@@ -293,16 +290,18 @@ void try_discard_from_stack(i64 i_stack) {
 /// from stack to stack
 void try_transfer(optional<i64> next_play_must_be_on_or_from_stack, optional<i64> if_transfer_is_next_must_be_from_stack) {
 	for (i64 i_src_stack = 0; i_src_stack < num_stacks; ++i_src_stack) {
-		if (if_transfer_is_next_must_be_from_stack && *if_transfer_is_next_must_be_from_stack != i_src_stack) continue;
 		auto& src_hidden = hiddens.at(i_src_stack);
 		auto& src_stack = stacks.at(i_src_stack);
 		if (src_stack.empty()) continue;
 		for (i64 i_dst_stack = 0; i_dst_stack < num_stacks; ++i_dst_stack) {
-			if (
-				next_play_must_be_on_or_from_stack
-				&& *next_play_must_be_on_or_from_stack != i_src_stack
-				&& *next_play_must_be_on_or_from_stack != i_dst_stack
-			) continue;
+			if (if_transfer_is_next_must_be_from_stack && not (
+				   *if_transfer_is_next_must_be_from_stack == i_src_stack
+				|| *if_transfer_is_next_must_be_from_stack != i_dst_stack
+			)) continue;
+			if (next_play_must_be_on_or_from_stack && not (
+				   *next_play_must_be_on_or_from_stack == i_src_stack
+				|| *next_play_must_be_on_or_from_stack == i_dst_stack
+			)) continue;
 			if (i_src_stack == i_dst_stack) continue;
 			auto& dst_hidden = hiddens.at(i_dst_stack);
 			auto& dst_stack = stacks.at(i_dst_stack);
