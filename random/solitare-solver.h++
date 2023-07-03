@@ -30,16 +30,19 @@ enum Value : std::int8_t;
 static int main(std::span<std::string_view> args) {
 	u64 seed = args.size() < 2 ? std::random_device{}() : std::stoull(std::string(args[1]));
 	u64 king = args.size() < 3 ? 13 : std::stoull(std::string(args[2]));
-	auto app = App(true, king);
+	i64 num_draws = args.size() < 4 ? 3 : std::stoull(std::string(args[3]));
+	auto app = App(true, king, num_draws);
 	return app.solve(seed) ? 0 : 1;
 }
 
-Value kKing;
 int verbose;
+Value kKing;
+i64 num_draws;
 
-App(int verbose, int kKing)
-	: kKing(static_cast<Value>(kKing))
-	, verbose(verbose)
+App(int verbose, int kKing, int num_draws)
+	: verbose(verbose)
+	, kKing(static_cast<Value>(kKing))
+	, num_draws(num_draws)
 {
 	if (this->kKing < kAce || this->kKing > kMaxKing) throw std::logic_error("invalid kKing");
 }
@@ -527,7 +530,6 @@ using Discards = std::array<Card, 4>;
 
 struct Tableau {
 	static constexpr i64 num_stacks = 7;
-	static constexpr i64 num_draws = 3;
 
 	DrawPile draw_pile{};
 	DrawPile drawn{};
@@ -599,7 +601,6 @@ friend ostream& operator<<(ostream& os, SmallVec<SmallVec<Card, M>, N> const& vv
 Tableau tableau{};
 
 i64 const& num_stacks = tableau.num_stacks;
-i64 const& num_draws = tableau.num_draws;
 DrawPile& draw_pile = tableau.draw_pile;
 DrawPile& drawn = tableau.drawn;
 Hiddens& hiddens = tableau.hiddens;
