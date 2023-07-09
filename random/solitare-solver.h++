@@ -12,6 +12,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include "signal.h"
+
 using std::cout;
 using std::optional;
 using std::ostream;
@@ -81,7 +83,7 @@ bool solve(u64 seed) {
 	if (verbose)
 		dump();
 	cout.flush();
-	visited.reserve(1'200'000); // eg. for seed 3660738044 with kKing = 9, num_stacks = 7
+	visited.back().reserve(1'200'000); // eg. for seed 3660738044 with kKing = 9, num_stacks = 7
 
 	bool solved = false;
 	try {
@@ -92,7 +94,7 @@ bool solve(u64 seed) {
 	}
 
 	if (verbose)
-		std::cout << "no. examined unique nodes: " << visited.size() << std::endl;
+		std::cout << "no. examined unique nodes: " << visited.back().size() << std::endl;
 
 	// std::unordered_map<i64, i64> visit_freqs;
 	// for (auto const& v : visited) {
@@ -125,7 +127,7 @@ void log(std::string_view msg1, std::string_view msg2 = "") {
 }
 
 void always_log(std::string_view msg1, std::string_view msg2 = "") {
-	cout << "\n" << msg1 << msg2 << '\n';
+	cout << "\ndepth=" << curr_depth << " " << msg1 << msg2 << '\n';
 	dump();
 }
 
@@ -156,17 +158,32 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 	}
 
 	if (opts.check_unique) {
-		auto& kv = *visited.try_emplace(tableau, 0).first;
+		auto& kv = *visited.back().try_emplace(tableau, 0).first;
 		auto const& lookup = kv.first;
-		auto& num_visits = kv.second;
-		// if (parents.back() == &lookup) {
-			// throw std::runtime_error("loop");
+		++kv.second;
+		// const auto parent_ptrs = parents | std::views::drop(1) | std::ranges::views::transform([](auto& e) { return e.second; });
+		// const bool is_loop = std::ranges::find(parent_ptrs, &lookup) != parent_ptrs.end();
+		// if (is_loop) {
+		// 	dump_parents();
+		// 	std::cout << "loop\n"; // always_log("loop from: ", msg);
+		// 	std::cout.flush();
+		// 	throw std::runtime_error("loop");
 		// }
-		++num_visits;
-		if (num_visits != 1) return;
+		auto num_visits = kv.second;
+		if (visited.size() != 1) {
+			num_visits = 0;
+			for (auto const& vis_map : visited) {
+				auto sub_lookup = vis_map.find(tableau);
+				if (sub_lookup == vis_map.end()) continue;
+				num_visits += sub_lookup->second;
+			}
+		}
+		if (num_visits > 1) return;
 		parents.emplace_back(msg, &lookup); // DANGER: storing string_view... for speed
 
 	}
+	made_a_move.back() = true;
+	made_a_move.push_back(false);
 	if (max_depth < curr_depth) {
 		max_depth = curr_depth;
 		// always_log("new depth reached");
@@ -179,14 +196,22 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 	}
 	log("new tableau from: ", msg);
 	++curr_depth;
-	try_discard(opts.next_play_must_be_on_or_from_stack);
-	try_transfer(opts.next_play_must_be_on_or_from_stack, opts.if_transfer_is_next_must_be_from_stack);
-	try_play(opts.next_play_must_be_on_or_from_stack);
-	if (not opts.next_play_must_be_on_or_from_stack)
-		try_quick_discard();
-	try_draw(opts.next_play_must_be_on_or_from_stack, opts.if_transfer_is_next_must_be_from_stack);
+	std::exception_ptr exc;
+	try {
+		try_discard(opts.next_play_must_be_on_or_from_stack);
+		try_transfer(opts.next_play_must_be_on_or_from_stack, opts.if_transfer_is_next_must_be_from_stack);
+		try_play(opts.next_play_must_be_on_or_from_stack);
+		if (not opts.next_play_must_be_on_or_from_stack)
+			try_quick_discard();
+		try_draw(opts.next_play_must_be_on_or_from_stack, opts.if_transfer_is_next_must_be_from_stack);
+	} catch (...) {
+		exc = std::current_exception();
+	}
 	--curr_depth;
+	// if (not made_a_move.back()) always_log("stuck");
+	made_a_move.pop_back();
 	if (opts.check_unique) parents.pop_back();
+	if (exc) std::rethrow_exception(exc);
 }
 
 void reverted(std::string_view msg) {
@@ -358,6 +383,48 @@ void try_quick_discard() {
 	dst_discard._value = static_cast<Value>(dst_discard._value - 1);
 
 	reverted("discard from drawn");
+}
+
+void divergence_test(bool do_test, auto base_func, auto new_func) {
+	if (not do_test) {
+		base_func();
+		return;
+	}
+
+	auto restore = state;
+	state.in_divergence_test = true;
+	visited.emplace_back();
+	std::exception_ptr new_exc;
+	try {
+		new_func();
+	} catch (...) {
+		// raise(SIGTRAP);
+		new_exc = std::current_exception();
+		state = restore;
+		visited.back().clear();
+		state.in_divergence_test = true;
+	}
+	std::exception_ptr base_exc;
+	try {
+		base_func();
+	} catch (...) {
+		// raise(SIGTRAP);
+		base_exc = std::current_exception();
+	}
+
+	state = restore;
+	visited.pop_back();
+
+	if (bool{base_exc} != bool{new_exc}) {
+		cout << "divergence!\n";
+		decltype(state.parents) last_2_parents{parents.begin() + std::max(ssize(parents), i64{2}) - 2, parents.end()};
+		std::swap(parents, last_2_parents);
+		dump_parents();
+		std::swap(parents, last_2_parents);
+		cout.flush();
+		raise(SIGTRAP);
+		new_func();
+	}
 }
 
 /// draw new cards
@@ -552,7 +619,7 @@ struct TableauEqualer {
 	}
 };
 
-using Visited = std::unordered_map<Tableau, i64, TableauHasher, TableauEqualer>;
+using Visited = std::vector<std::unordered_map<Tableau, i64, TableauHasher, TableauEqualer>>;
 struct State {
 	Tableau tableau;
 
@@ -564,9 +631,11 @@ struct State {
 
 	/** has a card not been played or discareded from the drawn cards since the last return to the draw pile */
 	bool drawn_are_fresh = true;
+
+	bool in_divergence_test = false;
 };
 
-Visited visited = {};
+Visited visited = {{}};
 
 State state {
 	Tableau{
