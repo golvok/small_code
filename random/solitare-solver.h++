@@ -5,6 +5,7 @@
 #include <map>
 #include <optional>
 #include <random>
+#include <ranges>
 #include <set>
 #include <span>
 #include <unordered_map>
@@ -20,6 +21,10 @@ using i64 = std::int64_t;
 using u64 = std::uint64_t;
 
 namespace {
+
+auto is_empty = [](auto& v) { return v.empty(); };
+auto get_size = [](auto& v) { return ssize(v); };
+
 struct App {
 
 struct Tableau;
@@ -31,20 +36,24 @@ static int main(std::span<std::string_view> args) {
 	u64 seed = args.size() < 2 ? std::random_device{}() : std::stoull(std::string(args[1]));
 	u64 king = args.size() < 3 ? 13 : std::stoull(std::string(args[2]));
 	i64 num_draws = args.size() < 4 ? 3 : std::stoull(std::string(args[3]));
-	auto app = App(true, king, num_draws);
+	i64 num_stacks = args.size() < 5 ? 7 : std::stoull(std::string(args[4]));
+	auto app = App(true, king, num_draws, num_stacks);
 	return app.solve(seed) ? 0 : 1;
 }
 
 int verbose;
 Value kKing;
 i64 num_draws;
+i64 num_stacks;
 
-App(int verbose, int kKing, int num_draws)
+App(int verbose, int kKing, int num_draws, int num_stacks)
 	: verbose(verbose)
 	, kKing(static_cast<Value>(kKing))
 	, num_draws(num_draws)
+	, num_stacks(num_stacks)
 {
 	if (this->kKing < kAce || this->kKing > kMaxKing) throw std::logic_error("invalid kKing");
+	if (num_stacks < 1 || num_stacks > kMaxStacks) throw std::logic_error("invalid num_stacks");
 }
 
 bool solve(u64 seed) {
@@ -128,66 +137,6 @@ void dump_parents() {
 	}
 }
 
-struct TableauHasher {
-	std::size_t operator()(Tableau const& tableau) const {
-		std::size_t hash = 0;
-		std::size_t next_bits = 0;
-		i64 num_cards_in_next_bits = 0;
-		i64 next_offset = 0;
-		constexpr i64 bits_in_card_data = 4 + 2;
-		constexpr i64 max_cards_in_next_bits = 64 / bits_in_card_data;
-		constexpr i64 unused_next_bits_bits = 64 - bits_in_card_data * max_cards_in_next_bits;
-		static_assert(max_cards_in_next_bits == 10, "sanity check");
-		static_assert(unused_next_bits_bits == 4, "sanity check");
-		auto update = [&](Card c) {
-			next_bits <<= 2;
-			next_bits |= id(c.suit());
-			next_bits <<= 4;
-			next_bits |= c.value();
-			++num_cards_in_next_bits;
-			if (num_cards_in_next_bits == max_cards_in_next_bits) {
-				hash ^= (next_bits << next_offset);
-				if constexpr (unused_next_bits_bits != 0)
-					next_offset = (next_offset + 1) % unused_next_bits_bits;
-				next_bits = 0;
-				num_cards_in_next_bits = 0;
-			}
-		};
-
-		std::ranges::for_each(tableau.draw_pile, update);
-		std::ranges::for_each(tableau.drawn, update);
-		// hash ^= tableau.drawn.size();
-		for (auto& s : tableau.hiddens) std::ranges::for_each(s, update);
-		for (auto& s : tableau.stacks) std::ranges::for_each(s, update);
-		std::ranges::for_each(tableau.discards, update);
-
-		hash ^= next_bits;
-		return hash;
-	}
-};
-
-struct TableauEqualer {
-	bool operator()(Tableau const& lhs, Tableau const& rhs) const {
-		// return
-		// 	lhs.drawn.size() == rhs.drawn.size() &&
-		// 	lhs.draw_pile == rhs.draw_pile &&
-		// 	lhs.hiddens == rhs.hiddens &&
-		// 	lhs.stacks == rhs.stacks &&
-		// 	lhs.discards == rhs.discards;
-		return lhs == rhs;
-	}
-};
-
-using Visited = std::unordered_map<Tableau, i64, TableauHasher, TableauEqualer>;
-Visited visited = {};
-
-i64 max_depth = 0;
-i64 curr_depth = 0;
-std::vector<std::pair<std::string_view, Tableau const*>> parents = {{"base", &tableau}};
-
-/** has a card not been played or discareded from the drawn cards since the last return to the draw pile */
-bool drawn_are_fresh = true;
-
 struct TryMoveOpts {
 	bool check_unique = true;
 	optional<i64> next_play_must_be_on_or_from_stack = std::nullopt;
@@ -199,6 +148,13 @@ void try_move(std::string_view msg, bool check_unique) { return try_move(msg, {.
 void try_move(std::string_view msg, TryMoveOpts opts) {
 	opts.next_play_must_be_on_or_from_stack = std::nullopt;
 	// opts.if_transfer_is_next_must_be_from_stack = std::nullopt;
+
+	if (draw_pile.empty() && drawn.empty() && std::ranges::all_of(hiddens, is_empty)) {
+		cout.flush();
+		// dump_parents();
+		throw std::runtime_error("solved!");
+	}
+
 	if (opts.check_unique) {
 		auto& kv = *visited.try_emplace(tableau, 0).first;
 		auto const& lookup = kv.first;
@@ -215,12 +171,13 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 		max_depth = curr_depth;
 		// always_log("new depth reached");
 	}
-	log("new tableau from: ", msg);
-	auto is_empty = [](auto& v) { return v.empty(); };
-	if (draw_pile.empty() && drawn.empty() && std::ranges::all_of(hiddens, is_empty)) {
-		cout.flush();
-		throw std::runtime_error("solved!");
+	auto hidden_sizes = hiddens | std::views::transform(get_size);
+	auto num_hiddens = std::accumulate(hidden_sizes.begin(), hidden_sizes.end(), i64{0});
+	if (num_hiddens < min_hiddens) {
+		min_hiddens = num_hiddens;
+		// always_log("new min hiddens");
 	}
+	log("new tableau from: ", msg);
 	++curr_depth;
 	try_discard(opts.next_play_must_be_on_or_from_stack);
 	try_transfer(opts.next_play_must_be_on_or_from_stack, opts.if_transfer_is_next_must_be_from_stack);
@@ -478,8 +435,8 @@ struct SmallVec {
 	T*       data()       { return _storage.data(); }
 	T const* begin() const { return _storage.data(); }
 	T*       begin()       { return _storage.data(); }
-	T const* end() const { assert(_size <= kMax); return begin() + _size; }
-	T*       end()       { assert(_size <= kMax); return begin() + _size; }
+	T const* end() const { return begin() + _size; }
+	T*       end()       { return begin() + _size; }
 	std::size_t size() const { return _size; }
 	i64 ssize() const { return _size; }
 	bool empty() const { return _size == 0; }
@@ -515,26 +472,25 @@ struct SmallVec {
 	}
 };
 
+static constexpr i64 kMaxStacks = 7;
 using DrawPile = SmallVec<Card, 24>;
 // using DrawPile = vector<Card>;
-using Hidden = SmallVec<Card, 7>;
+using Hidden = SmallVec<Card, kMaxStacks>;
 // using Hidden = vector<Card>;
 using Stack = SmallVec<Card, kMaxKing - kAce + 1>;
 // using Stack = vector<Card>;
 
-using Hiddens = SmallVec<Hidden, 7>;
+using Hiddens = SmallVec<Hidden, kMaxStacks>;
 // using Hiddens = vector<Hidden>;
-using Stacks = SmallVec<Stack, 7>;
+using Stacks = SmallVec<Stack, kMaxStacks>;
 // using Stacks = vector<Stack>;
 using Discards = std::array<Card, 4>;
 
 struct Tableau {
-	static constexpr i64 num_stacks = 7;
-
+	Hiddens hiddens;
+	Stacks stacks;
 	DrawPile draw_pile{};
 	DrawPile drawn{};
-	Hiddens hiddens{unsigned(num_stacks)};
-	Stacks stacks{unsigned(num_stacks)};
 	Discards discards{
 		Card{kDiamonds, kBeforeAce},
 		Card{kClubs, kBeforeAce},
@@ -545,6 +501,79 @@ struct Tableau {
 	auto operator<=>(Tableau const&) const = default;
 };
 
+
+struct TableauHasher {
+	std::size_t operator()(Tableau const& tableau) const {
+		std::size_t hash = 0;
+		std::size_t next_bits = 0;
+		i64 num_cards_in_next_bits = 0;
+		i64 next_offset = 0;
+		constexpr i64 bits_in_card_data = 4 + 2;
+		constexpr i64 max_cards_in_next_bits = 64 / bits_in_card_data;
+		constexpr i64 unused_next_bits_bits = 64 - bits_in_card_data * max_cards_in_next_bits;
+		static_assert(max_cards_in_next_bits == 10, "sanity check");
+		static_assert(unused_next_bits_bits == 4, "sanity check");
+		auto update = [&](Card c) {
+			next_bits <<= 2;
+			next_bits |= id(c.suit());
+			next_bits <<= 4;
+			next_bits |= c.value();
+			++num_cards_in_next_bits;
+			if (num_cards_in_next_bits == max_cards_in_next_bits) {
+				hash ^= (next_bits << next_offset);
+				if constexpr (unused_next_bits_bits != 0)
+					next_offset = (next_offset + 1) % unused_next_bits_bits;
+				next_bits = 0;
+				num_cards_in_next_bits = 0;
+			}
+		};
+
+		std::ranges::for_each(tableau.draw_pile, update);
+		std::ranges::for_each(tableau.drawn, update);
+		// hash ^= tableau.drawn.size();
+		for (auto& s : tableau.hiddens) std::ranges::for_each(s, update);
+		for (auto& s : tableau.stacks) std::ranges::for_each(s, update);
+		std::ranges::for_each(tableau.discards, update);
+
+		hash ^= next_bits;
+		return hash;
+	}
+};
+
+struct TableauEqualer {
+	bool operator()(Tableau const& lhs, Tableau const& rhs) const {
+		// return
+		// 	lhs.drawn.size() == rhs.drawn.size() &&
+		// 	lhs.draw_pile == rhs.draw_pile &&
+		// 	lhs.hiddens == rhs.hiddens &&
+		// 	lhs.stacks == rhs.stacks &&
+		// 	lhs.discards == rhs.discards;
+		return lhs == rhs;
+	}
+};
+
+using Visited = std::unordered_map<Tableau, i64, TableauHasher, TableauEqualer>;
+struct State {
+	Tableau tableau;
+
+	i64 max_depth = 0;
+	i64 curr_depth = 0;
+	i64 min_hiddens = 100000;
+	std::vector<std::pair<std::string_view, Tableau const*>> parents = {};
+	std::vector<bool> made_a_move = {false};
+
+	/** has a card not been played or discareded from the drawn cards since the last return to the draw pile */
+	bool drawn_are_fresh = true;
+};
+
+Visited visited = {};
+
+State state {
+	Tableau{
+		.hiddens = static_cast<unsigned>(num_stacks),
+		.stacks = static_cast<unsigned>(num_stacks),
+	},
+};
 
 friend ostream& operator<<(ostream& os, vector<Card> const& vc) {
 	os << '[';
@@ -598,14 +627,20 @@ friend ostream& operator<<(ostream& os, SmallVec<SmallVec<Card, M>, N> const& vv
 	return os << ']';
 }
 
-Tableau tableau{};
-
-i64 const& num_stacks = tableau.num_stacks;
+Tableau& tableau = state.tableau;
 DrawPile& draw_pile = tableau.draw_pile;
 DrawPile& drawn = tableau.drawn;
 Hiddens& hiddens = tableau.hiddens;
 Stacks& stacks = tableau.stacks;
 Discards& discards = tableau.discards;
+
+// Visited& visited = state.visited;
+i64& max_depth = state.max_depth;
+i64& curr_depth = state.curr_depth;
+i64& min_hiddens = state.min_hiddens;
+std::vector<std::pair<std::string_view, Tableau const*>>& parents = state.parents;
+std::vector<bool>& made_a_move = state.made_a_move;
+bool& drawn_are_fresh = state.drawn_are_fresh;
 
 };
 }

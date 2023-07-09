@@ -29,6 +29,7 @@ TEST_CASE("single test") {
 TEST_CASE("known seeds") {
 	auto kKing = 9;
 	auto num_draws = 3;
+	auto num_stacks = 7;
 	struct P {
 		i64 seed; bool solveable;
 	};
@@ -206,7 +207,7 @@ TEST_CASE("known seeds") {
 	};
 
 	for (auto const& test : tests) {
-		App app(false, kKing, num_draws);
+		App app(false, kKing, num_draws, num_stacks);
 		CHECK(app.solve(test.seed) == test.solveable);
 	}
 }
