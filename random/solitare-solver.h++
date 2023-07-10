@@ -250,6 +250,15 @@ void try_transfer(optional<i64> next_play_must_be_on_or_from_stack, optional<i64
 		auto& src_hidden = hiddens.at(i_src_stack);
 		auto& src_stack = stacks.at(i_src_stack);
 		if (src_stack.empty()) continue;
+
+		// don't transfer if the src tip can be safely discarded -- rely on some other call to try_discard to come first.
+		// safely discarded: opposite-colored cards that could be placed on the tip card can be discarded (or have been).
+		auto const src_tip = src_stack.back();
+		auto const min_opposite_color_discard = std::min(discards[(src_tip.suit() + 1) % 4].value(), discards[(src_tip.suit() + 3) % 4].value());
+		auto const can_discard_src_tip = discards[src_tip.suit()].value() + 1 == src_tip.value();
+		auto const can_safely_discard_src_tip = min_opposite_color_discard + 2 >= src_tip.value();
+		if (can_discard_src_tip && can_safely_discard_src_tip) continue;
+
 		for (i64 i_dst_stack = 0; i_dst_stack < num_stacks; ++i_dst_stack) {
 			if (if_transfer_is_next_must_be_from_stack && not (
 				   *if_transfer_is_next_must_be_from_stack == i_src_stack
