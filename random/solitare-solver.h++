@@ -111,34 +111,6 @@ bool solve(u64 seed) {
 	return solved;
 }
 
-void dump() const { dump_tableau(tableau); }
-
-static void dump_tableau(Tableau const& t) {
-	cout << "draw_pile=" << t.draw_pile << '\n';
-	cout << "drawn=" << t.drawn << '\n';
-	cout << "hiddens=" << t.hiddens << '\n';
-	cout << "stacks=" << t.stacks << '\n';
-	cout << "discards=" << t.discards << '\n';
-}
-
-void log(std::string_view msg1, std::string_view msg2 = "") {
-	(void)msg1, (void)msg2;
-	// always_log(msg1, msg2);
-}
-
-void always_log(std::string_view msg1, std::string_view msg2 = "") {
-	cout << "\ndepth=" << curr_depth << " " << msg1 << msg2 << '\n';
-	dump();
-}
-
-void dump_parents() {
-	for (auto& p : parents) {
-		std::cout << p.first << '\n';
-		dump_tableau(*p.second);
-		std::cout << '\n';
-	}
-}
-
 struct TryMoveOpts {
 	bool check_unique = true;
 	optional<i64> next_play_must_be_on_or_from_stack = std::nullopt;
@@ -392,8 +364,9 @@ void divergence_test(bool do_test, auto base_func, auto new_func) {
 	}
 
 	auto restore = state;
-	state.in_divergence_test = true;
+	++divergence_test_count;
 	visited.emplace_back();
+
 	std::exception_ptr new_exc;
 	try {
 		new_func();
@@ -402,7 +375,6 @@ void divergence_test(bool do_test, auto base_func, auto new_func) {
 		new_exc = std::current_exception();
 		state = restore;
 		visited.back().clear();
-		state.in_divergence_test = true;
 	}
 	std::exception_ptr base_exc;
 	try {
@@ -412,15 +384,13 @@ void divergence_test(bool do_test, auto base_func, auto new_func) {
 		base_exc = std::current_exception();
 	}
 
+	--divergence_test_count;
 	state = restore;
 	visited.pop_back();
 
 	if (bool{base_exc} != bool{new_exc}) {
 		cout << "divergence!\n";
-		decltype(state.parents) last_2_parents{parents.begin() + std::max(ssize(parents), i64{2}) - 2, parents.end()};
-		std::swap(parents, last_2_parents);
-		dump_parents();
-		std::swap(parents, last_2_parents);
+		dump_parents({parents.begin() + std::max(ssize(parents), i64{2}) - 2, parents.end()});
 		cout.flush();
 		raise(SIGTRAP);
 		new_func();
@@ -620,22 +590,32 @@ struct TableauEqualer {
 };
 
 using Visited = std::vector<std::unordered_map<Tableau, i64, TableauHasher, TableauEqualer>>;
+using Parents = std::vector<std::pair<std::string_view, Tableau const*>>;
+
+/** Not reset during exception throws -- caller must save & restore. */
 struct State {
 	Tableau tableau;
 
 	i64 max_depth = 0;
 	i64 curr_depth = 0;
 	i64 min_hiddens = 100000;
-	std::vector<std::pair<std::string_view, Tableau const*>> parents = {};
-	std::vector<bool> made_a_move = {false};
 
 	/** has a card not been played or discareded from the drawn cards since the last return to the draw pile */
 	bool drawn_are_fresh = true;
 
-	bool in_divergence_test = false;
+	auto operator<=>(State const&) const = default;
 };
 
-Visited visited = {{}};
+/** Reset during exception throws -- caller does not have to save */
+struct ManualState {
+	Visited visited = {{}};
+
+	Parents parents = {};
+	std::vector<bool> made_a_move = {false};
+	i64 divergence_test_count = 0;
+
+	auto operator<=>(ManualState const&) const = default;
+};
 
 State state {
 	Tableau{
@@ -643,6 +623,24 @@ State state {
 		.stacks = static_cast<unsigned>(num_stacks),
 	},
 };
+ManualState manual_state{};
+
+Tableau& tableau = state.tableau;
+i64& max_depth = state.max_depth;
+i64& curr_depth = state.curr_depth;
+i64& min_hiddens = state.min_hiddens;
+
+bool& drawn_are_fresh = state.drawn_are_fresh;
+DrawPile& draw_pile = tableau.draw_pile;
+DrawPile& drawn = tableau.drawn;
+Hiddens& hiddens = tableau.hiddens;
+Stacks& stacks = tableau.stacks;
+Discards& discards = tableau.discards;
+
+Visited& visited = manual_state.visited;
+Parents& parents = manual_state.parents;
+std::vector<bool>& made_a_move = manual_state.made_a_move;
+i64& divergence_test_count = manual_state.divergence_test_count;
 
 friend ostream& operator<<(ostream& os, vector<Card> const& vc) {
 	os << '[';
@@ -696,20 +694,34 @@ friend ostream& operator<<(ostream& os, SmallVec<SmallVec<Card, M>, N> const& vv
 	return os << ']';
 }
 
-Tableau& tableau = state.tableau;
-DrawPile& draw_pile = tableau.draw_pile;
-DrawPile& drawn = tableau.drawn;
-Hiddens& hiddens = tableau.hiddens;
-Stacks& stacks = tableau.stacks;
-Discards& discards = tableau.discards;
+void dump() const { dump_tableau(tableau); }
 
-// Visited& visited = state.visited;
-i64& max_depth = state.max_depth;
-i64& curr_depth = state.curr_depth;
-i64& min_hiddens = state.min_hiddens;
-std::vector<std::pair<std::string_view, Tableau const*>>& parents = state.parents;
-std::vector<bool>& made_a_move = state.made_a_move;
-bool& drawn_are_fresh = state.drawn_are_fresh;
+static void dump_tableau(Tableau const& t) {
+	cout << "draw_pile=" << t.draw_pile << '\n';
+	cout << "drawn=" << t.drawn << '\n';
+	cout << "hiddens=" << t.hiddens << '\n';
+	cout << "stacks=" << t.stacks << '\n';
+	cout << "discards=" << t.discards << '\n';
+}
+
+void log(std::string_view msg1, std::string_view msg2 = "") {
+	(void)msg1, (void)msg2;
+	// always_log(msg1, msg2);
+}
+
+void always_log(std::string_view msg1, std::string_view msg2 = "") {
+	cout << "\ndepth=" << curr_depth << " " << msg1 << msg2 << '\n';
+	dump();
+}
+
+static void dump_parents(Parents const& parents) {
+	for (auto& p : parents) {
+		std::cout << p.first << '\n';
+		dump_tableau(*p.second);
+		std::cout << '\n';
+	}
+}
+void dump_parents() const { dump_parents(parents); }
 
 };
 }
