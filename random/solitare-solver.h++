@@ -48,6 +48,9 @@ Value kKing;
 i64 num_draws;
 i64 num_stacks;
 
+bool enable_new_opt = false;
+bool enable_new_state_code = false;
+
 App(int verbose, int kKing, int num_draws, int num_stacks)
 	: verbose(verbose)
 	, kKing(static_cast<Value>(kKing))
@@ -58,7 +61,7 @@ App(int verbose, int kKing, int num_draws, int num_stacks)
 	if (num_stacks < 1 || num_stacks > kMaxStacks) throw std::logic_error("invalid num_stacks");
 }
 
-bool solve(u64 seed) {
+void seed_tableau(u64 seed) {
 	std::vector<Card> deck;
 	for (auto s : {kDiamonds, kClubs, kHearts, kSpades}) {
 		for (auto v = kAce; v <= kKing; v = Value(v + 1)) {
@@ -66,7 +69,6 @@ bool solve(u64 seed) {
 		}
 	}
 
-	cout << "kKing=" << (int)kKing << " ns=" << num_stacks << " nd=" << num_draws << " seed=" << seed << std::endl;
 	auto g  = std::mt19937{seed};
 	std::ranges::shuffle(deck, g);
 
@@ -79,7 +81,14 @@ bool solve(u64 seed) {
 		deck.pop_back();
 	}
 	std::ranges::copy(deck, std::back_inserter(draw_pile));
+}
 
+bool solve(std::optional<u64> seed) {
+	cout << "kKing=" << (int)kKing << " ns=" << num_stacks << " nd=" << num_draws << " seed=" << (seed ? std::to_string(*seed) : " seed=(manual init)") << std::endl;
+	cout << "enable_new_opt=" << enable_new_opt << " enable_new_state_code=" << enable_new_state_code << " find_new_nodes=" << find_new_nodes << '\n';
+
+	if (seed)
+		seed_tableau(*seed);
 	if (verbose)
 		dump();
 	cout.flush();
@@ -119,39 +128,59 @@ struct TryMoveOpts {
 
 void try_move(std::string_view msg, bool check_unique) { return try_move(msg, {.check_unique = check_unique}); }
 
+i64 find_solutions = 1;
+i64 find_new_nodes = 1;
+
 void try_move(std::string_view msg, TryMoveOpts opts) {
 	opts.next_play_must_be_on_or_from_stack = std::nullopt;
 	// opts.if_transfer_is_next_must_be_from_stack = std::nullopt;
 
 	if (draw_pile.empty() && drawn.empty() && std::ranges::all_of(hiddens, is_empty)) {
-		cout.flush();
-		// dump_parents();
-		throw std::runtime_error("solved!");
+		if (--find_solutions == 0) {
+			cout.flush();
+			// dump_parents();
+			// std::cout << "solved!\n";
+			throw std::runtime_error("solved!");
+		}
 	}
 
+	bool old_exploring_new_states = exploring_new_states;
 	if (opts.check_unique) {
-		auto& kv = *visited.back().try_emplace(tableau, 0).first;
-		auto const& lookup = kv.first;
-		++kv.second;
+		auto [lookup, new_item] = visited.back().try_emplace(tableau, 0);
+		auto& [key, num_visits] = *lookup;
+		if (enable_new_state_code) {
+			if (exploring_new_states && not new_item)
+				return;
+			if (not exploring_new_states && new_item) {
+				// std::cout << "\n\nexploring_new_states\n";
+				// dump_n_parents(5);
+				std::cout << "exploring_new_states depth=" << curr_depth << '\n';
+				exploring_new_states = true;
+				if (--find_new_nodes == 0) {
+					find_solutions = 1;
+				}
+			}
+		}
+		++num_visits;
 		// const auto parent_ptrs = parents | std::views::drop(1) | std::ranges::views::transform([](auto& e) { return e.second; });
-		// const bool is_loop = std::ranges::find(parent_ptrs, &lookup) != parent_ptrs.end();
+		// const bool is_loop = std::ranges::find(parent_ptrs, &key) != parent_ptrs.end();
 		// if (is_loop) {
 		// 	dump_parents();
 		// 	std::cout << "loop\n"; // always_log("loop from: ", msg);
 		// 	std::cout.flush();
 		// 	throw std::runtime_error("loop");
 		// }
-		auto num_visits = kv.second;
+		auto total_num_visits = num_visits;
 		if (visited.size() != 1) {
-			num_visits = 0;
+			total_num_visits = 0;
 			for (auto const& vis_map : visited) {
 				auto sub_lookup = vis_map.find(tableau);
 				if (sub_lookup == vis_map.end()) continue;
-				num_visits += sub_lookup->second;
+				total_num_visits += sub_lookup->second;
 			}
 		}
-		if (num_visits > 1) return;
-		parents.emplace_back(msg, &lookup); // DANGER: storing string_view... for speed
+		if (total_num_visits > 1) return;
+		parents.emplace_back(msg, &key); // DANGER: storing string_view... for speed
 
 	}
 	made_a_move.back() = true;
@@ -182,7 +211,14 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 	--curr_depth;
 	// if (not made_a_move.back()) always_log("stuck");
 	made_a_move.pop_back();
-	if (opts.check_unique) parents.pop_back();
+	if (opts.check_unique) {
+		if (exc && exploring_new_states && not old_exploring_new_states) {
+			std::cout << "\n\nsolved new states (2nd last is the new one)\n";
+			dump_n_parents(7);
+		}
+		parents.pop_back();
+		exploring_new_states = old_exploring_new_states;
+	}
 	if (exc) std::rethrow_exception(exc);
 }
 
@@ -399,7 +435,7 @@ void divergence_test(bool do_test, auto base_func, auto new_func) {
 
 	if (bool{base_exc} != bool{new_exc}) {
 		cout << "divergence!\n";
-		dump_parents({parents.begin() + std::max(ssize(parents), i64{2}) - 2, parents.end()});
+		dump_n_parents(2);
 		cout.flush();
 		raise(SIGTRAP);
 		new_func();
@@ -622,6 +658,7 @@ struct ManualState {
 	Parents parents = {};
 	std::vector<bool> made_a_move = {false};
 	i64 divergence_test_count = 0;
+	bool exploring_new_states = false;
 
 	auto operator<=>(ManualState const&) const = default;
 };
@@ -650,6 +687,7 @@ Visited& visited = manual_state.visited;
 Parents& parents = manual_state.parents;
 std::vector<bool>& made_a_move = manual_state.made_a_move;
 i64& divergence_test_count = manual_state.divergence_test_count;
+bool& exploring_new_states = manual_state.exploring_new_states;
 
 friend ostream& operator<<(ostream& os, vector<Card> const& vc) {
 	os << '[';
@@ -714,8 +752,9 @@ static void dump_tableau(Tableau const& t) {
 }
 
 void log(std::string_view msg1, std::string_view msg2 = "") {
-	(void)msg1, (void)msg2;
-	// always_log(msg1, msg2);
+	if (verbose >= 2) {
+		always_log(msg1, msg2);
+	}
 }
 
 void always_log(std::string_view msg1, std::string_view msg2 = "") {
@@ -731,6 +770,7 @@ static void dump_parents(Parents const& parents) {
 	}
 }
 void dump_parents() const { dump_parents(parents); }
+void dump_n_parents(i64 n) const { dump_parents({parents.begin() + std::max(ssize(parents), n) - n, parents.end()}); }
 
 };
 }
