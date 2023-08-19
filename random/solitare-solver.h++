@@ -132,14 +132,11 @@ i64 find_solutions = 1;
 i64 find_new_nodes = 1;
 
 void try_move(std::string_view msg, TryMoveOpts opts) {
-	opts.next_play_must_be_on_or_from_stack = std::nullopt;
-	// opts.if_transfer_is_next_must_be_from_stack = std::nullopt;
-
 	if (draw_pile.empty() && drawn.empty() && std::ranges::all_of(hiddens, is_empty)) {
 		if (--find_solutions == 0) {
 			cout.flush();
 			// dump_parents();
-			// std::cout << "solved!\n";
+			always_log("solved: ", msg);
 			throw std::runtime_error("solved!");
 		}
 	}
@@ -313,12 +310,12 @@ void try_transfer(optional<i64> next_play_must_be_on_or_from_stack, optional<i64
 				dst_stack.push_back(src_stack.back());
 				src_stack.pop_back();
 
-				try_flip_then_continue(i_src_stack, "king to empty", true);
+				try_flip_then_continue(i_src_stack, "king-headed stack to empty", true);
 
 				src_stack.push_back(dst_stack.back());
 				dst_stack.pop_back();
 
-				reverted("king to empty");
+				reverted("king-headed stack to empty");
 				break; // don't look at other empty slots -- it's pointless (symmetric)
 			} else {
 				i64 src_pos = src_stack.front().value() - dst_stack.back().value() + 1;
@@ -329,7 +326,10 @@ void try_transfer(optional<i64> next_play_must_be_on_or_from_stack, optional<i64
 				dst_stack.insert(dst_stack.end(), src_stack.begin() + src_pos, src_stack.end());
 				src_stack.erase(src_stack.begin() + src_pos, src_stack.end());
 
-				try_flip_then_continue(i_src_stack, "transfer stack", {.next_play_must_be_on_or_from_stack = i_src_stack, .if_transfer_is_next_must_be_from_stack = i_src_stack});
+				try_flip_then_continue(i_src_stack, "transfer stack", {
+					.next_play_must_be_on_or_from_stack = src_pos == 0 ? std::nullopt : std::make_optional(i_src_stack),
+					.if_transfer_is_next_must_be_from_stack = src_pos == 0 ? std::nullopt : std::make_optional(i_src_stack),
+				});
 
 				src_stack.insert(src_stack.end(), dst_stack.end() - num_transferred, dst_stack.end());
 				dst_stack.erase(dst_stack.end() - num_transferred, dst_stack.end());

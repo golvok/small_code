@@ -117,7 +117,7 @@ TEST_CASE("known seeds") {
 		P{529527685, true},
 		P{662627631, true}, // ref data said unsolvable!
 		P{1502826548, true},
-		// P{3604988811, true}, // fails
+		P{3604988811, true},
 		P{2840218531, false},
 		P{3891259777, false},
 		P{841170194, true},
@@ -188,11 +188,11 @@ TEST_CASE("known seeds") {
 		P{626151084, false},
 		P{20456398, false},
 		P{2650038383, false},
-		// P{424626366, false}, // to big
+		P{424626366, false}, // big
 		P{1063134063, true},
 		P{643952142, false},
 		P{3555435236, true},
-		// P{3556036429, false}, // to big
+		P{3556036429, true}, // big, ref data said unsolvable!
 		P{2136481655, true},
 		P{1468096988, false},
 		P{2427493840, true},
