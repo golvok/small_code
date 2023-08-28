@@ -35,15 +35,16 @@ enum Suit : std::uint8_t;
 enum Value : std::int8_t;
 
 static int main(std::span<std::string_view> args) {
-	u64 seed = args.size() < 2 ? std::random_device{}() : std::stoull(std::string(args[1]));
-	u64 king = args.size() < 3 ? 13 : std::stoull(std::string(args[2]));
-	i64 num_draws = args.size() < 4 ? 3 : std::stoull(std::string(args[3]));
-	i64 num_stacks = args.size() < 5 ? 7 : std::stoull(std::string(args[4]));
-	auto app = App(true, king, num_draws, num_stacks);
+	u64 seed = (args.size() <= 1 || args[1] == "-") ? std::random_device{}() : std::stoull(std::string(args[1]));
+	u64 king = args.size() <= 2 ? 13 : std::stoull(std::string(args[2]));
+	i64 num_draws = args.size() <= 3 ? 3 : std::stoull(std::string(args[3]));
+	i64 num_stacks = args.size() <= 4 ? 7 : std::stoull(std::string(args[4]));
+	i64 verbose = args.size() <= 5 ? 0 : std::stoull(std::string(args[5]));
+	auto app = App(verbose, king, num_draws, num_stacks);
 	return app.solve(seed) ? 0 : 1;
 }
 
-int verbose;
+i64 verbose;
 Value kKing;
 i64 num_draws;
 i64 num_stacks;
@@ -51,7 +52,7 @@ i64 num_stacks;
 bool enable_new_opt = false;
 bool enable_new_state_code = false;
 
-App(int verbose, int kKing, int num_draws, int num_stacks)
+App(i64 verbose, int kKing, int num_draws, int num_stacks)
 	: verbose(verbose)
 	, kKing(static_cast<Value>(kKing))
 	, num_draws(num_draws)
@@ -85,7 +86,7 @@ void seed_tableau(u64 seed) {
 
 bool solve(std::optional<u64> seed) {
 	cout << "kKing=" << (int)kKing << " ns=" << num_stacks << " nd=" << num_draws << " seed=" << (seed ? std::to_string(*seed) : " seed=(manual init)") << std::endl;
-	cout << "enable_new_opt=" << enable_new_opt << " enable_new_state_code=" << enable_new_state_code << " find_new_nodes=" << find_new_nodes << '\n';
+	cout << "enable_new_opt=" << enable_new_opt << " enable_new_state_code=" << enable_new_state_code << " find_new_nodes=" << find_new_nodes << std::endl;
 
 	if (seed)
 		seed_tableau(*seed);
@@ -134,9 +135,9 @@ i64 find_new_nodes = 1;
 void try_move(std::string_view msg, TryMoveOpts opts) {
 	if (draw_pile.empty() && drawn.empty() && std::ranges::all_of(hiddens, is_empty)) {
 		if (--find_solutions == 0) {
-			cout.flush();
-			// dump_parents();
-			always_log("solved: ", msg);
+			if (verbose >= 3)
+				dump_parents();
+			log(1, "solved: ", msg);
 			throw std::runtime_error("solved!");
 		}
 	}
@@ -163,7 +164,7 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 		// const bool is_loop = std::ranges::find(parent_ptrs, &key) != parent_ptrs.end();
 		// if (is_loop) {
 		// 	dump_parents();
-		// 	std::cout << "loop\n"; // always_log("loop from: ", msg);
+		// 	std::cout << "loop\n"; // log(0, "loop from: ", msg);
 		// 	std::cout.flush();
 		// 	throw std::runtime_error("loop");
 		// }
@@ -184,15 +185,15 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 	made_a_move.push_back(false);
 	if (max_depth < curr_depth) {
 		max_depth = curr_depth;
-		// always_log("new depth reached");
+		// log(0, "new depth reached");
 	}
 	auto hidden_sizes = hiddens | std::views::transform(get_size);
 	auto num_hiddens = std::accumulate(hidden_sizes.begin(), hidden_sizes.end(), i64{0});
 	if (num_hiddens < min_hiddens) {
 		min_hiddens = num_hiddens;
-		// always_log("new min hiddens");
+		// log(0, "new min hiddens");
 	}
-	log("new tableau from: ", msg);
+	log(4, "new tableau from: ", msg);
 	++curr_depth;
 	std::exception_ptr exc;
 	try {
@@ -206,7 +207,6 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 		exc = std::current_exception();
 	}
 	--curr_depth;
-	// if (not made_a_move.back()) always_log("stuck");
 	made_a_move.pop_back();
 	if (opts.check_unique) {
 		if (exc && exploring_new_states && not old_exploring_new_states) {
@@ -220,7 +220,7 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 }
 
 void reverted(std::string_view msg) {
-	log("reverted: ", msg);
+	log(4, "reverted: ", msg);
 }
 
 void try_flip_then_continue(i64 i_stack, std::string_view msg, bool check_unique) { return try_flip_then_continue(i_stack, msg, {.check_unique = check_unique}); }
@@ -751,13 +751,8 @@ static void dump_tableau(Tableau const& t) {
 	cout << "discards=" << t.discards << '\n';
 }
 
-void log(std::string_view msg1, std::string_view msg2 = "") {
-	if (verbose >= 2) {
-		always_log(msg1, msg2);
-	}
-}
-
-void always_log(std::string_view msg1, std::string_view msg2 = "") {
+void log(i64 log_level, std::string_view msg1, std::string_view msg2 = "") {
+	if (verbose < log_level) return;
 	cout << "\ndepth=" << curr_depth << " " << msg1 << msg2 << '\n';
 	dump();
 }
