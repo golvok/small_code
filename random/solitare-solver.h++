@@ -133,7 +133,7 @@ i64 find_solutions = 1;
 i64 find_new_nodes = 1;
 
 void try_move(std::string_view msg, TryMoveOpts opts) {
-	if (draw_pile.empty() && drawn.empty() && std::ranges::all_of(hiddens, is_empty)) {
+	if ((draw_pile.size() + drawn.size()) <= 1 && std::ranges::all_of(hiddens, is_empty)) {
 		if (--find_solutions == 0) {
 			if (verbose >= 3)
 				dump_parents();
