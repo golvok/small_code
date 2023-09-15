@@ -93,7 +93,7 @@ bool solve(std::optional<u64> seed) {
 	if (verbose)
 		dump();
 	cout.flush();
-	visited.back().reserve(1'200'000); // eg. for seed 3660738044 with kKing = 9, num_stacks = 7
+	visited.back().reserve(4'000'000); // eg. for seed 424626366 with kKing = 9, num_stacks = 7, num_draws = 3
 
 	bool solved = false;
 	try {
@@ -283,15 +283,18 @@ void try_transfer(optional<i64> next_play_must_be_on_or_from_stack, optional<i64
 		auto& src_hidden = hiddens.at(i_src_stack);
 		auto& src_stack = stacks.at(i_src_stack);
 		if (src_stack.empty()) continue;
+		auto const src_tip = src_stack.back(); // copy for safety
+
+		if (src_stack.front().value() == kKing && src_hidden.empty()) continue;  // kings get stuck if hiddens is empty
 
 		// don't transfer if the src tip can be safely discarded -- rely on some other call to try_discard to come first.
 		// safely discarded: opposite-colored cards that could be placed on the tip card can be discarded (or have been).
-		auto const src_tip = src_stack.back();
 		auto const min_opposite_color_discard = std::min(discards[(src_tip.suit() + 1) % 4].value(), discards[(src_tip.suit() + 3) % 4].value());
 		auto const can_discard_src_tip = discards[src_tip.suit()].value() + 1 == src_tip.value();
 		auto const can_safely_discard_src_tip = min_opposite_color_discard + 2 >= src_tip.value();
 		if (can_discard_src_tip && can_safely_discard_src_tip) continue;
 
+		auto is_king_and_found_empty_dst = false;
 		for (i64 i_dst_stack = 0; i_dst_stack < num_stacks; ++i_dst_stack) {
 			if (if_transfer_is_next_must_be_from_stack && not (
 				   *if_transfer_is_next_must_be_from_stack == i_src_stack
@@ -302,41 +305,38 @@ void try_transfer(optional<i64> next_play_must_be_on_or_from_stack, optional<i64
 				|| *next_play_must_be_on_or_from_stack == i_dst_stack
 			)) continue;
 			if (i_src_stack == i_dst_stack) continue;
-			auto& dst_hidden = hiddens.at(i_dst_stack);
+
 			auto& dst_stack = stacks.at(i_dst_stack);
+			i64 src_pos;
 			if (dst_stack.empty()) {
-				if (src_hidden.empty() || not dst_hidden.empty() || src_stack.back().value() != kKing) continue;
-
-				dst_stack.push_back(src_stack.back());
-				src_stack.pop_back();
-
-				try_flip_then_continue(i_src_stack, "king-headed stack to empty", true);
-
-				src_stack.push_back(dst_stack.back());
-				dst_stack.pop_back();
-
-				reverted("king-headed stack to empty");
-				break; // don't look at other empty slots -- it's pointless (symmetric)
+				src_pos = 0;
+				if (src_stack.front().value() != kKing) continue; // can only move kings to empty stacks
+				if (is_king_and_found_empty_dst) continue;
 			} else {
-				i64 src_pos = src_stack.front().value() - dst_stack.back().value() + 1;
+				src_pos = src_stack.front().value() - dst_stack.back().value() + 1;
 				if (src_pos < 0 || src_pos >= ssize(src_stack)) continue;
 				if (src_stack.at(src_pos).colour() == dst_stack.back().colour()) continue;
-
-				auto num_transferred = src_stack.size() - src_pos;
-				dst_stack.insert(dst_stack.end(), src_stack.begin() + src_pos, src_stack.end());
-				src_stack.erase(src_stack.begin() + src_pos, src_stack.end());
-
-				try_flip_then_continue(i_src_stack, "transfer stack", {
-					.next_play_must_be_on_or_from_stack = src_pos == 0 ? std::nullopt : std::make_optional(i_src_stack),
-					.if_transfer_is_next_must_be_from_stack = src_pos == 0 ? std::nullopt : std::make_optional(i_src_stack),
-				});
-
-				src_stack.insert(src_stack.end(), dst_stack.end() - num_transferred, dst_stack.end());
-				dst_stack.erase(dst_stack.end() - num_transferred, dst_stack.end());
-
-				reverted("transfer stack");
-				break; // there is at most one place to transfer a stack
 			}
+
+			auto num_transferred = src_stack.size() - src_pos;
+			dst_stack.insert(dst_stack.end(), src_stack.begin() + src_pos, src_stack.end());
+			src_stack.erase(src_stack.begin() + src_pos, src_stack.end());
+
+			try_flip_then_continue(i_src_stack, "transfer stack", {
+				.next_play_must_be_on_or_from_stack = src_pos == 0 ? std::nullopt : std::make_optional(i_src_stack),
+				.if_transfer_is_next_must_be_from_stack = src_pos == 0 ? std::nullopt : std::make_optional(i_src_stack),
+			});
+
+			src_stack.insert(src_stack.end(), dst_stack.end() - num_transferred, dst_stack.end());
+			dst_stack.erase(dst_stack.end() - num_transferred, dst_stack.end());
+
+			reverted("transfer stack");
+
+			// If we found a place to put a king, then don't consider any more empty stacks
+			// This seems to be the only worth-while condition to check. For example, single-card stacks can only be moved to at most 2 places,
+			//   (in general n-card stacks to n*2 places), but this doesn't seem to save time.
+			if (src_pos == 0 && src_stack.front().value() == kKing)
+				is_king_and_found_empty_dst = true;
 		}
 	}
 }
