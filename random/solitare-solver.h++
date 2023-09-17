@@ -197,11 +197,11 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 	++curr_depth;
 	std::exception_ptr exc;
 	try {
+		if (not opts.next_play_must_be_on_or_from_stack)
+			try_quick_discard();
 		try_discard(opts.next_play_must_be_on_or_from_stack);
 		try_transfer(opts.next_play_must_be_on_or_from_stack, opts.if_transfer_is_next_must_be_from_stack);
 		try_play(opts.next_play_must_be_on_or_from_stack);
-		if (not opts.next_play_must_be_on_or_from_stack)
-			try_quick_discard();
 		try_draw(opts.next_play_must_be_on_or_from_stack, opts.if_transfer_is_next_must_be_from_stack);
 	} catch (...) {
 		exc = std::current_exception();
