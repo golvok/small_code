@@ -50,10 +50,11 @@
 		- setMember. Allows returning const& from getMember(s)?
 		   - can't: Node::get returns a plain reference
 		     - return NodeConcrete<T>&?
-		- Convert NodeValue, RodeReference NodeIndirectAcess to static polymorphism
+		- Convert NodeValue, RodeReference NodeIndirectAccess to static polymorphism
 		- make classes final
 		- 'at' throw if not exist
 		- member not found error constant
+		- scalar == "not decomposable"... "atom" instead?
 		- Catch exceptions to add context. Eg. what member names are being accessed
 		- moving from a NodeReference seems sketchy (tryAssign, clone)
 		- can cut-down vtables by having a single virtual method with a dispatch enum
@@ -61,6 +62,12 @@
 				- NodeConcreteBase would be more unique_ptr wrapper?
 		- Only create static member nodes as needed? (instead of all on the first access)
 			- need to synchronize on the cache access anyway... per type mutex?
+		- Node insertion order is iteration order
+			- also guarantees toScalars order is the same as member iteration order
+			- good for predictability (can use hashing and still get predictable orders)
+			- not something we want users to depend on? -- eg. python randomizes hashes, though dict iter order is insertion order now.
+		- Make GetMember truly lazy by making NodeIndirectAccess not take the member as a type parameter (kDynamicMemberTypeChanged)
+			- Yes, this means re-implementing (or refactoring-out) a bunch of NodeConcreteBase.
 */
 
 using rrv::Node;
@@ -200,39 +207,52 @@ struct TwoTypeVector {
 		std::variant<std::vector<int>::iterator, std::vector<float>::iterator, std::monostate> it;
 		auto operator<=>(const MemberIter&) const = default;
 
-		void increment(const TwoTypeVector& ttv) {
+		void increment(TwoTypeVector& ttv) {
 			struct V {
 				MemberIter* self;
-				const TwoTypeVector& ttv;
-				void operator()(std::vector<int>::iterator i) {
-					++i;
-					if (i == vecInt.end()) {
-						self.it = ttv.vecFloat.begin();
+				TwoTypeVector& ttv;
+				void operator()(std::vector<int>::iterator it) {
+					++it;
+					if (it == ttv.vecInt.end()) {
+						self->it = ttv.vecFloat.begin();
 					}
 				}
-				void operator()(std::vector<float>::iterator i) { ++i; }
+				void operator()(std::vector<float>::iterator it) { ++it; }
 				void operator()(std::monostate) { throw "increment end"; }
 			};
 			return std::visit(V{this, ttv}, it);
 		}
-		auto dereference(const TwoTypeVector& ttv) {
+		auto dereference(TwoTypeVector& ttv) {
 			struct V {
-				const TwoTypeVector& ttv;
-				std::pair<std::string, MemberIter> operator()(std::vector<int>::iterator i) { return {"i" + std::to_string(i - ttv.vecInt.begin()), &*i}; }
-				std::pair<std::string, MemberIter> operator()(std::vector<float>::iterator i) { return {"f" + std::to_string(i - ttv.vecFloat.begin()), &*i}; }
+				TwoTypeVector& ttv;
+				std::pair<std::string, MemberIter> operator()(std::vector<int>::iterator it) { return {"i" + std::to_string(it - ttv.vecInt.begin()), {it}}; }
+				std::pair<std::string, MemberIter> operator()(std::vector<float>::iterator it) { return {"f" + std::to_string(it - ttv.vecFloat.begin()), {it}}; }
 				std::pair<std::string, MemberIter> operator()(std::monostate) { throw "deref end"; }
 			};
 			return std::visit(V{ttv}, it);
 		}
 		bool equals(const MemberIter& rhs, const TwoTypeVector&) const { return *this == rhs; }
 	};
-	friend std::variant<int*, float*, std::monostate> rrvMember(TwoTypeVector& s, std::string_view key) {
+	friend MemberVariant rrvMember(TwoTypeVector& ttv, std::string_view key) {
 		auto index = std::stoi(std::string(key.substr(1)));
-		if (key[0] == 'i') if ((std::size_t)index < s.vecInt.size())   return &s.vecInt.at(index);   else return std::monostate{};
-		              else if ((std::size_t)index < s.vecFloat.size()) return &s.vecFloat.at(index); else return std::monostate{};
+		if (key[0] == 'i') if ((std::size_t)index < ttv.vecInt.size())   return &ttv.vecInt.at(index);   else return std::monostate{};
+		              else if ((std::size_t)index < ttv.vecFloat.size()) return &ttv.vecFloat.at(index); else return std::monostate{};
 	}
-	friend auto rrvBegin(TwoTypeVector& s) { return MemberIter{s.vecInt.empty(), 0}; }
-	friend auto rrvEnd(TwoTypeVector& s) { return MemberIter{false, s.vecFloat.size()}; }
+	friend MemberVariant rrvMember(TwoTypeVector& ttv, std::string_view, MemberIter it) {
+		struct V {
+			TwoTypeVector& ttv;
+			MemberVariant operator()(std::vector<int>::iterator it) { return &*it; }
+			MemberVariant operator()(std::vector<float>::iterator it) { return &*it; }
+			MemberVariant operator()(std::monostate) { return std::monostate{}; }
+		};
+		return std::visit(V{ttv}, it.it);
+	}
+	friend auto rrvBegin(TwoTypeVector& ttv) {
+		if (not ttv.vecInt.empty())   return MemberIter{ttv.vecInt.begin()};
+		if (not ttv.vecFloat.empty()) return MemberIter{ttv.vecFloat.begin()};
+		return MemberIter{std::monostate{}};
+	}
+	friend auto rrvEnd(TwoTypeVector&) { return MemberIter{std::monostate{}}; }
 };
 
 struct TheNested {

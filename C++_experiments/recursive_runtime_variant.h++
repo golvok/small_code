@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <charconv>
 #include <limits>
 #include <map>
@@ -83,7 +84,10 @@ struct InterfaceKey {
 	// questionable, but convenient
 	InterfaceKey(unsigned int       i) : InterfaceKey(static_cast<unsigned long>(i)) {}
 	InterfaceKey(unsigned long      i) : InterfaceKey(static_cast<unsigned long long>(i)) {}
-	InterfaceKey(unsigned long long i) : InterfaceKey(static_cast<long long>(i)) { if (std::numeric_limits<long long>::max() < i) { throw std::runtime_error("Signed cast would loose data"); } }
+	InterfaceKey(unsigned long long i) : InterfaceKey(0) {
+		if (std::numeric_limits<long long>::max() < i) { throw std::runtime_error("Signed cast would loose data"); }
+		impl = Key{static_cast<long long>(i)};
+	}
 
 	// ban implicit conversions from floating point types
 	InterfaceKey(float  d) = delete;
@@ -113,8 +117,8 @@ private:
 	std::variant<Key, KeyReference> impl;
 };
 
-bool operator==(const InterfaceKey& lhs, const InterfaceKey& rhs) { return KeyReference(lhs) == KeyReference(rhs); };
-bool operator<(const InterfaceKey& lhs, const InterfaceKey& rhs) { return KeyReference(lhs) < KeyReference(rhs); };
+bool operator==(const InterfaceKey& lhs, const InterfaceKey& rhs) { return KeyReference(lhs) == KeyReference(rhs); }
+bool operator<(const InterfaceKey& lhs, const InterfaceKey& rhs) { return KeyReference(lhs) < KeyReference(rhs); }
 
 struct Node;
 struct NodeConcreteBase;
@@ -142,6 +146,7 @@ namespace errors {
 	constexpr auto kCloneNotImplemented_RvalRef = "clone && not implemented"sv;
 	constexpr auto kAccessMemberOfConcreteType = "Can't get member of concrete type"sv;
 	constexpr auto kDuplicateStaticMemberKey = "Member keys must be unique. Problematic key: "sv;
+	constexpr auto kDynamicMemberTypeChanged = "A dynamic member's type changed"sv;
 }
 
 template<typename Source, typename Target>
@@ -305,7 +310,8 @@ protected:
 
 	mutable NodeConcreteMemberCache member_cache = {};
 
-	NodeConcreteMemberCache::reference getMember(InterfaceKey key) const;
+	template<typename... Hints>
+	NodeConcreteMemberCache::reference getMember(InterfaceKey key, Hints&&... hints) const;
 	template<typename TT = T> auto initMemberCacheForStaticMembers() const -> std::enable_if_t<kIsStaticMemberType<TT>>;
 	template<typename Self>
 	MemberIteratorPair<std::is_const_v<Self>> friend nodeConcreteGetIterators(Self& self);
@@ -410,8 +416,8 @@ public:
 				visitImpl(rhs,
 					[this](auto& rhs_dict) {
 						visitImpl(*this,
-							[&, this](auto& this_dict) { this_dict = rhs_dict; }, // move underlying dict into us
-							[&, this](auto& /*this_obj*/) { impl = DictImpl(new Dict(rhs_dict)); } // copy the dict
+							[&, this](auto& this_dict) { this_dict = rhs_dict; }, // copy-assign dict into ours
+							[&, this](auto& /*this_obj*/) { impl = DictImpl(new Dict(rhs_dict)); } // copy & change impl variant
 						);
 					},
 					[this](auto& rhs_obj)  { *this = rhs_obj; } // recurse on held object
@@ -421,7 +427,7 @@ public:
 					[this](auto& rhs_dict) {
 						visitImpl(*this,
 							[&, this](auto& this_dict) { this_dict = std::move(*rhs_dict); }, // move underlying dict into us
-							[&, this](auto& /*this_obj*/) { impl = std::move(rhs_dict); } // move dict ptr into us
+							[&, this](auto& /*this_obj*/) { impl = std::move(rhs_dict); } // move & change impl variant
 						);
 					},
 					[this](auto& rhs_obj)  {
@@ -521,8 +527,8 @@ private:
 
 // Customization points
 template<typename Obj> auto rrvMembers(Obj& t) -> decltype(t.rrvMembers()) { return t.rrvMembers(); }
-template<typename Obj> auto rrvMember(Obj& obj, std::string_view key) -> decltype(obj.rrvMember(key)) { return obj.rrvMember(key); }
-template<typename Obj> auto rrvMember(Obj& obj, long long key) -> decltype(obj.rrvMember(key)) { return obj.rrvMember(key); }
+template<typename Obj, typename... Hints> auto rrvMember(Obj& obj, std::string_view key, Hints&&... hints) -> decltype(obj.rrvMember(key, std::forward<Hints>(hints)...)) { return obj.rrvMember(key, std::forward<Hints>(hints)...); }
+template<typename Obj, typename... Hints> auto rrvMember(Obj& obj, long long key, Hints&&... hints) -> decltype(obj.rrvMember(key, std::forward<Hints>(hints)...)) { return obj.rrvMember(key, std::forward<Hints>(hints)...); }
 template<typename Obj> auto rrvBegin(Obj& t) -> decltype(t.rrvBegin()) { return t.rrvBegin(); }
 template<typename Obj> auto rrvEnd(Obj& t) -> decltype(t.rrvEnd()) { return t.rrvEnd(); }
 
@@ -556,13 +562,13 @@ template<typename Obj> constexpr static bool kIsStaticMemberType<Obj, decltype(r
 namespace detail {
 
 
-template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyReference& key) -> decltype(rrvMember(obj, std::declval<std::string_view>())) {
-	return rrvMember(obj, key.s);
+template<typename Obj, typename... Hints> auto rrvMemberFromKey(Obj& obj, const KeyReference& key, Hints&&... hints) -> decltype(rrvMember(obj, std::declval<std::string_view>(), std::forward<Hints>(hints)...)) {
+	return rrvMember(obj, key.s, std::forward<Hints>(hints)...);
 }
-template<typename Obj> auto rrvMemberFromKey(Obj& obj, const KeyReference& key) -> decltype(rrvMember(obj, std::declval<long long>())) {
+template<typename Obj, typename... Hints> auto rrvMemberFromKey(Obj& obj, const KeyReference& key, Hints&&... hints) -> decltype(rrvMember(obj, std::declval<long long>(), std::forward<Hints>(hints)...)) {
 	auto maybe_int = key.i;
 	if (not maybe_int) throw std::logic_error("Could not convert " + std::string(key.s) + " to an integer, and this type does not accept strings for rrvMember");
-	return rrvMember(obj, *maybe_int);
+	return rrvMember(obj, *maybe_int, std::forward<Hints>(hints)...);
 }
 
 }
@@ -639,7 +645,10 @@ struct NodeIndirectAcess : NodeConcrete<T> {
 
 protected:
 	T& getObj() const override {
-		return *std::get<T*>(rrvMemberFromKey(*container, key));
+		auto access_variant = rrvMemberFromKey(*container, key);
+		auto obj_ptr_ptr = std::get_if<T*>(&access_variant);
+		if (not obj_ptr_ptr) throw std::logic_error(std::string(errors::kDynamicMemberTypeChanged));
+		return **obj_ptr_ptr;
 	}
 
 private:
@@ -648,7 +657,8 @@ private:
 };
 
 template<typename T>
-NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(InterfaceKey key) const {
+template<typename... Hints>
+NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(InterfaceKey key, Hints&&... hints) const {
 	static_assert(kIsScalarType<T> + kIsDynamicMemberType<T> + kIsStaticMemberType<T> == 1, "Internal error");
 	if constexpr (kIsDynamicMemberType<T>) {
 		return std::visit(
@@ -665,7 +675,7 @@ NodeConcreteMemberCache::reference NodeConcrete<T>::getMember(InterfaceKey key) 
 					return *lookup;
 				}
 			},
-			rrvMemberFromKey(getObj(), key)
+			rrvMemberFromKey(getObj(), key, std::forward<Hints>(hints)...)
 		);
 	} else if constexpr (kIsStaticMemberType<T>) {
 		initMemberCacheForStaticMembers();
@@ -729,7 +739,7 @@ struct NodeConcreteDynamicMemberIter : MemberIteratorImplBase<const_iter> {
 	NodeConcreteDynamicMemberIter& operator=(const NodeConcreteDynamicMemberIter&) = default;
 	NodeConcreteDynamicMemberIter& operator=(NodeConcreteDynamicMemberIter&&) = default;
 
-	value_type* deref() override { return &self->getMember(derefImpl<Impl>()); }
+	value_type* deref() override { return derefForReturnValue<Impl>(); }
 	void advance() override { incrementImpl<Impl>(); }
 	OwningPtr clone() const& override { return OwningPtr{new NodeConcreteDynamicMemberIter(*this)}; }
 	bool equalTo(const BaseClass& rhs) const override { auto* downcasted = dynamic_cast<const NodeConcreteDynamicMemberIter*>(&rhs); return downcasted && equalImpl(downcasted->impl); }
@@ -741,6 +751,12 @@ struct NodeConcreteDynamicMemberIter : MemberIteratorImplBase<const_iter> {
 	template<typename TImpl> auto derefImpl() -> decltype(*std::declval<TImpl&>()) { return *impl; }
 	template<typename TImpl> auto equalImpl(const TImpl& rhs) const -> decltype(std::declval<TImpl&>().equals(rhs, *self)) { return impl.equals(rhs, *self); }
 	template<typename TImpl> auto equalImpl(const TImpl& rhs) const -> decltype(std::declval<TImpl&>() == rhs) { return impl == rhs; }
+
+	template<typename TImpl> auto derefForReturnValue() -> decltype(&self->getMember(derefImpl<TImpl>())) { return &self->getMember(derefImpl<TImpl>()); }
+	template<typename TImpl> auto derefForReturnValue() -> decltype(rrvMember(self->getObject(), derefImpl<TImpl>().first), &self->getMember(derefImpl<TImpl>().first, derefImpl<TImpl>().second)) {
+		const auto& value = derefImpl<TImpl>();
+		return &self->getMember(value.first, value.second);
+	}
 };
 
 template<typename Self>
