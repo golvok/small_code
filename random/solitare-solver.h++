@@ -505,11 +505,14 @@ struct Card {
 };
 
 template<typename T, std::size_t kMax>
-struct SmallVec {
+class SmallVec {
+public:
 	using value_type = T;
 
-	std::size_t _size = 0;
-	std::array<T, kMax> _storage{};
+	constexpr SmallVec() : SmallVec(std::size_t{0}) {}
+	constexpr explicit SmallVec(std::size_t size) : _size(size) {}
+	constexpr explicit SmallVec(i64 size) : _size(static_cast<std::size_t>(size)) {}
+	constexpr SmallVec(std::initializer_list<T> il) : SmallVec() { for (auto& e : il) push_back(e); }
 
 	void push_back(T t) { assert(_size != kMax); _storage[_size] = t; ++_size; }
 	void pop_back() { assert(_size != 0); --_size; }
@@ -526,7 +529,8 @@ struct SmallVec {
 	T&       front()       { assert(_size != 0); return *begin(); }
 	T const& back() const { assert(_size != 0); return *(end() - 1); }
 	T&       back()       { assert(_size != 0); return *(end() - 1); }
-	T& at(std::size_t i) { assert(i < _size); return _storage[i]; }
+	T&       at(std::size_t i)       { assert(i < _size); return _storage[i]; }
+	T const& at(std::size_t i) const { assert(i < _size); return _storage[i]; }
 	T& operator[](std::size_t i) { assert(i < _size); return _storage[i]; }
 
 	T* erase(T* from, T* to) {
@@ -552,6 +556,9 @@ struct SmallVec {
 	bool operator==(const SmallVec& rhs) const {
 		return size() == rhs.size() && std::ranges::equal(asSpan(), rhs.asSpan());
 	}
+private:
+	std::size_t _size;
+	std::array<T, kMax> _storage{};
 };
 
 static constexpr i64 kMaxStacks = 7;
@@ -665,8 +672,8 @@ struct ManualState {
 
 State state {
 	Tableau{
-		.hiddens = static_cast<unsigned>(num_stacks),
-		.stacks = static_cast<unsigned>(num_stacks),
+		.hiddens = Hiddens(num_stacks),
+		.stacks = Stacks(num_stacks),
 	},
 };
 ManualState manual_state{};
