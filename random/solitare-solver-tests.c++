@@ -26,6 +26,38 @@ TEST_CASE("single test") {
 	App::main(args);
 }
 
+TEST_CASE("king-stack canonicalization") {
+	auto app = App(3, 3, 1, 5);
+	app.tableau = App::Tableau {
+		.hiddens = {
+			{},
+			{},
+			{{App::kSpades, App::Value{3}}},
+			{{App::kHearts, App::Value{3}}},
+			{},
+		},
+		.stacks =  {
+			{},
+			{{App::kDiamonds, App::Value{3}}},
+			{{App::kDiamonds, App::Value{2}}},
+			{{App::kHearts, App::Value{2}}},
+			{},
+		},
+		.draw_pile = {{App::kHearts, App::Value{6}}},
+		.drawn = {},
+		.discards = {{
+			{App::kDiamonds, App::Value{1}},
+			{App::kClubs, App::Value{3}},
+			{App::kHearts, App::Value{1}},
+			{App::kSpades, App::Value{2}},
+		}},
+	};
+
+
+	app.enable_new_opt = true;
+	CHECK(app.solve(std::nullopt));
+}
+
 TEST_CASE("known seeds") {
 	auto kKing = 9;
 	auto num_draws = 3;

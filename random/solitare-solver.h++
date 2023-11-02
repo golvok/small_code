@@ -230,16 +230,58 @@ void try_flip_then_continue(i64 i_stack, std::string_view msg, TryMoveOpts opts)
 	auto& hidden = hiddens.at(i_stack);
 	auto& stack = stacks.at(i_stack);
 	bool const do_flip = not hidden.empty() && stack.empty();
+	bool const do_king_sort = enable_new_opt && (hidden.empty() || (hidden.size() == 1 && hidden.back().value() == kKing));
 
 	if (do_flip) {
 		stack.push_back(hidden.back());
 		hidden.pop_back();
+	}
+
+	auto king_stack_copies = SmallVec<Stack, kMaxStacks>{};
+	auto sorted_king_stacks = SmallVec<Stack*, kMaxStacks>{};
+	if (do_king_sort) {
+		auto orig_king_indices = SmallVec<i64, kMaxStacks>{};
+		for (i64 i_stack = 0; i_stack < num_stacks; ++i_stack) {
+			if (not hiddens.at(i_stack).empty()) continue;
+			auto& stack = stacks.at(i_stack);
+			if (stack.empty() || stack.front().value() == kKing) {
+				sorted_king_stacks.push_back(&stack);
+				orig_king_indices.push_back(i_stack);
+			}
+		}
+
+		auto const sort_by_king_suit = [](auto& lhs, auto& rhs) {  // king is front card
+			return (lhs->empty() ? Suit{100} : lhs->at(0).suit()) < (rhs->empty() ? Suit{100} : rhs->at(0).suit());
+		};
+
+		std::ranges::stable_sort(sorted_king_stacks, sort_by_king_suit);
+
+		for (auto& ks : sorted_king_stacks) {
+			king_stack_copies.push_back(*ks);
+		}
+
+		for (i64 i_ks = 0; i_ks < sorted_king_stacks.ssize(); ++i_ks) {
+			stacks.at(orig_king_indices[i_ks]) = king_stack_copies[i_ks];
+
+			i64 const new_index = sorted_king_stacks[i_ks] - stacks.data();
+			if (new_index == opts.if_transfer_is_next_must_be_from_stack) {
+				opts.if_transfer_is_next_must_be_from_stack = orig_king_indices[i_ks];
+			}
+			if (new_index == opts.next_play_must_be_on_or_from_stack) {
+				opts.next_play_must_be_on_or_from_stack = orig_king_indices[i_ks];
+			}
+		}
 	}
 	if (hidden.empty())
 		opts.if_transfer_is_next_must_be_from_stack = std::nullopt;
 
 	try_move(msg, opts);
 
+	if (do_king_sort) {
+		for (i64 i_ks = 0; i_ks < sorted_king_stacks.ssize(); ++i_ks) {
+			*sorted_king_stacks[i_ks] = king_stack_copies[i_ks];
+		}
+	}
 	if (do_flip) {
 		hidden.push_back(stack.back());
 		stack.pop_back();
