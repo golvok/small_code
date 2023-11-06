@@ -413,7 +413,11 @@ void try_play(i64 i_stack) {
 	bool old_drawn_are_fresh = false;
 	std::swap(old_drawn_are_fresh, drawn_are_fresh);
 
-	try_move("play from drawn", true);
+	if (c.value() == kKing) {
+		try_flip_then_continue(0, "play from drawn", true);
+	} else {
+		try_move("play from drawn", true);
+	}
 
 	std::swap(drawn_are_fresh, old_drawn_are_fresh);
 	drawn.push_back(stack.back());
