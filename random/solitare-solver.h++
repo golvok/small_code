@@ -135,6 +135,8 @@ i64 find_solutions = 1;
 i64 find_new_nodes = 1;
 
 void try_move(std::string_view msg, TryMoveOpts opts) {
+	if (break_on_tableau == tableau) raise(SIGTRAP);
+
 	if ((draw_pile.size() + drawn.size()) <= 1 && std::ranges::all_of(hiddens, is_empty)) {
 		if (--find_solutions == 0) {
 			if (verbose >= 3)
@@ -162,14 +164,15 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 			}
 		}
 		++num_visits;
+
 		// const auto parent_ptrs = parents | std::views::drop(1) | std::ranges::views::transform([](auto& e) { return e.second; });
 		// const bool is_loop = std::ranges::find(parent_ptrs, &key) != parent_ptrs.end();
 		// if (is_loop) {
 		// 	dump_parents();
-		// 	std::cout << "loop\n"; // log(0, "loop from: ", msg);
-		// 	std::cout.flush();
+		// 	log(0, "loop from: ", msg);
 		// 	throw std::runtime_error("loop");
 		// }
+
 		auto total_num_visits = num_visits;
 		if (visited.size() != 1) {
 			total_num_visits = 0;
@@ -745,6 +748,8 @@ Parents& parents = manual_state.parents;
 std::vector<bool>& made_a_move = manual_state.made_a_move;
 i64& divergence_test_count = manual_state.divergence_test_count;
 bool& exploring_new_states = manual_state.exploring_new_states;
+
+std::optional<Tableau> break_on_tableau = std::nullopt;
 
 friend ostream& operator<<(ostream& os, vector<Card> const& vc) {
 	os << '{';
