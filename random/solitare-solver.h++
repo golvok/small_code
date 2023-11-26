@@ -506,7 +506,7 @@ void try_draw(optional<i64> next_play_must_be_on_or_from_stack, optional<i64> if
 		std::swap(draw_pile, drawn);
 		std::ranges::reverse(draw_pile);
 	}
-	auto const num_to_draw = std::min<i64>(ssize(draw_pile), 3);
+	auto const num_to_draw = std::min<i64>(ssize(draw_pile), num_draws);
 	for (i64 i = 0; i < num_to_draw; ++i) {
 		drawn.push_back(draw_pile.back());
 		draw_pile.pop_back();
