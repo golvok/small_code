@@ -83,7 +83,13 @@ void seed_tableau(u64 seed) {
 		stacks[i_stack].push_back(deck.back());
 		deck.pop_back();
 	}
-	std::ranges::copy(deck, std::back_inserter(draw_pile));
+
+	// Start with all cards drawn, so we can init `drawn_are_fresh = false`.
+	// We want to prevent drawing the last few cards when they are fresh (this is always a loop)
+	//   but, if we init `drawn_are_fresh = true` here, then if we must play the last card first, then we won't get the chance.
+	// This also does the optimization of making drawing cards the first move, since you will must do that at some point.
+	std::ranges::copy(deck | std::views::reverse, std::back_inserter(drawn));
+	drawn_are_fresh = false;
 }
 
 bool solve(std::optional<u64> seed) {
@@ -510,12 +516,18 @@ void try_draw(optional<i64> next_play_must_be_on_or_from_stack, optional<i64> if
 		std::ranges::reverse(draw_pile);
 	}
 	auto const num_to_draw = std::min<i64>(ssize(draw_pile), num_draws);
+	if (drawn_are_fresh && num_to_draw == ssize(draw_pile)) {
+		return;
+	}
 	for (i64 i = 0; i < num_to_draw; ++i) {
 		drawn.push_back(draw_pile.back());
 		draw_pile.pop_back();
 	}
 
-	try_move(msg, {.next_play_must_be_on_or_from_stack = next_play_must_be_on_or_from_stack, .if_transfer_is_next_must_be_from_stack = if_transfer_is_next_must_be_from_stack});
+	try_move(msg, {
+		.next_play_must_be_on_or_from_stack = next_play_must_be_on_or_from_stack,
+		.if_transfer_is_next_must_be_from_stack = if_transfer_is_next_must_be_from_stack
+	});
 
 	for (i64 i = 0; i < num_to_draw; ++i) {
 		draw_pile.push_back(drawn.back());
@@ -705,8 +717,8 @@ struct State {
 	i64 curr_depth = 0;
 	i64 min_hiddens = 100000;
 
-	/** has a card not been played or discareded from the drawn cards since the last return to the draw pile */
-	bool drawn_are_fresh = true;
+	/** has a card not been played or discarded from the drawn cards since the last return to the draw pile */
+	bool drawn_are_fresh = false;
 
 	auto operator<=>(State const&) const = default;
 };
