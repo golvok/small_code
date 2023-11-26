@@ -234,10 +234,9 @@ void try_flip_then_continue(i64 i_stack, std::string_view msg, TryMoveOpts opts)
 	if (do_flip) {
 		stack.push_back(hidden.back());
 		hidden.pop_back();
+		if (hidden.empty())
+			opts.if_transfer_is_next_must_be_from_stack = std::nullopt;
 	}
-
-	if (hidden.empty())
-		opts.if_transfer_is_next_must_be_from_stack = std::nullopt;
 
 	bool const do_king_sort = hidden.empty() || (stack.front().value() == kKing);
 	maybe_sort_kings_then_continue(do_king_sort, msg, opts);
