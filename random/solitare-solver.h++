@@ -27,6 +27,8 @@ namespace {
 auto is_empty = [](auto& v) { return v.empty(); };
 auto get_size = [](auto& v) { return ssize(v); };
 
+bool gPrintAsCxx = false;
+
 struct App {
 
 struct Tableau;
@@ -545,8 +547,13 @@ struct Card {
 	Value value() const { return _value; }
 
 	friend ostream& operator<<(ostream& os, Card const& c) {
-		constexpr std::array<char, 4> suit_letter{'D', 'C', 'H', 'S'};
-		return os << suit_letter[c.suit()] << '_' << int(c.value());
+		if (gPrintAsCxx) {
+			constexpr auto suit_str = std::array<char const*, 4>{"App::kDiamonds", "App::kClubs", "App::kHearts", "App::kSpades"};
+			return os << '{' << suit_str[c.suit()] << ", App::Value{" << i64{c.value()} << "}}";
+		} else {
+			constexpr auto suit_letter = std::array<char, 4>{'D', 'C', 'H', 'S'};
+			return os << suit_letter[c.suit()] << '_' << i64{c.value()};
+		}
 	}
 
 	auto operator<=>(Card const&) const = default;
@@ -740,65 +747,88 @@ i64& divergence_test_count = manual_state.divergence_test_count;
 bool& exploring_new_states = manual_state.exploring_new_states;
 
 friend ostream& operator<<(ostream& os, vector<Card> const& vc) {
-	os << '[';
+	os << '{';
+	auto sep = "";
 	for (auto const& c : vc) {
-		os << c << ' ';
+		os << sep << c;
+		sep = gPrintAsCxx ? ", " : " ";
 	}
-	return os << '(' << vc.size() << ")]";
+	if (not gPrintAsCxx and vc.size() > 4)
+		os << sep << '(' << vc.size() << ")";
+	return os << "}";
 }
 
 template<std::size_t N>
 friend ostream& operator<<(ostream& os, std::array<Card, N> const& vc) {
-	os << '[';
+	os << (gPrintAsCxx ? "{{" : "{");
+	auto sep = "";
 	for (auto const& c : vc) {
-		os << c << ' ';
+		os << sep << c;
+		sep = gPrintAsCxx ? ", " : " ";
 	}
-	return os << '(' << vc.size() << ")]";
+	if (not gPrintAsCxx and vc.size() > 6)
+		os << sep << '(' << vc.size() << ")";
+	return os << (gPrintAsCxx ? "}}" : "}");
 }
 
 template<std::size_t N>
 friend ostream& operator<<(ostream& os, SmallVec<Card, N> const& vc) {
-	os << '[';
+	os << '{';
+	auto sep = "";
 	for (auto const& c : vc) {
-		os << c << ' ';
+		os << sep << c;
+		sep = gPrintAsCxx ? ", " : " ";
 	}
-	return os << '(' << vc.size() << ")]";
+	if (not gPrintAsCxx and vc.size() > 4)
+		os << sep << '(' << vc.size() << ")";
+	return os << "}";
 }
 
 friend ostream& operator<<(ostream& os, vector<vector<Card>> const& vvc) {
-	os << "[\n";
+	os << "{";
+	auto sep = "\n";
+	auto const indent = gPrintAsCxx ? "\t" : "  ";
 	for (auto const& vc : vvc) {
-		os << "  " << vc << '\n';
+		os << sep << indent << vc;
+		sep = gPrintAsCxx ? ",\n" : "\n";
 	}
-	return os << ']';
+	return os << sep << '}';
 }
 
 template<std::size_t N>
 friend ostream& operator<<(ostream& os, vector<SmallVec<Card, N>> const& vvc) {
-	os << "[\n";
+	os << "{";
+	auto sep = "\n";
+	auto const indent = gPrintAsCxx ? "\t" : "  ";
 	for (auto const& vc : vvc) {
-		os << "  " << vc << '\n';
+		os << sep << indent << vc;
+		sep = gPrintAsCxx ? ",\n" : "\n";
 	}
-	return os << ']';
+	return os << sep << '}';
 }
 
 template<std::size_t N, std::size_t M>
 friend ostream& operator<<(ostream& os, SmallVec<SmallVec<Card, M>, N> const& vvc) {
-	os << "[\n";
+	os << "{";
+	auto sep = "\n";
+	auto const indent = gPrintAsCxx ? "\t" : "  ";
 	for (auto const& vc : vvc) {
-		os << "  " << vc << '\n';
+		os << sep << indent << vc;
+		sep = gPrintAsCxx ? ",\n" : "\n";
 	}
-	return os << ']';
+	return os << sep << '}';
 }
 
 void dump() const { dump_tableau(tableau); }
 
 static void dump_tableau(Tableau const& t) {
-	cout << "draw_pile=" << t.draw_pile << '\n';
-	cout << "drawn=" << t.drawn << '\n';
-	cout << "hiddens=" << t.hiddens << '\n';
-	cout << "stacks=" << t.stacks << '\n';
-	cout << "discards=" << t.discards << '\n';
+	auto const sep = gPrintAsCxx ? ",\n" : "\n";
+	auto const prefix = gPrintAsCxx ? "." : "";
+	cout << prefix << "hiddens = " << t.hiddens << sep;
+	cout << prefix << "stacks = " << t.stacks << sep;
+	cout << prefix << "draw_pile = " << t.draw_pile << sep;
+	cout << prefix << "drawn = " << t.drawn << sep;
+	cout << prefix << "discards = " << t.discards << sep;
 }
 
 void log(i64 log_level, std::string_view msg1, std::string_view msg2 = "") {
