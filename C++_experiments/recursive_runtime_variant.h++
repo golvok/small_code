@@ -10,6 +10,7 @@
 #include <string>
 #include <variant>
 #include <vector>
+#include <array>
 
 namespace rrv {
 
@@ -385,7 +386,7 @@ public:
 	Node(      NodeConcreteBase&& nb) : Node() { assign(std::move(nb)); }
 
 	template<typename T>
-	Node(T&& t) : Node() { assign(std::forward<T>(t)); }
+	Node(T&& t) : Node() { assign(std::forward<T>(t)); } // avoid initializing to dict in Node() ?
 
 	Node& operator=(const Node& rhs) { assign(rhs); return *this; }
 	Node& operator=(Node&& rhs     ) { assign(std::move(rhs)); return *this; }

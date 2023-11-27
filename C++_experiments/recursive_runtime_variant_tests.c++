@@ -456,6 +456,49 @@ TEST_CASE("conversion to Scalars") {
 			CHECK(scalared.at("2").at("m").at("ii").get<int>() == 777);
 		}
 	}
+	SECTION("same iteration order") {
+		struct OrderChanger {
+			std::vector<std::string> order;
+			int i = 1, j = 2, k = 3;
+			std::variant<int*, std::monostate> rrvMember(std::string_view key) {
+				if (key == "i") return &i;
+				if (key == "j") return &j;
+				if (key == "k") return &k;
+				return std::monostate{};
+			}
+			auto rrvBegin() { return order.begin(); }
+			auto rrvEnd() { return order.end(); }
+		};
+		SECTION("order ijk") {
+			Node orig_node = OrderChanger{{"i", "j", "k"}};
+			Node scal_node = orig_node.toScalars();
+			std::vector<std::pair<rrv::Key, Node>> observed;
+			std::transform(scal_node.begin(), scal_node.end(), std::back_inserter(observed), [&](auto&& e) { return std::make_pair(e.first, e.second); });
+			REQUIRE(observed.size() == 3);
+			CHECK(observed[0].first == "i");
+			CHECK(observed[0].second.get<int>() == 1);
+			CHECK(observed[1].first == "j");
+			CHECK(observed[1].second.get<int>() == 2);
+			CHECK(observed[2].first == "k");
+			CHECK(observed[2].second.get<int>() == 3);
+		}
+
+		// there's a similar problem for static members.
+
+		SECTION("order jki") {
+			Node orig_node = OrderChanger{{"j", "k", "i"}};
+			Node scal_node = orig_node.toScalars();
+			std::vector<std::pair<rrv::Key, Node>> observed;
+			std::transform(scal_node.begin(), scal_node.end(), std::back_inserter(observed), [&](auto&& e) { return std::make_pair(e.first, e.second); });
+			REQUIRE(observed.size() == 3);
+			CHECK_FALSE(observed[0].first == "j");
+			CHECK_FALSE(observed[0].second.get<int>() == 2);
+			CHECK_FALSE(observed[1].first == "k");
+			CHECK_FALSE(observed[1].second.get<int>() == 3);
+			CHECK_FALSE(observed[2].first == "i");
+			CHECK_FALSE(observed[2].second.get<int>() == 1);
+		}
+	}
 }
 
 TEST_CASE("iteration") {
