@@ -26,8 +26,62 @@ TEST_CASE("single test") {
 	App::main(args);
 }
 
+TEST_CASE("opt diff") {
+	auto new_app = App(false, 9, 3, 7);
+	new_app.enable_new_opt = true;
+	auto const new_solved = new_app.solve(424626366);
+
+	auto base_app = App(false, 9, 3, 7);
+	new_app.find_solutions = 0;
+	base_app.enable_new_state_code = true;
+	base_app.visited = new_app.visited;
+	for (auto& vis : base_app.visited) {
+		for (auto& [k, v] : vis) {
+			v = 0;
+		}
+	}
+	auto const base_solved = base_app.solve(424626366);
+	CHECK(not base_solved);
+	CHECK(new_solved == base_solved);
+}
+
+TEST_CASE("tranfser, then discard from same stack") {
+	auto app = App(0, 9, 3, 7);
+	app.tableau = App::Tableau {
+		.hiddens = {
+			{},
+			{{App::kSpades, App::Value{9}}},
+			{},
+			{},
+			{},
+			{},
+			{{App::kClubs, App::Value{6}}, {App::kSpades, App::Value{5}}},
+		},
+		.stacks =  {
+			{{App::kDiamonds, App::Value{9}}, {App::kClubs, App::Value{8}}, {App::kHearts, App::Value{7}}},
+			{{App::kDiamonds, App::Value{7}}, {App::kSpades, App::Value{6}}},
+			{{App::kHearts, App::Value{9}}, {App::kSpades, App::Value{8}}},
+			{{App::kClubs, App::Value{9}}, {App::kDiamonds, App::Value{8}}},
+			{},
+			{},
+			{{App::kHearts, App::Value{8}}, {App::kSpades, App::Value{7}}},   // has to transfer then discard from here
+		},
+		.draw_pile = {},
+		.drawn = {{App::kClubs, App::Value{7}}, {App::kSpades, App::Value{4}}, {App::kHearts, App::Value{6}}},
+		.discards = {{
+			{App::kDiamonds, App::Value{6}},
+			{App::kClubs, App::Value{5}},
+			{App::kHearts, App::Value{5}},
+			{App::kSpades, App::Value{3}},
+		}},
+	};
+
+	app.enable_new_opt = true;
+	CHECK(app.solve(std::nullopt));
+}
+
 TEST_CASE("king-stack canonicalization") {
-	auto app = App(3, 3, 1, 5);
+	auto app = App(0, 3, 1, 5);
 	app.tableau = App::Tableau {
 		.hiddens = {
 			{},
@@ -58,7 +112,25 @@ TEST_CASE("king-stack canonicalization") {
 	CHECK(app.solve(std::nullopt));
 }
 
-TEST_CASE("known seeds") {
+TEST_CASE("known seeds - k=10") {
+	auto kKing = 10;
+	auto num_draws = 3;
+	auto num_stacks = 7;
+	struct P {
+		i64 seed; bool solveable;
+	};
+	auto const tests = std::array{
+		P{1955793558, false},
+	};
+
+	for (auto const& test : tests) {
+		App app(false, kKing, num_draws, num_stacks);
+		app.enable_new_opt = true;
+		CHECK(app.solve(test.seed) == test.solveable);
+	}
+}
+
+TEST_CASE("known seeds - k=9") {
 	auto kKing = 9;
 	auto num_draws = 3;
 	auto num_stacks = 7;
@@ -240,6 +312,7 @@ TEST_CASE("known seeds") {
 
 	for (auto const& test : tests) {
 		App app(false, kKing, num_draws, num_stacks);
+		app.enable_new_opt = true;
 		CHECK(app.solve(test.seed) == test.solveable);
 	}
 }
