@@ -28,11 +28,11 @@ TEST_CASE("single test") {
 
 TEST_CASE("opt diff") {
 	auto new_app = App(false, 9, 3, 7);
-	new_app.enable_new_opt = true;
 	auto const new_solved = new_app.solve(424626366);
 
 	auto base_app = App(false, 9, 3, 7);
 	new_app.find_solutions = 0;
+	base_app.enable_new_opt = false;
 	base_app.enable_new_state_code = true;
 	base_app.visited = new_app.visited;
 	for (auto& vis : base_app.visited) {
@@ -76,7 +76,6 @@ TEST_CASE("tranfser, then discard from same stack") {
 		}},
 	};
 
-	app.enable_new_opt = true;
 	CHECK(app.solve(std::nullopt));
 }
 
@@ -107,8 +106,6 @@ TEST_CASE("king-stack canonicalization") {
 		}},
 	};
 
-
-	app.enable_new_opt = true;
 	CHECK(app.solve(std::nullopt));
 }
 
@@ -125,7 +122,6 @@ TEST_CASE("known seeds - k=10") {
 
 	for (auto const& test : tests) {
 		App app(false, kKing, num_draws, num_stacks);
-		app.enable_new_opt = true;
 		CHECK(app.solve(test.seed) == test.solveable);
 	}
 }
@@ -312,7 +308,6 @@ TEST_CASE("known seeds - k=9") {
 
 	for (auto const& test : tests) {
 		App app(false, kKing, num_draws, num_stacks);
-		app.enable_new_opt = true;
 		CHECK(app.solve(test.seed) == test.solveable);
 	}
 }

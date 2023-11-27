@@ -51,7 +51,7 @@ Value kKing;
 i64 num_draws;
 i64 num_stacks;
 
-bool enable_new_opt = false;
+bool enable_new_opt = true;
 bool enable_new_state_code = false;
 bool enable_detect_loops = false;
 
