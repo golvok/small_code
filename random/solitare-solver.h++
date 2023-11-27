@@ -53,6 +53,7 @@ i64 num_stacks;
 
 bool enable_new_opt = false;
 bool enable_new_state_code = false;
+bool enable_detect_loops = false;
 
 App(i64 verbose, int kKing, int num_draws, int num_stacks)
 	: verbose(verbose)
@@ -171,13 +172,15 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 		}
 		++num_visits;
 
-		// const auto parent_ptrs = parents | std::views::drop(1) | std::ranges::views::transform([](auto& e) { return e.second; });
-		// const bool is_loop = std::ranges::find(parent_ptrs, &key) != parent_ptrs.end();
-		// if (is_loop) {
-		// 	dump_parents();
-		// 	log(0, "loop from: ", msg);
-		// 	throw std::runtime_error("loop");
-		// }
+		if (enable_detect_loops){
+			const auto parent_ptrs = parents | std::views::drop(1) | std::ranges::views::transform([](auto& e) { return e.second; });
+			const bool is_loop = std::ranges::find(parent_ptrs, &key) != parent_ptrs.end();
+			if (is_loop) {
+				dump_parents();
+				log(0, "loop from: ", msg);
+				throw std::runtime_error("loop");
+			}
+		}
 
 		auto total_num_visits = num_visits;
 		if (visited.size() != 1) {
