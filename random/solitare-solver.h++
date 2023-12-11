@@ -106,7 +106,7 @@ bool solve(std::optional<u64> seed) {
 
 	bool solved = false;
 	try {
-		try_move("start", true);
+		try_move("start", TryMoveOpts{});
 	} catch (std::exception const& e) {
 		if (std::string_view(e.what()) != "solved!") throw;
 		solved = true;
@@ -135,8 +135,6 @@ struct TryMoveOpts {
 	optional<i64> next_play_must_be_on_or_from_stack = std::nullopt;
 	optional<i64> if_transfer_is_next_must_be_from_stack = std::nullopt;
 };
-
-void try_move(std::string_view msg, bool check_unique) { return try_move(msg, {.check_unique = check_unique}); }
 
 i64 find_solutions = 1;
 i64 find_new_nodes = 1;
@@ -237,8 +235,6 @@ void reverted(std::string_view msg) {
 	log(4, "reverted: ", msg);
 }
 
-void try_flip_then_continue(i64 i_stack, std::string_view msg, bool check_unique) { return try_flip_then_continue(i_stack, msg, {.check_unique = check_unique}); }
-
 /// flip hidden cards into stacks
 void try_flip_then_continue(i64 i_stack, std::string_view msg, TryMoveOpts opts) {
 	auto& hidden = hiddens.at(i_stack);
@@ -330,7 +326,7 @@ void try_discard_from_stack(i64 i_stack) {
 	dst_discard._value = static_cast<Value>(dst_discard._value + 1);
 	s.pop_back();
 
-	try_flip_then_continue(&s - stacks.data(), "discard from stack", true);
+	try_flip_then_continue(&s - stacks.data(), "discard from stack", {});
 
 	s.push_back(dst_discard);
 	dst_discard._value = static_cast<Value>(dst_discard._value - 1);
@@ -433,7 +429,7 @@ void try_play(i64 i_stack) {
 	std::swap(old_drawn_are_fresh, drawn_are_fresh);
 
 	bool const do_king_sort = c.value() == kKing;
-	maybe_sort_kings_then_continue(do_king_sort, "play from drawn", TryMoveOpts{.check_unique = true});
+	maybe_sort_kings_then_continue(do_king_sort, "play from drawn", TryMoveOpts{});
 
 	std::swap(drawn_are_fresh, old_drawn_are_fresh);
 	drawn.push_back(stack.back());
@@ -455,7 +451,7 @@ void try_quick_discard() {
 	bool old_drawn_are_fresh = false;
 	std::swap(old_drawn_are_fresh, drawn_are_fresh);
 
-	try_move("discard from drawn", true);
+	try_move("discard from drawn", TryMoveOpts{});
 
 	std::swap(drawn_are_fresh, old_drawn_are_fresh);
 	drawn.push_back(dst_discard);
