@@ -655,6 +655,9 @@ struct Tableau {
 		Card{kSpades, kBeforeAce},
 	};
 
+	/** has a card not been played or discarded from the drawn cards since the last return to the draw pile */
+	bool drawn_are_fresh = false;
+
 	auto operator<=>(Tableau const&) const = default;
 };
 
@@ -693,6 +696,7 @@ struct TableauHasher {
 		std::ranges::for_each(tableau.discards, update);
 
 		hash ^= next_bits;
+		hash ^= tableau.drawn_are_fresh;
 		return hash;
 	}
 };
@@ -719,9 +723,6 @@ struct State {
 	i64 max_depth = 0;
 	i64 curr_depth = 0;
 	i64 min_hiddens = 100000;
-
-	/** has a card not been played or discarded from the drawn cards since the last return to the draw pile */
-	bool drawn_are_fresh = false;
 
 	auto operator<=>(State const&) const = default;
 };
@@ -751,7 +752,7 @@ i64& max_depth = state.max_depth;
 i64& curr_depth = state.curr_depth;
 i64& min_hiddens = state.min_hiddens;
 
-bool& drawn_are_fresh = state.drawn_are_fresh;
+bool& drawn_are_fresh = tableau.drawn_are_fresh;
 DrawPile& draw_pile = tableau.draw_pile;
 DrawPile& drawn = tableau.drawn;
 Hiddens& hiddens = tableau.hiddens;
@@ -849,6 +850,7 @@ static void dump_tableau(Tableau const& t) {
 	cout << prefix << "draw_pile = " << t.draw_pile << sep;
 	cout << prefix << "drawn = " << t.drawn << sep;
 	cout << prefix << "discards = " << t.discards << sep;
+	cout << prefix << "drawn_are_fresh = " << t.drawn_are_fresh << sep;
 }
 
 void log(i64 log_level, std::string_view msg1, std::string_view msg2 = "") {
