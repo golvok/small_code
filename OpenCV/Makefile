@@ -35,7 +35,7 @@ ifeq ($(BUILD_MODE),release)
 endif
 
 LIBRARY_LINK_FLAGS += \
-	$(shell pkg-config --libs --static opencv) \
+	$(shell pkg-config --libs --static opencv4) \
 	$(shell pkg-config --libs --static tesseract) \
 	-lpthread
 #	$(shell pkg-config --libs gtkmm-3.0) \
@@ -44,8 +44,8 @@ INCLUDE_FLAGS += \
 	-I .
 
 # GRAPHICS_INCL_FLAGS += $(shell pkg-config --cflags gtkmm-3.0)
-OPENCV_INCL_FLAGS += $(shell pkg-config --cflags opencv)
-TESSERACT_INCL_FLAGS += $(shell pkg-config --cflags tesseract)
+OPENCV_INCL_FLAGS = $(patsubst -I%,-isystem%,$(shell pkg-config --cflags opencv4))
+TESSERACT_INCL_FLAGS = $(patsubst -I%,-isystem%,$(shell pkg-config --cflags tesseract))
 
 CXXFLAGS += $(EXTRA_FLAGS) $(WARNING_FLAGS) $(INCLUDE_FLAGS)
 LDFLAGS  += $(EXTRA_FLAGS) $(WARNING_FLAGS) $(LIBRARY_LINK_FLAGS)
@@ -92,6 +92,9 @@ $(EXE_DIR)ocr_positional: \
 # $(OBJ_DIR)graphics/%.o: INCLUDE_FLAGS+=$(GRAPHICS_INCL_FLAGS)
 
 $(OBJ_DIR)line_segments/%.o: INCLUDE_FLAGS+=$(OPENCV_INCL_FLAGS)
+$(OBJ_DIR)ocr/ocr_positional.o: INCLUDE_FLAGS+=$(TESSERACT_INCL_FLAGS)
+# $(OBJ_DIR)ocr/%.o: INCLUDE_FLAGS+=$(TESSERACT_INCL_FLAGS)
+# $(OBJ_DIR)/ocr/ocr_positional/%.o: INCLUDE_FLAGS+=$(TESSERACT_INCL_FLAGS)
 
 # include all the dependency files, if any exist
 EXISTING_DEP_FILES = \

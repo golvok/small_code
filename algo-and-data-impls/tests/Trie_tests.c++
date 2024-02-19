@@ -10,7 +10,7 @@ using namespace std;
 #include "../Trie.h++"
 }
 
-#include <catch.hpp>
+#include <catch2/catch_test_macros.hpp>
 
 SCENARIO("Three") {
   Trie::Trie t;

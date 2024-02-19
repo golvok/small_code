@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <tuple>
+#include <vector>
 
 template<typename CONTAINER>
 struct reversed_adaptor {
