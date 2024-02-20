@@ -1,3 +1,5 @@
+#include <fmt/format.h>
+
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -22,7 +24,7 @@ using std::vector;
 using i64 = std::int64_t;
 using u64 = std::uint64_t;
 
-namespace {
+namespace golvok::solitare {
 
 auto is_empty = [](auto& v) { return v.empty(); };
 auto get_size = [](auto& v) { return ssize(v); };

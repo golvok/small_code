@@ -2,6 +2,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+using namespace golvok::solitare;
+
 TEST_CASE("single test") {
 	char const* args_var = std::getenv("SINGLE_TEST_ARGS");
 	if (not args_var) {
