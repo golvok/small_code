@@ -109,6 +109,40 @@ TEST_CASE("king-stack canonicalization") {
 	CHECK(app.solve(std::nullopt));
 }
 
+TEST_CASE("2023-12-27") { // at Mom's
+	auto app = App(0, 10, 3, 7);
+	app.tableau = App::Tableau {
+		.hiddens = {
+			{},
+			{{App::kDiamonds, App::Value{7}}, },
+			{{App::kSpades, App::Value{6}}, {App::kHearts, App::Value{2}}, },
+			{{App::kCups, App::Value{9}}, {App::kClubs, App::Value{1}}, {App::kSpades, App::Value{5}}, },
+			{{App::kCoins, App::Value{5}}, {App::kCups, App::Value{3}}, {App::kSpades, App::Value{2}}, {App::kClubs, App::Value{3}}, },
+			{{App::kCoins, App::Value{4}}, {App::kCups, App::Value{8}}, {App::kCoins, App::Value{3}}, {App::kSpades, App::Value{9}}, {App::kSpades, App::Value{10}}, },
+			{{App::kCups, App::Value{10}}, {App::kCups, App::Value{4}}, {App::kCoins, App::Value{9}}, {App::kCoins, App::Value{1}}, {App::kSpades, App::Value{4}}, {App::kClubs, App::Value{7}}, },
+		},
+		.stacks =  {
+			{{App::kHearts, App::Value{6}}},
+			{{App::kHearts, App::Value{5}}},
+			{{App::kClubs, App::Value{9}}},
+			{{App::kClubs, App::Value{6}}},
+			{{App::kClubs, App::Value{5}}},
+			{{App::kClubs, App::Value{4}}},
+			{{App::kCoins, App::Value{2}}},
+		},
+		.draw_pile = {{App::kCoins, App::Value{6}}, {App::kClubs, App::Value{2}}, {App::kSpades, App::Value{7}}, {App::kCups, App::Value{1}}, {App::kCoins, App::Value{8}}, {App::kSpades, App::Value{8}}, {App::kCups, App::Value{7}}, {App::kCoins, App::Value{10}}, {App::kSpades, App::Value{1}}, {App::kClubs, App::Value{10}}, {App::kSpades, App::Value{3}}, {App::kClubs, App::Value{8}}},
+		.drawn = {},
+		.discards = {{
+			{App::kDiamonds, App::Value::kBeforeAce},
+			{App::kClubs, App::Value::kBeforeAce},
+			{App::kHearts, App::Value::kBeforeAce},
+			{App::kSpades, App::Value::kBeforeAce},
+		}},
+	};
+
+	CHECK(app.solve(std::nullopt));
+}
+
 TEST_CASE("known seeds - k=10") {
 	auto kKing = 10;
 	auto num_draws = 3;

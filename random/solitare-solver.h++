@@ -545,8 +545,10 @@ enum Colour { kRed = 0, kBlack = 1 };
 enum Suit : std::uint8_t {
 	// even <=> red
 	kDiamonds = 0,
+	kCoins    = 0,
 	kClubs    = 1,
 	kHearts   = 2,
+	kCups     = 2,
 	kSpades   = 3,
 };
 enum Value : std::int8_t { kBeforeAce = 0, kAce = 1, kMaxKing = 13 };
