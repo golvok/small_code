@@ -96,8 +96,8 @@ void seed_tableau(u64 seed) {
 }
 
 bool solve(std::optional<u64> seed) {
-	cout << "kKing=" << (int)kKing << " ns=" << num_stacks << " nd=" << num_draws << " seed=" << (seed ? std::to_string(*seed) : " seed=(manual init)") << std::endl;
-	cout << "enable_new_opt=" << enable_new_opt << " enable_new_state_code=" << enable_new_state_code << " find_new_nodes=" << find_new_nodes << std::endl;
+	fmt::println("kKing={} ns={} nd={} seed={}", (int)kKing, num_stacks, num_draws, seed ? std::to_string(*seed) : "(manual init)");
+	fmt::println("enable_new_opt={} enable_new_state_code={} find_new_nodes={}", enable_new_opt, enable_new_state_code, find_new_nodes);
 
 	if (seed)
 		seed_tableau(*seed);
@@ -114,20 +114,19 @@ bool solve(std::optional<u64> seed) {
 		solved = true;
 	}
 
-	if (verbose)
-		std::cout << "no. examined unique nodes: " << visited.back().size() << std::endl;
-
-	// std::unordered_map<i64, i64> visit_freqs;
-	// for (auto const& v : visited) {
-	// 	++visit_freqs[v.second];
-	// }
-	// for (auto& vf : visit_freqs) {
-	// 	std::cout << vf.first << ' ' << vf.second << '\n';
-	// }
-
 	if (verbose) {
-		std::cout << "max_depth=" << max_depth << " last_depth=" << curr_depth << '\n';
-		std::cout << "solved=" << solved << std::endl;
+		fmt::println("no. examined unique nodes: {}", visited.back().size());
+
+		std::map<i64, i64> visit_freqs;
+		for (auto const& layer : visited) {
+			for (auto const& v : layer) ++visit_freqs[v.second];
+		}
+		for (auto& vf : visit_freqs) {
+			fmt::println("  {:2} {}",  vf.first, vf.second);
+		}
+
+		fmt::println("max_depth={} last_depth={}", max_depth, curr_depth);
+		fmt::println("solved={}", solved);
 	}
 	return solved;
 }
