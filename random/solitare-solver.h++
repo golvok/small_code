@@ -405,24 +405,24 @@ void try_play(optional<i64> next_play_must_be_on_or_from_stack) {
 	if (drawn.empty()) return;
 
 	if (next_play_must_be_on_or_from_stack)
-		return try_play(*next_play_must_be_on_or_from_stack);
+		return (void)try_play(*next_play_must_be_on_or_from_stack);
 
 	for (i64 i_stack = 0; i_stack < num_stacks; ++i_stack) {
-		try_play(i_stack);
+		if (not try_play(i_stack)) break;
 	}
 }
 
 // from drawn cards to a particular stack
-void try_play(i64 i_stack) {
-	if (drawn.empty()) return;
+bool try_play(i64 i_stack) {
+	if (drawn.empty()) return true;
 	auto c = drawn.back();
 
 	auto& stack = stacks.at(i_stack);
 	if (c.value() == kKing) {
-		if (not stack.empty()) return;
+		if (not stack.empty()) return true;
 	} else {
-		if (stack.empty()) return;
-		if (stack.back().colour() == c.colour() || stack.back().value() != c.value() + 1) return;
+		if (stack.empty()) return true;
+		if (stack.back().colour() == c.colour() || stack.back().value() != c.value() + 1) return true;
 	}
 
 	stack.push_back(drawn.back());
@@ -438,6 +438,8 @@ void try_play(i64 i_stack) {
 	stack.pop_back();
 
 	reverted("play from drawn");
+
+	return c.value() != kKing; // no need to consider further empty spaces
 }
 
 /// from drawn cards to discards
