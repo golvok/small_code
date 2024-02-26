@@ -10,6 +10,7 @@
 #include <ranges>
 #include <set>
 #include <span>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -65,6 +66,7 @@ App(i64 verbose, int kKing, int num_draws, int num_stacks)
 {
 	if (this->kKing < kAce || this->kKing > kMaxKing) throw std::logic_error("invalid kKing");
 	if (num_stacks < 1 || num_stacks > kMaxStacks) throw std::logic_error("invalid num_stacks");
+	init_strings();
 }
 
 void seed_tableau(u64 seed) {
@@ -327,12 +329,12 @@ void try_discard_from_stack(i64 i_stack) {
 	dst_discard._value = static_cast<Value>(dst_discard._value + 1);
 	s.pop_back();
 
-	try_flip_then_continue(&s - stacks.data(), "discard from stack", {});
+	try_flip_then_continue(&s - stacks.data(), discard_from_stack_strings[i_stack][tip], {});
 
 	s.push_back(dst_discard);
 	dst_discard._value = static_cast<Value>(dst_discard._value - 1);
 
-	reverted("discard from stack");
+	reverted(discard_from_stack_strings[i_stack][tip]);
 }
 
 /// from stack to stack
@@ -347,7 +349,8 @@ void try_transfer(optional<i64> next_play_must_be_on_or_from_stack, optional<i64
 
 		// don't transfer if the src tip can be safely discarded -- rely on some other call to try_discard to come first.
 		// safely discarded: opposite-colored cards that could be placed on the tip card can be discarded (or have been).
-		auto const min_opposite_color_discard = std::min(discards[(src_tip.suit() + 1) % 4].value(), discards[(src_tip.suit() + 3) % 4].value());
+		static_assert(kNumSuits == 4, "assumed 4 suits below");
+		auto const min_opposite_color_discard = std::min(discards[(src_tip.suit() + 1) % kMaxSuit].value(), discards[(src_tip.suit() + 3) % kMaxSuit].value());
 		auto const can_discard_src_tip = discards[src_tip.suit()].value() + 1 == src_tip.value();
 		auto const can_safely_discard_src_tip = min_opposite_color_discard + 2 >= src_tip.value();
 		if (can_discard_src_tip && can_safely_discard_src_tip) continue;
@@ -380,7 +383,7 @@ void try_transfer(optional<i64> next_play_must_be_on_or_from_stack, optional<i64
 			dst_stack.insert(dst_stack.end(), src_stack.begin() + src_pos, src_stack.end());
 			src_stack.erase(src_stack.begin() + src_pos, src_stack.end());
 
-			try_flip_then_continue(i_src_stack, "transfer stack", {
+			try_flip_then_continue(i_src_stack, transfer_strings[i_src_stack][i_dst_stack], {
 				.next_play_must_be_on_or_from_stack = src_pos == 0 ? std::nullopt : std::make_optional(i_src_stack),
 				.if_transfer_is_next_must_be_from_stack = src_pos == 0 ? std::nullopt : std::make_optional(i_src_stack),
 			});
@@ -388,7 +391,7 @@ void try_transfer(optional<i64> next_play_must_be_on_or_from_stack, optional<i64
 			src_stack.insert(src_stack.end(), dst_stack.end() - num_transferred, dst_stack.end());
 			dst_stack.erase(dst_stack.end() - num_transferred, dst_stack.end());
 
-			reverted("transfer stack");
+			reverted(transfer_strings[i_src_stack][i_dst_stack]);
 
 			// If we found a place to put a king, then don't consider any more empty stacks
 			// This seems to be the only worth-while condition to check. For example, single-card stacks can only be moved to at most 2 places,
@@ -430,13 +433,13 @@ bool try_play(i64 i_stack) {
 	std::swap(old_drawn_are_fresh, drawn_are_fresh);
 
 	bool const do_king_sort = c.value() == kKing;
-	maybe_sort_kings_then_continue(do_king_sort, "play from drawn", TryMoveOpts{});
+	maybe_sort_kings_then_continue(do_king_sort, play_strings[i_stack][c], TryMoveOpts{});
 
 	std::swap(drawn_are_fresh, old_drawn_are_fresh);
 	drawn.push_back(stack.back());
 	stack.pop_back();
 
-	reverted("play from drawn");
+	reverted(play_strings[i_stack][c]);
 
 	return c.value() != kKing; // no need to consider further empty spaces
 }
@@ -454,13 +457,13 @@ void try_quick_discard() {
 	bool old_drawn_are_fresh = false;
 	std::swap(old_drawn_are_fresh, drawn_are_fresh);
 
-	try_move("discard from drawn", TryMoveOpts{});
+	try_move(quick_discard_strings[c], TryMoveOpts{});
 
 	std::swap(drawn_are_fresh, old_drawn_are_fresh);
 	drawn.push_back(dst_discard);
 	dst_discard._value = static_cast<Value>(dst_discard._value - 1);
 
-	reverted("discard from drawn");
+	reverted(quick_discard_strings[c]);
 }
 
 void divergence_test(bool do_test, auto base_func, auto new_func) {
@@ -544,16 +547,21 @@ void try_draw(optional<i64> next_play_must_be_on_or_from_stack, optional<i64> if
 	reverted(msg);
 }
 
+static constexpr int64_t kNumSuits = 4;
+
 enum Colour { kRed = 0, kBlack = 1 };
 enum Suit : std::uint8_t {
 	// even <=> red
-	kDiamonds = 0,
-	kCoins    = 0,
+	kMinSuit  = 0,
+	kDiamonds = kMinSuit,
+	kCoins    = kDiamonds,
 	kClubs    = 1,
 	kHearts   = 2,
-	kCups     = 2,
+	kCups     = kHearts,
 	kSpades   = 3,
+	kMaxSuit  = kSpades,
 };
+static_assert(kMaxSuit + 1 == kNumSuits);
 enum Value : std::int8_t { kBeforeAce = 0, kAce = 1, kMaxKing = 13 };
 
 static size_t id(Suit s) { return s; }
@@ -567,13 +575,15 @@ struct Card {
 
 	friend ostream& operator<<(ostream& os, Card const& c) {
 		if (gPrintAsCxx) {
-			constexpr auto suit_str = std::array<char const*, 4>{"App::kDiamonds", "App::kClubs", "App::kHearts", "App::kSpades"};
+			constexpr auto suit_str = std::array<char const*, kNumSuits>{"App::kDiamonds", "App::kClubs", "App::kHearts", "App::kSpades"};
 			return os << '{' << suit_str[c.suit()] << ", App::Value{" << i64{c.value()} << "}}";
 		} else {
-			constexpr auto suit_letter = std::array<char, 4>{'D', 'C', 'H', 'S'};
+			constexpr auto suit_letter = std::array<char, kNumSuits>{'D', 'C', 'H', 'S'};
 			return os << suit_letter[c.suit()] << '_' << i64{c.value()};
 		}
 	}
+
+	friend auto format_as(Card const& card) { return (std::stringstream() << card).str(); }
 
 	auto operator<=>(Card const&) const = default;
 };
@@ -642,7 +652,7 @@ using Stack = SmallVec<Card, kMaxKing - kAce + 1>;
 
 using Hiddens = SmallVec<Hidden, kMaxStacks>;
 using Stacks = SmallVec<Stack, kMaxStacks>;
-using Discards = std::array<Card, 4>;
+using Discards = std::array<Card, kNumSuits>;
 
 struct Tableau {
 	Hiddens hiddens;
@@ -834,8 +844,11 @@ friend ostream& operator<<(ostream& os, SmallVec<SmallVec<Card, M>, N> const& vv
 	os << "{";
 	auto sep = "\n";
 	auto const indent = gPrintAsCxx ? "\t" : "  ";
+	int64_t i = -1;
 	for (auto const& vc : vvc) {
-		os << sep << indent << vc;
+		++i;
+		auto num = gPrintAsCxx ? "" : (std::to_string(i) + ": ");
+		os << sep << indent << num << vc;
 		sep = gPrintAsCxx ? ",\n" : "\n";
 	}
 	return os << sep << '}';
@@ -869,6 +882,51 @@ static void dump_parents(Parents const& parents) {
 }
 void dump_parents() const { dump_parents(parents); }
 void dump_n_parents(i64 n) const { dump_parents({parents.begin() + std::max(ssize(parents), n) - n, parents.end()}); }
+
+template<typename T>
+struct CardIndexedVector {
+	SmallVec<T, (kMaxKing - kBeforeAce + 1) * kNumSuits> data = {};
+
+	T& operator[](Card c) { return data[(c.value() - kBeforeAce) * kNumSuits + +c.suit()]; }
+	T const& operator[](Card c) const { return data[(c.value() - kBeforeAce) * kNumSuits + +c.suit()]; }
+
+	template<typename F>
+	static CardIndexedVector FromEachCard(F&& f) {
+		CardIndexedVector result;
+		for (auto value = kBeforeAce; value <= kMaxKing; value = static_cast<Value>(+value + 1)) {
+			for (auto suit = kMinSuit; suit <= kMaxSuit; suit = static_cast<Suit>(+suit + 1)) {
+				result.data.push_back(f(Card{suit, value}));
+			}
+		}
+		return result;
+	}
+};
+
+std::vector<std::vector<std::string>> transfer_strings = {};
+std::vector<CardIndexedVector<std::string>> play_strings = {};
+CardIndexedVector<std::string> quick_discard_strings = {};
+std::vector<CardIndexedVector<std::string>> discard_from_stack_strings = {};
+
+void init_strings() {
+	for (int i_stack = 0; i_stack < num_stacks; ++i_stack) {
+		transfer_strings.emplace_back();
+		for (int i_dst_stack = 0; i_dst_stack < num_stacks; ++i_dst_stack) {
+			transfer_strings.back().push_back(fmt::format("transfer stacks {} -> {}", i_stack, i_dst_stack));
+		}
+
+		play_strings.emplace_back() = play_strings.back().FromEachCard([&](Card card) {
+			return fmt::format("play {} from drawn to {}", card, i_stack);
+		});
+
+		discard_from_stack_strings.emplace_back() = discard_from_stack_strings.back().FromEachCard([&](Card card) {
+			return fmt::format("discard {} from stack {}", card, i_stack);
+		});
+	}
+
+	quick_discard_strings = quick_discard_strings.FromEachCard([](Card card) {
+		return fmt::format("discard {} from drawn", card);
+	});
+}
 
 };
 }

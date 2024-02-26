@@ -347,3 +347,11 @@ TEST_CASE("known seeds - k=9") {
 		CHECK(app.solve(test.seed) == test.solveable);
 	}
 }
+
+TEST_CASE("CardIndexedVector") {
+	using Card = golvok::solitare::App::Card;
+	auto civ = App::CardIndexedVector<Card>::FromEachCard([](Card c) { return c; });
+	CHECK(civ[Card{App::kSpades, App::kBeforeAce}] == Card{App::kSpades, App::kBeforeAce});
+	CHECK(civ[Card{App::kHearts, App::Value{5}}] == Card{App::kHearts, App::Value{5}});
+	CHECK(civ[Card{App::kClubs, App::Value{7}}] == Card{App::kClubs, App::Value{7}});
+}
