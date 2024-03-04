@@ -396,6 +396,7 @@ void try_transfer(optional<i64> next_play_must_be_on_or_from_stack, optional<i64
 			try_flip_then_continue(i_src_stack, transfer_strings[i_src_stack][i_dst_stack][move_head_card], {
 				.next_play_must_be_on_or_from_stack = (not src_hidden.empty() && src_pos == 0) ? std::nullopt : std::make_optional(i_src_stack),
 				.if_transfer_is_next_must_be_from_stack = src_pos == 0 ? std::nullopt : std::make_optional(i_src_stack),
+				.do_king_sort = move_head_card.value() == kKing,
 			});
 
 			src_stack.insert(src_stack.end(), dst_stack.end() - num_transferred, dst_stack.end());
