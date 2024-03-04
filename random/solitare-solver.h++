@@ -380,11 +380,12 @@ void try_transfer(optional<i64> next_play_must_be_on_or_from_stack, optional<i64
 			}
 
 			auto num_transferred = src_stack.size() - src_pos;
+			auto const move_head_card = src_stack.at(src_pos);
 			dst_stack.insert(dst_stack.end(), src_stack.begin() + src_pos, src_stack.end());
 			src_stack.erase(src_stack.begin() + src_pos, src_stack.end());
 
 			try_flip_then_continue(i_src_stack, transfer_strings[i_src_stack][i_dst_stack][move_head_card], {
-				.next_play_must_be_on_or_from_stack = src_pos == 0 ? std::nullopt : std::make_optional(i_src_stack),
+				.next_play_must_be_on_or_from_stack = (not src_hidden.empty() && src_pos == 0) ? std::nullopt : std::make_optional(i_src_stack),
 				.if_transfer_is_next_must_be_from_stack = src_pos == 0 ? std::nullopt : std::make_optional(i_src_stack),
 			});
 
