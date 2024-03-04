@@ -383,7 +383,7 @@ void try_transfer(optional<i64> next_play_must_be_on_or_from_stack, optional<i64
 			dst_stack.insert(dst_stack.end(), src_stack.begin() + src_pos, src_stack.end());
 			src_stack.erase(src_stack.begin() + src_pos, src_stack.end());
 
-			try_flip_then_continue(i_src_stack, transfer_strings[i_src_stack][i_dst_stack], {
+			try_flip_then_continue(i_src_stack, transfer_strings[i_src_stack][i_dst_stack][move_head_card], {
 				.next_play_must_be_on_or_from_stack = src_pos == 0 ? std::nullopt : std::make_optional(i_src_stack),
 				.if_transfer_is_next_must_be_from_stack = src_pos == 0 ? std::nullopt : std::make_optional(i_src_stack),
 			});
@@ -391,7 +391,7 @@ void try_transfer(optional<i64> next_play_must_be_on_or_from_stack, optional<i64
 			src_stack.insert(src_stack.end(), dst_stack.end() - num_transferred, dst_stack.end());
 			dst_stack.erase(dst_stack.end() - num_transferred, dst_stack.end());
 
-			reverted(transfer_strings[i_src_stack][i_dst_stack]);
+			reverted(transfer_strings[i_src_stack][i_dst_stack][move_head_card]);
 
 			// If we found a place to put a king, then don't consider any more empty stacks
 			// This seems to be the only worth-while condition to check. For example, single-card stacks can only be moved to at most 2 places,
@@ -902,7 +902,7 @@ struct CardIndexedVector {
 	}
 };
 
-std::vector<std::vector<std::string>> transfer_strings = {};
+std::vector<std::vector<CardIndexedVector<std::string>>> transfer_strings = {};
 std::vector<CardIndexedVector<std::string>> play_strings = {};
 CardIndexedVector<std::string> quick_discard_strings = {};
 std::vector<CardIndexedVector<std::string>> discard_from_stack_strings = {};
@@ -911,7 +911,9 @@ void init_strings() {
 	for (int i_stack = 0; i_stack < num_stacks; ++i_stack) {
 		transfer_strings.emplace_back();
 		for (int i_dst_stack = 0; i_dst_stack < num_stacks; ++i_dst_stack) {
-			transfer_strings.back().push_back(fmt::format("transfer stacks {} -> {}", i_stack, i_dst_stack));
+			transfer_strings.back().emplace_back() = transfer_strings.back().back().FromEachCard([&](Card card) {
+				return fmt::format("transfer {} stack {} -> {}", card, i_stack, i_dst_stack);
+			});
 		}
 
 		play_strings.emplace_back() = play_strings.back().FromEachCard([&](Card card) {
