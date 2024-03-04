@@ -137,12 +137,17 @@ struct TryMoveOpts {
 	bool check_unique = true;
 	optional<i64> next_play_must_be_on_or_from_stack = std::nullopt;
 	optional<i64> if_transfer_is_next_must_be_from_stack = std::nullopt;
+	bool do_king_sort = false;
 };
 
 i64 find_solutions = 1;
 i64 find_new_nodes = 1;
 
 void try_move(std::string_view msg, TryMoveOpts opts) {
+	if (maybe_sort_kings_then_continue(msg, opts)) { // this branch is a bit perf-hurting
+		return;
+	}
+
 	if (break_on_tableau == tableau) raise(SIGTRAP);
 
 	if ((draw_pile.size() + drawn.size()) <= 1 && std::ranges::all_of(hiddens, is_empty)) {
@@ -251,8 +256,8 @@ void try_flip_then_continue(i64 i_stack, std::string_view msg, TryMoveOpts opts)
 			opts.if_transfer_is_next_must_be_from_stack = std::nullopt;
 	}
 
-	bool const do_king_sort = hidden.empty() || (stack.front().value() == kKing);
-	maybe_sort_kings_then_continue(do_king_sort, msg, opts);
+	opts.do_king_sort |= hidden.empty() || (stack.front().value() == kKing);
+	try_move(msg, opts);
 
 	if (do_flip) {
 		hidden.push_back(stack.back());
@@ -260,11 +265,13 @@ void try_flip_then_continue(i64 i_stack, std::string_view msg, TryMoveOpts opts)
 	}
 }
 
-void maybe_sort_kings_then_continue(bool do_king_sort, std::string_view msg, TryMoveOpts opts) {
-	if (not do_king_sort) {
-		try_move(msg, opts);
-		return;
+/** Sort king-headed and empty stacks by suit (empty stacks last). Leaves other stacks alone. */
+bool maybe_sort_kings_then_continue(std::string_view msg, TryMoveOpts opts) {
+	// return false;
+	if (not opts.do_king_sort) {
+		return false;
 	}
+	opts.do_king_sort = false;  // don't want infinite recursion...
 
 	auto king_stack_copies = SmallVec<Stack, kMaxStacks>{};
 	auto sorted_king_stacks = SmallVec<Stack*, kMaxStacks>{};
@@ -305,6 +312,8 @@ void maybe_sort_kings_then_continue(bool do_king_sort, std::string_view msg, Try
 	for (i64 i_ks = 0; i_ks < sorted_king_stacks.ssize(); ++i_ks) {
 		*sorted_king_stacks[i_ks] = king_stack_copies[i_ks];
 	}
+
+	return true;
 }
 
 /// stack up from aces
@@ -433,8 +442,9 @@ bool try_play(i64 i_stack) {
 	bool old_drawn_are_fresh = false;
 	std::swap(old_drawn_are_fresh, drawn_are_fresh);
 
-	bool const do_king_sort = c.value() == kKing;
-	maybe_sort_kings_then_continue(do_king_sort, play_strings[i_stack][c], TryMoveOpts{});
+	try_move(play_strings[i_stack][c], TryMoveOpts{
+		.do_king_sort = c.value() == kKing,
+	});
 
 	std::swap(drawn_are_fresh, old_drawn_are_fresh);
 	drawn.push_back(stack.back());
