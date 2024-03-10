@@ -137,6 +137,7 @@ struct TryMoveOpts {
 	bool check_unique = true;
 	optional<i64> next_play_must_be_on_or_from_stack = std::nullopt;
 	optional<i64> if_transfer_is_next_must_be_from_stack = std::nullopt;
+	optional<Suit> discarding_here_is_also_allowed = std::nullopt;
 	bool do_king_sort = false;
 };
 
@@ -218,8 +219,8 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 	std::exception_ptr exc;
 	try {
 		if (not opts.next_play_must_be_on_or_from_stack)
-			try_quick_discard();
-		try_discard(opts.next_play_must_be_on_or_from_stack);
+			try_quick_discard(opts.discarding_here_is_also_allowed);
+		try_discard(opts.next_play_must_be_on_or_from_stack, opts.discarding_here_is_also_allowed);
 		try_transfer(opts.next_play_must_be_on_or_from_stack, opts.if_transfer_is_next_must_be_from_stack);
 		try_play(opts.next_play_must_be_on_or_from_stack);
 		try_draw(opts.next_play_must_be_on_or_from_stack, opts.if_transfer_is_next_must_be_from_stack);
@@ -317,28 +318,35 @@ bool maybe_sort_kings_then_continue(std::string_view msg, TryMoveOpts opts) {
 }
 
 /// stack up from aces
-void try_discard(optional<i64> next_play_must_be_on_or_from_stack) {
-	if (next_play_must_be_on_or_from_stack)
-		return try_discard_from_stack(*next_play_must_be_on_or_from_stack);
+void try_discard(optional<i64> next_play_must_be_on_or_from_stack, optional<Suit> or_can_discard_here) {
+	if (next_play_must_be_on_or_from_stack) {
+		try_discard_from_stack(*next_play_must_be_on_or_from_stack, std::nullopt);
+		if (not or_can_discard_here) return;
+	}
 
 	for (i64 i_stack = 0; i_stack < num_stacks; ++i_stack) {
-		try_discard_from_stack(i_stack);
+		try_discard_from_stack(i_stack, or_can_discard_here);
 	}
 }
 
 /// stack up from aces from a specific stack
-void try_discard_from_stack(i64 i_stack) {
+void try_discard_from_stack(i64 i_stack, optional<Suit> must_discard_here) {
 	auto& s = stacks[i_stack];
 	if (s.empty()) return;
 
 	auto tip = s.back();
+	if (must_discard_here && *must_discard_here != tip.suit()) return;
+
 	auto& dst_discard = discards.at(id(tip.suit()));
 	if (tip.value() - 1 != dst_discard.value()) return;
 
 	dst_discard._value = static_cast<Value>(dst_discard._value + 1);
 	s.pop_back();
 
-	try_flip_then_continue(&s - stacks.data(), discard_from_stack_strings[i_stack][tip], {});
+	try_flip_then_continue(&s - stacks.data(), discard_from_stack_strings[i_stack][tip], TryMoveOpts{
+		.next_play_must_be_on_or_from_stack = i_stack,
+		.discarding_here_is_also_allowed = tip.suit(),
+	});
 
 	s.push_back(dst_discard);
 	dst_discard._value = static_cast<Value>(dst_discard._value - 1);
@@ -457,9 +465,10 @@ bool try_play(i64 i_stack) {
 }
 
 /// from drawn cards to discards
-void try_quick_discard() {
+void try_quick_discard(optional<Suit> must_discard_here) {
 	if (drawn.empty()) return;
 	auto c = drawn.back();
+	if (must_discard_here && *must_discard_here != c.suit()) return;
 
 	auto& dst_discard = discards.at(id(c.suit()));
 	if (c.value() - 1 != dst_discard.value()) return;
