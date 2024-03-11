@@ -343,9 +343,11 @@ void try_discard_from_stack(i64 i_stack, optional<Suit> must_discard_here) {
 	dst_discard._value = static_cast<Value>(dst_discard._value + 1);
 	s.pop_back();
 
+	bool const discarded_last_one = hiddens[i_stack].empty() && s.empty();
+
 	try_flip_then_continue(&s - stacks.data(), discard_from_stack_strings[i_stack][tip], TryMoveOpts{
-		.next_play_must_be_on_or_from_stack = i_stack,
-		.discarding_here_is_also_allowed = tip.suit(),
+		.next_play_must_be_on_or_from_stack = discarded_last_one ? std::make_optional(i_stack) : std::nullopt,
+		.discarding_here_is_also_allowed = discarded_last_one ? std::make_optional(tip.suit()) : std::nullopt,
 	});
 
 	s.push_back(dst_discard);
