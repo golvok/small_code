@@ -922,8 +922,16 @@ void dump() const { dump_tableau(tableau); }
 static void dump_tableau(Tableau const& t) {
 	auto const sep = gPrintAsCxx ? ",\n" : "\n";
 	auto const prefix = gPrintAsCxx ? "." : "";
-	cout << prefix << "hiddens = " << t.hiddens << sep;
-	cout << prefix << "stacks = " << t.stacks << sep;
+	if (gPrintAsCxx) {
+		cout << prefix << "hiddens = " << t.hiddens << sep;
+		cout << prefix << "stacks = " << t.stacks << sep;
+	} else {
+		cout << "in_play = {\n";
+		for (auto const& i_stack : std::views::iota(i64{0}, t.stacks.ssize())) {
+			cout << "  " << i_stack << ": " << t.hiddens[i_stack] << " -- " << t.stacks[i_stack] << '\n';
+		}
+		cout << "}" << sep;
+	}
 	cout << prefix << "draw_pile = " << t.draw_pile << sep;
 	cout << prefix << "drawn = " << t.drawn << sep;
 	cout << prefix << "discards = " << t.discards << sep;
