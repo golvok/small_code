@@ -218,12 +218,16 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 	++curr_depth;
 	std::exception_ptr exc;
 	try {
-		if (not opts.next_play_must_be_on_or_from_stack)
+		if (not opts.next_play_must_be_on_or_from_stack or opts.discarding_here_is_also_allowed)
 			try_quick_discard(opts.discarding_here_is_also_allowed);
 		try_discard(opts.next_play_must_be_on_or_from_stack, opts.discarding_here_is_also_allowed);
 		try_transfer(opts.next_play_must_be_on_or_from_stack, opts.if_transfer_is_next_must_be_from_stack);
 		try_play(opts.next_play_must_be_on_or_from_stack);
-		try_draw(opts.next_play_must_be_on_or_from_stack, opts.if_transfer_is_next_must_be_from_stack);
+		try_draw(TryMoveOpts{ // explicitly pass in the ones we want preserved
+			.next_play_must_be_on_or_from_stack = opts.next_play_must_be_on_or_from_stack,
+			.if_transfer_is_next_must_be_from_stack = opts.if_transfer_is_next_must_be_from_stack,
+			.discarding_here_is_also_allowed = opts.discarding_here_is_also_allowed
+		});
 	} catch (...) {
 		exc = std::current_exception();
 	}
@@ -530,7 +534,7 @@ void divergence_test(bool do_test, auto base_func, auto new_func) {
 }
 
 /// draw new cards
-void try_draw(optional<i64> next_play_must_be_on_or_from_stack, optional<i64> if_transfer_is_next_must_be_from_stack) {
+void try_draw(TryMoveOpts opts) {
 	if (draw_pile.empty() && drawn.empty()) return;
 	bool const do_return = draw_pile.empty();
 	auto msg = do_return ? "returned drawn cards" : "drew cards";
@@ -552,10 +556,7 @@ void try_draw(optional<i64> next_play_must_be_on_or_from_stack, optional<i64> if
 		draw_pile.pop_back();
 	}
 
-	try_move(msg, {
-		.next_play_must_be_on_or_from_stack = next_play_must_be_on_or_from_stack,
-		.if_transfer_is_next_must_be_from_stack = if_transfer_is_next_must_be_from_stack
-	});
+	try_move(msg, opts);
 
 	for (i64 i = 0; i < num_to_draw; ++i) {
 		draw_pile.push_back(drawn.back());
