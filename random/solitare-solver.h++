@@ -27,6 +27,20 @@ using u64 = std::uint64_t;
 
 namespace golvok::solitare {
 
+// to_container from https://stackoverflow.com/a/60971856
+namespace detail {
+    template <typename C> struct to_helper { }; // Type acts as a tag to find the correct operator| overload
+    template <typename Container, std::ranges::range R> requires std::convertible_to<std::ranges::range_value_t<R>, typename Container::value_type>
+    Container operator|(R&& r, to_helper<Container>) {
+        // return Container{r.begin(), r.end()};
+        auto c = Container{};
+        for (auto&& e : r) c.push_back(std::move(e));
+        return c;
+    }
+}
+template <std::ranges::range Container> requires (!std::ranges::view<Container>)
+auto to_container() { return detail::to_helper<Container>{}; }
+
 auto is_empty = [](auto& v) { return v.empty(); };
 auto get_size = [](auto& v) { return ssize(v); };
 
@@ -151,6 +165,14 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 	}
 
 	if (break_on_tableau == tableau) raise(SIGTRAP);
+	if (print_paths_to_on_tableau == tableau) {
+		auto node_list = parents | std::views::drop(1) | std::views::transform([](auto&& e) { return (void const*)e.second; });
+		fmt::print("\"{}\"", fmt::join(node_list, "\"->\""));
+		fmt::println("->\"x-{}\"", (void const*)parents.back().second);
+		auto node_with_labels = parents | std::views::drop(1) | std::views::transform([](auto& e) { return fmt::format("\"{}\"[label=\"{}\"]", (void const*)e.second, e.first); });
+		fmt::println("{}", fmt::join(node_with_labels, "; "));
+		fmt::println("\"x-{}\"[label=\"x-{}\"]", (void const*)parents.back().second, msg);
+	}
 
 	if ((draw_pile.size() + drawn.size()) <= 1 && std::ranges::all_of(hiddens, is_empty)) {
 		if (--find_solutions == 0) {
@@ -190,7 +212,7 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 		++num_visits;
 
 		if (enable_detect_loops){
-			const auto parent_ptrs = parents | std::views::drop(1) | std::ranges::views::transform([](auto& e) { return e.second; });
+			const auto parent_ptrs = parents | std::views::drop(1) | std::views::transform([](auto& e) { return e.second; });
 			const bool is_loop = std::ranges::find(parent_ptrs, &key) != parent_ptrs.end();
 			if (is_loop) {
 				dump_parents();
@@ -817,6 +839,7 @@ i64& divergence_test_count = manual_state.divergence_test_count;
 bool& exploring_new_states = manual_state.exploring_new_states;
 
 std::optional<Tableau> break_on_tableau = std::nullopt;
+std::optional<Tableau> print_paths_to_on_tableau = std::nullopt;
 
 friend ostream& operator<<(ostream& os, vector<Card> const& vc) {
 	os << '{';
