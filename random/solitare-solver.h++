@@ -143,6 +143,7 @@ struct TryMoveOpts {
 
 i64 find_solutions = 1;
 i64 find_new_nodes = 1;
+std::unordered_map<Tableau const*, int> fallback_stage = {}; ///< debug method: determine where in a parent list some fallback was needed
 
 void try_move(std::string_view msg, TryMoveOpts opts) {
 	if (maybe_sort_kings_then_continue(msg, opts)) { // this branch is a bit perf-hurting
@@ -160,10 +161,19 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 		}
 	}
 
+	Tableau const* state_key = nullptr;
 	bool old_exploring_new_states = exploring_new_states;
 	if (opts.check_unique) {
 		auto [lookup, new_item] = visited.back().try_emplace(tableau, 0);
 		auto& [key, num_visits] = *lookup;
+		state_key = &key;
+
+		if (verbose >= 1) {
+			int64_t total_nodes = 0;
+			for (auto const& vis_map : visited) { total_nodes += vis_map.size(); }
+			if (new_item && total_nodes % (1024*1024) == 0) fmt::println("unique nodes={}", total_nodes);
+		}
+
 		if (enable_new_state_code) {
 			if (exploring_new_states && not new_item)
 				return;
@@ -228,6 +238,11 @@ void try_move(std::string_view msg, TryMoveOpts opts) {
 			.if_transfer_is_next_must_be_from_stack = opts.if_transfer_is_next_must_be_from_stack,
 			.discarding_here_is_also_allowed = opts.discarding_here_is_also_allowed
 		});
+
+		if (false && state_key) {
+			fallback_stage[state_key] = 1;
+			// try_transfer(std::nullopt, std::nullopt);
+		}
 	} catch (...) {
 		exc = std::current_exception();
 	}
@@ -898,8 +913,10 @@ void log(i64 log_level, std::string_view msg1, std::string_view msg2 = "") {
 	dump();
 }
 
-static void dump_parents(Parents const& parents) {
+void dump_parents(Parents const& parents) const {
 	for (auto& p : parents) {
+		if (fallback_stage.count(p.second))
+			std::cout << "=> fallback " << fallback_stage.at(p.second) << " <=\n";
 		std::cout << p.first << '\n';
 		dump_tableau(*p.second);
 		std::cout << '\n';
