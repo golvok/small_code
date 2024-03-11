@@ -272,7 +272,6 @@ void try_flip_then_continue(i64 i_stack, std::string_view msg, TryMoveOpts opts)
 
 /** Sort king-headed and empty stacks by suit (empty stacks last). Leaves other stacks alone. */
 bool maybe_sort_kings_then_continue(std::string_view msg, TryMoveOpts opts) {
-	// return false;
 	if (not opts.do_king_sort) {
 		return false;
 	}
@@ -281,7 +280,7 @@ bool maybe_sort_kings_then_continue(std::string_view msg, TryMoveOpts opts) {
 	auto king_stack_copies = SmallVec<Stack, kMaxStacks>{};
 	auto sorted_king_stacks = SmallVec<Stack*, kMaxStacks>{};
 
-	auto orig_king_indices = SmallVec<i64, kMaxStacks>{};
+	auto orig_king_indices = SmallVec<i64, kMaxStacks>{}; // translates i_ks to i_stack
 	for (i64 i_stack = 0; i_stack < num_stacks; ++i_stack) {
 		if (not hiddens.at(i_stack).empty()) continue;
 		auto& stack = stacks.at(i_stack);
@@ -301,15 +300,16 @@ bool maybe_sort_kings_then_continue(std::string_view msg, TryMoveOpts opts) {
 		king_stack_copies.push_back(*ks);
 	}
 
-	for (i64 i_ks = 0; i_ks < sorted_king_stacks.ssize(); ++i_ks) {
-		stacks.at(orig_king_indices[i_ks]) = king_stack_copies[i_ks];
+	for (i64 const i_ks : std::views::iota(0, sorted_king_stacks.ssize())) {
+		i64 const old_i_stack = sorted_king_stacks[i_ks] - stacks.data();
+		i64 const new_i_stack = orig_king_indices[i_ks];
+		stacks.at(new_i_stack) = king_stack_copies[i_ks];
 
-		i64 const new_index = sorted_king_stacks[i_ks] - stacks.data();
-		if (new_index == opts.if_transfer_is_next_must_be_from_stack) {
-			opts.if_transfer_is_next_must_be_from_stack = orig_king_indices[i_ks];
+		if (old_i_stack == opts.if_transfer_is_next_must_be_from_stack) {
+			opts.if_transfer_is_next_must_be_from_stack = new_i_stack;
 		}
-		if (new_index == opts.next_play_must_be_on_or_from_stack) {
-			opts.next_play_must_be_on_or_from_stack = orig_king_indices[i_ks];
+		if (old_i_stack == opts.next_play_must_be_on_or_from_stack) {
+			opts.next_play_must_be_on_or_from_stack = new_i_stack;
 		}
 	}
 	try_move(msg, opts);
@@ -639,7 +639,8 @@ public:
 	T&       back()       { assert(_size != 0); return *(end() - 1); }
 	T&       at(std::size_t i)       { assert(i < _size); return _storage[i]; }
 	T const& at(std::size_t i) const { assert(i < _size); return _storage[i]; }
-	T& operator[](std::size_t i) { assert(i < _size); return _storage[i]; }
+	T&       operator[](std::size_t i) { return at(i); }
+	T const& operator[](std::size_t i) const { return at(i); }
 
 	T* erase(T* from, T* to) {
 		std::copy(to, end(), from);
