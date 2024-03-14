@@ -17,6 +17,8 @@
 
 #include "signal.h"
 
+namespace golvok::solitare {
+
 using std::cout;
 using std::optional;
 using std::ostream;
@@ -26,11 +28,9 @@ using i64 = std::int64_t;
 using u64 = std::uint64_t;
 
 // todos/ideas
-// - only allow (ore or more, up to a loop around) draws before a quick discard or play?
+// - only allow (zero or more, up to a loop around) draws before a quick discard or play?
 // - more efficient drawing mechanism -- a draw location, not transferring cards around
 //   - can still print in the old way, for clarity.
-
-namespace golvok::solitare {
 
 // to_container from https://stackoverflow.com/a/60971856
 namespace detail {
