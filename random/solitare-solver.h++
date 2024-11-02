@@ -1,4 +1,7 @@
+// fmt has a bunch of these warnings?
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 
 #include <algorithm>
 #include <array>
