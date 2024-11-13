@@ -5,6 +5,8 @@
 #include <cassert>
 #include <expected>
 
+#include <catch2/catch_test_macros.hpp>
+
 struct Parser {
 	// Start     ::= Terms
 	// Terms     ::= \epsilon | Term+
@@ -19,6 +21,8 @@ struct Parser {
 		BoxedBracketed& operator=(BoxedBracketed&&) = default;
 
 		std::weak_ordering operator<=>(BoxedBracketed const& rhs) const { return cmpBracketed(**this, *rhs); }
+		bool operator==(BoxedBracketed const& rhs) const { return (*this <=> rhs) == 0; }
+
 		Bracketed& operator*() { assert(m_data); return *m_data.get(); }
 		Bracketed const& operator*() const { assert(m_data); return *m_data.get(); }
 		Bracketed* operator->() { return &*m_data; }
@@ -54,16 +58,8 @@ struct Parser {
 	template<typename TValue>
 	using ParseResult = std::expected<ParseSuccess<TValue>, Error>;
 
-	static ParseResult<Bracketed> start(std::string_view s) {
-		if (auto terms = parseTerms(s))
-			return ParseSuccess<Bracketed>{
-				.chars_consumed = terms->chars_consumed,
-				.value = {
-					.bracket = 'A' - 1,
-					.terms = std::move(terms->value),
-				},
-			};
-		return std::unexpected(Error{});
+	static ParseResult<Terms> start(std::string_view s) {
+		return parseTerms(s);;
 	}
 
 	static ParseResult<Terms> parseTerms(std::string_view s) {
@@ -88,7 +84,7 @@ struct Parser {
 	}
 
 	static ParseResult<Term> parseTerm(std::string_view s) {
-		if (auto i = parseInt(s)) {
+		if (auto i = parseInt(s, 1)) {
 			return ParseSuccess<Term>{
 				.chars_consumed = i->chars_consumed,
 				.value = i->value,
@@ -123,7 +119,7 @@ struct Parser {
 		return std::unexpected(Error{});
 	}
 
-	static ParseResult<int> parseInt(std::string_view s) {
+	static ParseResult<int> parseInt(std::string_view s, int max_digits) {
 		ParseResult<int> r = std::unexpected(Error{});
 		while (not s.empty() && std::isdigit(s.front())) {
 			if (not r)
@@ -131,6 +127,8 @@ struct Parser {
 					.chars_consumed = 0,
 					.value = 0,
 				};
+			if (max_digits == r->chars_consumed)
+				break;
 
 			r->value *= 10;
 			r->value += s.front() - '0';
@@ -141,10 +139,42 @@ struct Parser {
 	}
 };
 
-int main() {
-	Parser::start("Cc");
-	Parser::start("C1c");
-	Parser::start("C1Bbc");
-	Parser::start("C1Bbc");
-	Parser::start("");
+TEST_CASE("simple") {
+	CHECK(Parser::start("Cc") == Parser::ParseSuccess<Parser::Terms>{
+		.chars_consumed=2,
+		.value={
+			Parser::Bracketed{.bracket='C', .terms={}},
+		},
+	});
+	CHECK(Parser::start("C1c") == Parser::ParseSuccess<Parser::Terms>{
+		.chars_consumed=3,
+		.value={
+			Parser::Bracketed{.bracket='C', .terms={1}},
+		},
+	});
+	CHECK(Parser::start("C1Bbc") == Parser::ParseSuccess<Parser::Terms>{
+		.chars_consumed=5,
+		.value={
+			Parser::Bracketed{.bracket='C', .terms={
+				1,
+				Parser::Bracketed{.bracket='B', .terms={}},
+			}},
+		},
+	});
+	CHECK(Parser::start("CB1bc") == Parser::ParseSuccess<Parser::Terms>{
+		.chars_consumed=5,
+		.value={
+			Parser::Bracketed{.bracket='C', .terms={
+				Parser::Bracketed{.bracket='B', .terms={1}},
+			}},
+		},
+	});
+	CHECK(Parser::start("") == Parser::ParseSuccess<Parser::Terms>{
+		.chars_consumed=0,
+		.value={},
+	});
+	CHECK(Parser::start("11") == Parser::ParseSuccess<Parser::Terms>{
+		.chars_consumed=2,
+		.value={1, 1},
+	});
 }
