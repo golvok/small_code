@@ -1,3 +1,5 @@
+// https://www.0de5.net/stimuli/a-reintroduction-to-programming/instructions-to-languages/grammars-parsing-and-recursive-descent
+
 #include <memory>
 #include <charconv>
 #include <variant>
@@ -57,6 +59,25 @@ struct Parser {
 
 	template<typename TValue>
 	using ParseResult = std::expected<ParseSuccess<TValue>, Error>;
+
+	static int eval(std::string_view s) {
+		auto parse_result = start(s);
+		if (not parse_result) {
+			throw std::runtime_error("parse fail");
+		}
+		return eval(parse_result->value, 0);
+	}
+
+	static int eval(Terms const& terms, int add_to_each) {
+		auto const evalVisitor = [&](auto const& item) { return eval(item, add_to_each); };
+		int r = 0;
+		for (auto const& term : terms) {
+			r += std::visit(evalVisitor, term);
+		}
+		return r;
+	}
+	static int eval(Bracketed const& b, int add_to_each) { return eval(b.terms, add_to_each + b.bracket - 'A' + 1); }
+	static int eval(int i, int add_to_each) { return i + add_to_each; }
 
 	static ParseResult<Terms> start(std::string_view s) {
 		return parseTerms(s);;
@@ -177,4 +198,11 @@ TEST_CASE("simple") {
 		.chars_consumed=2,
 		.value={1, 1},
 	});
+
+	CHECK(Parser::eval("CA5ac") == 9);
+	CHECK(Parser::eval("A9a") == 10);
+	CHECK(Parser::eval("ASLHRPCcpAZL98TCNOonctlzarhlsa") == 211);
+	CHECK(Parser::eval("AX1AB0YY7QL4J91jlqyyb79WA2GFCcfgM9mawaxS4AVJjNG7gnvasa") == 781);
+	CHECK(Parser::eval("ABK35GDB1ZZRKEekrAJMR8884E1AVA6APpIDJGDH9hLITUOCANNLPZ2MTtmzplnnacoutildgjdiHN0nhaRYC7cyravaermjaYAayzzbdgkba") == 1787);
+	// CHECK(Parser::eval("AO2o47NCEW3IiABCOMCXV8UJMRrmjuvxcmocJCMmCOCJABBHQKkqhbbGFCFB6J9WWYWwywwjbfcfgajcocI2ZEMTLSQADHCAHY3OUF41SsfuoGO7MNFfnmoTY4AGOQEeVJGgJUHTBAGT0IEXX0LETAXVOovxatBLlbelx9XAGBUN2SJC8AFIVvif8MCY6DDEWNA4ZCULDRVOI5CL4CTANSDSIOoisdsnaRPCA23C5AacacprtclcVCCCG5gcccviovrdlYAVFI7GCCSRQMCQC8KZBbzkcqcmqrsccgifvayucOOXSsxoozV7GAagva2YAaynwedKAWUAG8CLLllcgauwakdycmaBRLBZ3VO2JXJ4DCE7AFW1wZAEeazfaeWW11CJjcwwcdjxjXLZzlYATJQS6XBS0sbxsqjtayxovzblMXSKCcAAaaLJ1KXESHGPGBA05IRN7HBOobIUDBNnbdLEBF9CB1Y1QPBbpqybcfbeluHZFBTALIMCBbcmi2XPCOoKDCU4ucdkcpxlatbfPpzhihnria0DOCcodbgpghsexkjlks7KTBCYJOOJ7EWQ8BXBCH8LIilhcbxb1U6AB8AXUIAHhaiuxabauqwejoojyRCPIN4O59onCNPDPCJ6B9DdbjcpdpHBA0BA2aZZN9AHBADJYLCclyjdCcabhY1T3ZSTOCXL5MTUJCcjuT1HYZ6YCBCQ9PBZGBEebgzL3YAN8XRrxnaylbpAKKkkaqcbcyzyhttmlxcoUG9ZMHhmzg7FD1XMmxdfutszPptyanzzbabIG8LIL5LJCJDUMQCcqmudjcjllilgCVKCCYE3KRBACVNVPpvnvcabrkeycckvciAahncipcrcbtkxmrbcjsnubgaxxeU8uitgabthujjvqoga3yBHhbtgyhachdaqsltmezicjbawecna") == 0x9de5);
 }
