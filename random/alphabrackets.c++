@@ -15,25 +15,8 @@ struct Parser {
 	// Term      ::= int | Bracketed
 	// Bracketed ::= bracketU Terms bracketL
 	struct Bracketed;
-	struct BoxedBracketed {
-		BoxedBracketed(Bracketed b) : m_data(std::make_unique<Bracketed>(std::move(b))) {}
-		BoxedBracketed(BoxedBracketed const& src) : m_data(std::make_unique<Bracketed>(*src)) {}
-		BoxedBracketed(BoxedBracketed&&) = default;
-		BoxedBracketed& operator=(BoxedBracketed const& rhs) { **this = *rhs; return *this; }
-		BoxedBracketed& operator=(BoxedBracketed&&) = default;
-
-		std::weak_ordering operator<=>(BoxedBracketed const& rhs) const { return cmpBracketed(**this, *rhs); }
-		bool operator==(BoxedBracketed const& rhs) const { return (*this <=> rhs) == 0; }
-
-		Bracketed& operator*() { assert(m_data); return *m_data.get(); }
-		Bracketed const& operator*() const { assert(m_data); return *m_data.get(); }
-		Bracketed* operator->() { return &*m_data; }
-		Bracketed const* operator->() const { return &*m_data; }
-	private:
-		std::unique_ptr<Bracketed> m_data;
-	};
 	using Term = std::variant<
-		BoxedBracketed,
+		Bracketed,
 		int
 	>;
 	using Terms = std::vector<Term>;
@@ -41,10 +24,8 @@ struct Parser {
 		char bracket;
 		Terms terms;
 
-		auto operator<=>(Bracketed const&) const = default;
-		friend std::weak_ordering cmpBracketed(Bracketed const& lhs, Bracketed const& rhs) {
-			return lhs <=> rhs;
-		}
+		std::weak_ordering operator<=>(Bracketed const&) const = default;
+		bool operator==(Bracketed const&) const = default;
 	};
 
 	struct Error {};
@@ -80,7 +61,7 @@ struct Parser {
 	static int eval(int i, int add_to_each) { return i + add_to_each; }
 
 	static ParseResult<Terms> start(std::string_view s) {
-		return parseTerms(s);;
+		return parseTerms(s);
 	}
 
 	static ParseResult<Terms> parseTerms(std::string_view s) {
@@ -119,7 +100,7 @@ struct Parser {
 		return std::unexpected(Error{});
 	}
 
-	static ParseResult<Term> parseBracketed(std::string_view s) {
+	static ParseResult<Bracketed> parseBracketed(std::string_view s) {
 		if (s.empty()) return std::unexpected(Error{});
 		if (std::isalpha(s.front())) {
 			auto open = s.front();
@@ -128,12 +109,12 @@ struct Parser {
 				auto after_terms = s.substr(1 + terms->chars_consumed);
 				if (after_terms.empty()) return std::unexpected(Error{});
 				if (after_terms.front() != std::tolower(open)) return std::unexpected(Error{});
-				return ParseSuccess<Term>{
+				return ParseSuccess<Bracketed>{
 					.chars_consumed = 1 + terms->chars_consumed + 1,
-					.value = BoxedBracketed({
+					.value = {
 						.bracket = open,
 						.terms = std::move(terms->value),
-					}),
+					},
 				};
 			}
 		}
