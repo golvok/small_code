@@ -11,6 +11,8 @@
 #include <variant>
 #include <vector>
 
+#include "insertion_order_map.h++"
+
 namespace rrv {
 
 namespace detail {}
@@ -152,7 +154,7 @@ namespace errors {
 template<typename Source, typename Target>
 using SameConstAs = std::conditional_t<std::is_const_v<Source>, const Target, Target>;
 
-using DictBase = std::map<Key, Node, std::less<>>;
+using DictBase = detail::InsertionOrderMap<Key, Node, std::less<>>;
 
 template<bool const_iter>
 struct MemberIteratorImplBase {
@@ -240,7 +242,7 @@ private:
 	void synchronizeKeys(const DictBase& src);
 };
 
-using NodeConcreteMemberCache = std::map<Key, Node, std::less<>>;
+using NodeConcreteMemberCache = detail::InsertionOrderMap<Key, Node, std::less<>>;
 struct NodeConcreteBase {
 	virtual const Node& operator[](InterfaceKey key) const = 0;
 	virtual       Node& operator[](InterfaceKey key) = 0;
@@ -597,6 +599,10 @@ T* Node::get_if_impl(Self& self) {
 	);
 }
 
+/**
+ * Assign to mapped values in this->impl if they exist, else add new nodes
+ * And, drop any nodes in this->impl not in src
+ */
 void Dict::synchronizeKeys(const DictBase& src) {
 	DictBase new_impl;
 	for (const auto& [k, src_v] : src) {
@@ -619,11 +625,7 @@ const Node& Dict::operator[](InterfaceKey key) const {
 }
 
 Node& Dict::operator[](InterfaceKey key) {
-	auto lookup = impl.lower_bound(key);
-	if (lookup == impl.end() or lookup->first != key) {
-		lookup = impl.emplace_hint(lookup, Key(std::move(key)), Node{});
-	}
-	return lookup->second;
+	return impl[std::move(key)];
 }
 
 template<typename T>
