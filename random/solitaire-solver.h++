@@ -20,7 +20,7 @@
 
 #include "signal.h"
 
-namespace golvok::solitare {
+namespace golvok::solitaire {
 
 using std::cout;
 using std::optional;

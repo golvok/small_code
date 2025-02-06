@@ -1,8 +1,8 @@
-#include "solitare-solver.h++"
+#include "solitaire-solver.h++"
 
 #include <catch2/catch_test_macros.hpp>
 
-using namespace golvok::solitare;
+using namespace golvok::solitaire;
 
 TEST_CASE("single test") {
 	char const* args_var = std::getenv("SINGLE_TEST_ARGS");
@@ -12,7 +12,7 @@ TEST_CASE("single test") {
 	}
 
 	std::vector<std::string_view> args;
-	args.push_back("solitare-solver"); // prog name
+	args.push_back("solitaire-solver"); // prog name
 	// split on spaces, combining. C-style.. for 'fun'
 	for (char const* curr = args_var; *curr;) {
 		while (*curr && *curr == ' ')
@@ -349,7 +349,7 @@ TEST_CASE("known seeds - k=9") {
 }
 
 TEST_CASE("CardIndexedVector") {
-	using Card = golvok::solitare::App::Card;
+	using Card = golvok::solitaire::App::Card;
 	auto civ = App::CardIndexedVector<Card>::FromEachCard([](Card c) { return c; });
 	CHECK(civ[Card{App::kSpades, App::kBeforeAce}] == Card{App::kSpades, App::kBeforeAce});
 	CHECK(civ[Card{App::kHearts, App::Value{5}}] == Card{App::kHearts, App::Value{5}});
